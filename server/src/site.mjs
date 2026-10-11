@@ -134,7 +134,7 @@ export function extractStyle(css, googleFamilies = []) {
 }
 
 /** Structural facts from one HTML document. No network. */
-export function analyzeHtml(html, baseUrl) {
+export function analyzeHtml(html, baseUrl, { maxImages = 40 } = {}) {
   const raw = String(html);
   // Scripts, styles, noscript and inline svg never carry copy; drop them before reading text, headings and nav.
   const h = raw.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ').replace(/<svg[\s\S]*?<\/svg>/gi, ' ');
@@ -189,7 +189,13 @@ export function analyzeHtml(html, baseUrl) {
     }
     if (/\.svg(\?|$)/i.test(src) || (w && w < 80) || (hh && hh < 80) || /icon|sprite|pixel|tracking|badge|flag/i.test(src)) continue;
     images.push({ url: src, alt, w, h: hh });
-    if (images.length >= 16) break;
+    if (images.length >= maxImages) break;
+  }
+  // CSS background photos (hero banners are often backgrounds, not <img>): from <style> blocks and style="" attributes.
+  for (const m of inlineCss.matchAll(/url\(\s*["']?([^"')\s]+\.(?:jpe?g|png|webp|avif|gif))(\?[^"')\s]*)?["']?\s*\)/gi)) {
+    if (images.length >= maxImages) break;
+    const src = abs(m[1] + (m[2] || ''), baseUrl); if (!src || seen.has(src) || /sprite|icon|pattern|noise|texture|pixel|logo|badge|flag/i.test(src)) continue;
+    seen.add(src); images.push({ url: src, alt: '', w: 0, h: 0, bg: true });
   }
   // No <img> logo: many sites draw the wordmark as an inline SVG inside the header's home link.
   let logoSvg = '';
@@ -234,13 +240,54 @@ export async function shopifyProducts(origin, limit = 40) {
   } catch { return []; }
 }
 
-/** Fetch the page (+ up to 3 stylesheets) and return the brand profile. */
-export async function siteProfile(rawUrl) {
+const SKIP_PATH = /\/(cart|checkout|account|login|signin|register|search|tag|tags|wp-admin|wp-login|feed|rss|sitemap|privacy|terms|policy|cookie|legal|faq|password|admin)\b|\.(pdf|zip|jpe?g|png|webp|gif|svg|mp4|xml|json|css|js)(\?|$)/i;
+const WANT_PATH = /work|portfolio|project|case|product|collection|shop|store|menu|gallery|lookbook|about|service|team|new|feature|pricing|tour|room|course|class|event/i;
+/** Same-origin pages worth reading after the homepage (work, products, about…): nav links first, then by keyword, up to `n`. */
+export function pickInternalLinks(html, baseUrl, n = 7) {
+  let origin, homePath;
+  try { const u = new URL(baseUrl); origin = u.origin; homePath = u.pathname.replace(/\/$/, '') || '/'; } catch { return []; }
+  const h = String(html).replace(/<script[\s\S]*?<\/script>/gi, ' ');
+  const navHtml = (/<nav[\s\S]*?<\/nav>/i.exec(h) || /<header[\s\S]*?<\/header>/i.exec(h) || [''])[0];
+  const score = new Map();
+  const consider = (tag, bonus) => {
+    const href = attr(tag, 'href'); if (!href || /^(mailto:|tel:|javascript:|#)/i.test(href)) return;
+    let u; try { u = new URL(href, baseUrl); } catch { return; }
+    if (u.origin !== origin || !/^https?:$/.test(u.protocol)) return;
+    const path = u.pathname.replace(/\/$/, '') || '/';
+    if (path === homePath || path === '/' || SKIP_PATH.test(path) || path.split('/').length > 4) return;
+    const key = origin + path;
+    const sc = (score.get(key) || 0) + bonus + (WANT_PATH.test(path) ? 3 : 0) - (path.split('/').length - 2) * 0.5;
+    score.set(key, sc);
+  };
+  for (const m of navHtml.matchAll(/<a\b[^>]*>/gi)) consider(m[0], 4);
+  for (const m of h.matchAll(/<a\b[^>]*>/gi)) consider(m[0], 1);
+  return [...score.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
+}
+
+/** Fetch the page (+ up to 3 stylesheets) and return the brand profile. `deep` also reads up to 7 internal pages for more images and context. */
+export async function siteProfile(rawUrl, { deep = true } = {}) {
   let u;
-  try { u = new URL(String(rawUrl || '').trim()); if (!/^https?:$/.test(u.protocol)) throw new Error('scheme'); } catch { throw Object.assign(new Error('URL không hợp lệ. Dán link đầy đủ, ví dụ https://tenmien.com'), { status: 400 }); }
+  // Tolerate a link pasted twice ("https://a.com/https://a.com/") and stray spaces.
+  const parts = String(rawUrl || '').trim().split(/(?=https?:\/\/)/i).map((x) => x.trim()).filter(Boolean);
+  const cleaned = parts.length ? parts[parts.length - 1] : String(rawUrl || '').trim();
+  try { u = new URL(/^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`); if (!/^https?:$/.test(u.protocol)) throw new Error('scheme'); } catch { throw Object.assign(new Error('URL không hợp lệ. Dán link đầy đủ, ví dụ https://tenmien.com'), { status: 400 }); }
   if (!(await isPublicHost(u.hostname))) throw Object.assign(new Error('Không tải địa chỉ nội bộ.'), { status: 403 });
   const html = await fetchText(u.href);
   const a = analyzeHtml(html, u.href);
+  // Deep read: internal pages (work, products, about…) for the full image set and extra context.
+  const pages = [];
+  if (deep) {
+    const links = pickInternalLinks(html, u.href, 7);
+    const got = await Promise.allSettled(links.map(async (l) => { const t = await fetchText(l, { limit: 1_500_000, timeout: 8000 }); const b = analyzeHtml(t, l, { maxImages: 30 }); return { url: l, path: new URL(l).pathname, title: b.title, headings: b.headings.slice(0, 6), text: b.text.slice(0, 320), images: b.images, ogImage: b.ogImage }; }));
+    for (const r of got) if (r.status === 'fulfilled' && r.value) pages.push(r.value);
+  }
+  const seenImg = new Set(a.images.map((i) => i.url));
+  const images = a.images.map((i) => ({ ...i, page: u.pathname }));
+  for (const pg of pages) {
+    if (pg.ogImage && !seenImg.has(pg.ogImage) && pg.ogImage !== a.ogImage) { seenImg.add(pg.ogImage); images.push({ url: pg.ogImage, alt: pg.title, w: 0, h: 0, page: pg.path }); }
+    for (const im of pg.images) { if (images.length >= 80) break; if (seenImg.has(im.url)) continue; seenImg.add(im.url); images.push({ ...im, page: pg.path }); }
+  }
+  a.images = images.slice(0, 80);
   let css = a._inlineCss;
   for (const href of a._styles.slice(0, 3)) { try { css += '\n' + (await fetchText(href, { limit: 400_000, timeout: 6000 })); } catch { /* skip sheet */ } }
   const style = extractStyle(css, a._googleFamilies);
@@ -248,7 +295,7 @@ export async function siteProfile(rawUrl) {
   if (tc && tc.s >= 0.25 && tc.l >= 0.12 && tc.l <= 0.9 && !style.colors.some((c) => c.hex === a.themeColor)) style.colors.unshift({ hex: a.themeColor, n: 999 });
   const { _styles, _inlineCss, _googleFamilies, _shopify, ...pub } = a;
   const products = _shopify ? await shopifyProducts(u.origin) : [];
-  return { url: u.href, ...pub, platform: _shopify ? 'shopify' : '', products, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts };
+  return { url: u.href, ...pub, platform: _shopify ? 'shopify' : '', products, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts, pages: pages.map(({ images: _i, ogImage: _o, ...rest }) => rest) };
 }
 
 /** Image proxy for the Studio: only public hosts, only image/* bodies, ≤ 10 MB. */

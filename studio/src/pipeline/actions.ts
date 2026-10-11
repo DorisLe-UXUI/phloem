@@ -3,7 +3,7 @@ import type { BlockKind, Check, NNode, SlicePlan, Suggestion, SuggestionAction, 
 import { planSlices } from '../../../src/shared/slicer';
 import { runChecks } from '../../../src/shared/checks';
 import { suggest } from '../../../src/shared/suggestions';
-import type { Brand, Color, Doc, Node, Project, RectNode, TextNode } from '../model/types';
+import type { Asset, Brand, Color, Doc, Node, Project, RectNode, TextNode } from '../model/types';
 import { DEFAULT_BRAND, uid } from '../model/types';
 import * as ops from '../model/ops';
 import { contrastToken, logoAssetFor, makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
@@ -200,8 +200,8 @@ export function placeAsset(id: string, at?: { x: number; y: number }, into?: str
   return n.id;
 }
 
-export async function addImageFile(file: File, at?: { x: number; y: number }, into?: string) {
-  const a = await assets.add(file);
+export async function addImageFile(file: File, at?: { x: number; y: number }, into?: string, src: Asset['src'] = { kind: 'upload' }) {
+  const a = await assets.add(file, undefined, { src });
   const d = doc();
   if (into) { // drop onto an existing image node: replace its asset
     commit(ops.updateNode(d, into, (n) => (n.type === 'image' ? { ...n, assetId: a.id, name: n.name === 'Image' ? a.name : n.name } : n)));
@@ -255,7 +255,7 @@ export function scrapIntoDoc(id: string, into?: string) {
   const n = mkImage({ x, y, w, h, assetId: a.id, name: a.name, alt: a.name.replace(/\.[a-z0-9]+$/i, '') });
   commit(ops.insertNodes(d, [n])); removeScrap(id); set({ selection: [n.id], tool: 'select' });
 }
-export async function addImageFileToScraps(file: File, at?: { x: number; y: number }) { const a = await assets.add(file); return addScrap(a.id, at); }
+export async function addImageFileToScraps(file: File, at?: { x: number; y: number }, src: Asset['src'] = { kind: 'paste' }) { const a = await assets.add(file, undefined, { src }); return addScrap(a.id, at); }
 /** Pull a pasted image URL (from copied HTML or a link) into the library: via the relay when configured, else directly. */
 export async function addImageUrl(url: string): Promise<string | null> {
   const st = get(); const relay = (st.settings.relayUrl || '').replace(/\/$/, '');
@@ -266,7 +266,8 @@ export async function addImageUrl(url: string): Promise<string | null> {
   if (!blob) { try { blob = await tryFetch(url); } catch { blob = null; } }
   if (!blob) return null;
   const name = (url.split('/').pop() || 'image').split('?')[0].slice(0, 60) || 'image';
-  const a = await assets.add(new File([blob], name, { type: blob.type }), name);
+  let host = ''; try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
+  const a = await assets.add(new File([blob], name, { type: blob.type }), name, { src: { kind: 'paste', host, url } });
   return a.id;
 }
 export function reflow() { commit(ops.reflowBlocks(doc())); }
@@ -389,6 +390,7 @@ export async function openProject(id: string) {
     ensureFonts([project.brand.fontFamily, project.brand.headingFamily]);
     // Parked images never rest on the artboard: anything overlapping it (older data) is moved to the right margin.
     const scraps = loadScraps(id).map((sc) => (sc.x + sc.w > 0 && sc.x < project.desktop.width && sc.y + sc.h > 0 ? { ...sc, x: project.desktop.width + 48 } : sc));
+    assets.context.project = id;
     set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [], scraps, scrapSel: null });
   } catch (e) { toast(`Không mở được: ${(e as Error).message}`, 'err'); }
 }
@@ -415,7 +417,7 @@ export async function duplicateProject(id: string) {
   await refreshProjects();
 }
 export function renameProject(name: string) { patchProject({ name: name.trim() || 'Email' }); }
-export async function goHome() { if (get().dirty) await saveProject(); set({ route: { name: 'home' }, project: null, selection: [], modal: null }); await refreshProjects(); }
+export async function goHome() { if (get().dirty) await saveProject(); assets.context.project = null; set({ route: { name: 'home' }, project: null, selection: [], modal: null }); await refreshProjects(); }
 
 export function exportProjectJson() {
   const p = get().project; if (!p) return;

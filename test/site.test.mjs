@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeHtml, extractStyle, isPublicHost, safeGet } from '../server/src/site.mjs';
+import { analyzeHtml, extractStyle, isPublicHost, pickInternalLinks, safeGet } from '../server/src/site.mjs';
 import { createServer } from 'node:http';
 
 const HTML = `<!doctype html><html lang="vi"><head><title>Terra Gốm · Gốm thủ công</title>
@@ -51,6 +51,20 @@ test('logo: header/home-link mark wins, client logo walls and other brands are i
   assert.deepEqual(a.buttons, ['Talk to us'], 'obfuscated e-mail buttons dropped');
   const own = analyzeHtml('<html><head><title>Acme</title></head><body><section class="partners"><img src="/p/other-logo.png" alt="Other Co" class="logo"></section><footer><img src="/acme-logo.png" alt="Acme logo"></footer></body></html>', 'https://acme.example/');
   assert.equal(own.logo, 'https://acme.example/acme-logo.png', 'a logo naming the site beats a partner logo even outside the header');
+});
+
+test('pickInternalLinks prefers nav + work/product pages on the same origin and skips cart/login/files', () => {
+  const html = `<header><nav><a href="/">Home</a><a href="/work/">Work</a><a href="/about">About</a><a href="https://other.example/x">Out</a></nav></header>
+  <a href="/cart">Cart</a><a href="/login">Login</a><a href="/files/brochure.pdf">PDF</a><a href="/blog/2026/10/post">Post</a><a href="/products/">Products</a><a href="mailto:x@y.z">Mail</a><a href="#top">Top</a>`;
+  const links = pickInternalLinks(html, 'https://acme.example/', 5);
+  assert.deepEqual(links.slice(0, 3).sort(), ['https://acme.example/about', 'https://acme.example/products', 'https://acme.example/work'].sort());
+  assert.ok(!links.some((l) => /cart|login|\.pdf|other\.example/.test(l)));
+});
+
+test('analyzeHtml also collects CSS background photos', () => {
+  const a = analyzeHtml('<html><head><style>.hero{background:url("/img/hero-bg.jpg?v=2") center}</style></head><body><div style="background-image:url(/img/banner.webp)"></div><img src="/img/a.jpg" width="900" height="600"></body></html>', 'https://x.example/');
+  assert.deepEqual(a.images.map((i) => i.url), ['https://x.example/img/a.jpg', 'https://x.example/img/hero-bg.jpg?v=2', 'https://x.example/img/banner.webp']);
+  assert.equal(a.images[1].bg, true);
 });
 
 test('extractStyle ranks brand colours (no greys), merges case, finds fonts', () => {

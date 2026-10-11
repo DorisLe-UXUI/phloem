@@ -1,7 +1,8 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Node } from '../model/types';
 import * as ops from '../model/ops';
 import { BLOCKS } from '../model/templates';
+import { groupAssets, pageLabel, usedAssetIds } from '../storage/assetGroups';
 import { assets } from '../storage/assets';
 import { get, set, useStore, toast } from '../store';
 import * as A from '../pipeline/actions';
@@ -135,10 +136,16 @@ function Blocks() {
 function Assets() {
   const s = useStore();
   const [, bump] = useState(0);
+  useEffect(() => assets.onChange(() => bump((n) => n + 1)), []);
+  const [scope, setScope] = useState<'project' | 'all'>('project');
+  const [q, setQ] = useState('');
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
   const list = assets.all();
+  const groups = groupAssets(list, { projectId: s.project?.id ?? null, usedIds: usedAssetIds(s.project), scope, query: q });
+  const shown = groups.reduce((n, g) => n + g.items.length, 0);
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  const upload = async (files: FileList | File[]) => { for (const f of Array.from(files)) { if (!f.type.startsWith('image/')) continue; try { await assets.add(f); } catch (e) { toast(`Không đọc được ${f.name}`, 'err'); } } bump((n) => n + 1); };
+  const upload = async (files: FileList | File[]) => { for (const f of Array.from(files)) { if (!f.type.startsWith('image/')) continue; try { await assets.add(f, undefined, { src: { kind: 'upload' } }); } catch (e) { toast(`Không đọc được ${f.name}`, 'err'); } } bump((n) => n + 1); };
   const use = (id: string) => {
     const sel = A.selectedNodes();
     const img = sel.find((n) => n.type === 'image');
@@ -151,18 +158,25 @@ function Assets() {
         <Icon name="upload" /> <div>Thả ảnh vào đây hoặc bấm để chọn</div><div class="dim small">PNG, JPG, WebP, GIF · lưu trong trình duyệt</div>
       </div>
       <input ref={input} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) void upload(f); (e.target as HTMLInputElement).value = ''; }} />
-      <Eyebrow>{list.length} ảnh</Eyebrow>
-      {list.length ? (
-        <div class="asset-grid">
-          {list.map((a) => (
-            <div key={a.id} class="asset" draggable title={`${a.name} · ${a.w}×${a.h} · ${(a.bytes / 1024).toFixed(0)} KB\nBấm: dùng cho layer ảnh đang chọn (hoặc thêm mới). Kéo vào email, hoặc thả ra cạnh artboard để xếp tạm.`} onClick={() => use(a.id)} onDragStart={(e) => { e.dataTransfer?.setData('text/phloem-asset', a.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'; }}>
-              {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
-              <button class="del" title="Xoá khỏi thư viện" onClick={async (e) => { e.stopPropagation(); if (await ask(`Xoá "${a.name}" khỏi thư viện?`)) void assets.remove(a.id).then(() => bump((n) => n + 1)); }}>✕</button>
-              <div class="nm">{a.name}</div>
+      <div class="seg block" style={{ height: 26 }}><button class={scope === 'project' ? 'on' : ''} onClick={() => setScope('project')} title="Ảnh đang dùng, ảnh của dự án này và web đã đọc cho nó" style={{ whiteSpace: 'nowrap' }}>Dự án này</button><button class={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')} style={{ whiteSpace: 'nowrap' }}>Tất cả ({list.length})</button></div>
+      <input class="in" style={{ height: 26 }} placeholder="Tìm theo tên, website, trang…" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.stopPropagation()} />
+      {groups.length ? groups.map((g) => (
+        <div key={g.key} class="section" style={{ gap: 6 }}>
+          <Eyebrow action={{ label: closed[g.key] ? 'Mở' : 'Thu', onClick: () => setClosed((c) => ({ ...c, [g.key]: !c[g.key] })) }}>{g.label} · {g.items.length}</Eyebrow>
+          {!closed[g.key] && (
+            <div class="asset-grid">
+              {g.items.map((a) => (
+                <div key={a.id} class="asset" draggable title={`${a.name} · ${a.w}×${a.h} · ${(a.bytes / 1024).toFixed(0)} KB${a.src?.kind === 'web' ? `\nTừ ${a.src.host}${a.src.page || ''}` : ''}\nBấm: dùng cho layer ảnh đang chọn (hoặc thêm mới). Kéo vào email, hoặc thả ra cạnh artboard để xếp tạm.`} onClick={() => use(a.id)} onDragStart={(e) => { e.dataTransfer?.setData('text/phloem-asset', a.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'; }}>
+                  {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
+                  <button class="del" title="Xoá khỏi thư viện" onClick={async (e) => { e.stopPropagation(); if (await ask(`Xoá "${a.name}" khỏi thư viện?`)) void assets.remove(a.id).then(() => bump((n) => n + 1)); }}>✕</button>
+                  <div class="nm">{pageLabel(a) ? `${pageLabel(a)} · ` : ''}{a.name}</div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      ) : <div class="dim small">Chưa có ảnh. Ảnh cũng có thể kéo thẳng lên artboard.</div>}
+      )) : <div class="dim small">{list.length ? (scope === 'project' ? `Dự án này chưa dùng ảnh nào. Bấm "Tất cả" để xem ${list.length} ảnh trong thư viện.` : 'Không có ảnh khớp tìm kiếm.') : 'Chưa có ảnh. Ảnh cũng có thể dán (⌘V) hoặc kéo thẳng lên artboard.'}</div>}
+      {scope === 'project' && groups.length > 0 && shown < list.length && <div class="dim small">Còn {list.length - shown} ảnh khác trong thư viện · <span style={{ cursor: 'pointer', color: 'var(--neon)' }} onClick={() => setScope('all')}>xem tất cả</span></div>}
       <div class="dim small">{s.selection.length ? 'Bấm ảnh để gán vào layer đang chọn.' : 'Chọn một layer ảnh rồi bấm để thay, hoặc bấm để thêm layer mới.'}</div>
     </div>
   );

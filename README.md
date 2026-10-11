@@ -212,6 +212,10 @@ Trong "Dựng bằng AI", dán link web rồi bấm **AI đọc web**: relay t�
 
 Logo: relay ưu tiên ảnh trong header hoặc link về trang chủ, lấy cả SVG inline trong header (chuyển thành PNG), và bỏ qua "logo wall" khách hàng/đối tác/báo chí (những ảnh này cũng không bao giờ thành ảnh nội dung). Logo tối trên nền trong suốt được tạo thêm bản trắng (`logoLightAssetId`) để dùng trên nav/footer tối. Hồ sơ web nói rõ với AI: thương hiệu gửi là chính website; ảnh có alt mang tên thương hiệu khác chỉ là case study / khách hàng tiêu biểu. Loại email "Giới thiệu dịch vụ / thương hiệu" dành cho email đầu tiên tới khách tiềm năng.
 
+Đọc sâu: relay đọc thêm tới 7 trang con cùng domain (ưu tiên link trên nav và các trang work / products / about / services…), gom ảnh `<img>` lẫn ảnh nền CSS, tối đa 80 ảnh, mỗi ảnh nhớ trang gốc; tiêu đề và đoạn mở đầu của từng trang con cũng vào prompt. Studio tải **toàn bộ** ảnh vào thư viện (bỏ icon dưới 140px), chọn sẵn ≤ 24 ảnh cho AI (sản phẩm, og, ảnh lớn nhất); prompt gửi tối đa 30 ảnh xem trước, phần còn lại liệt kê theo tên. Link dán hai lần hoặc có khoảng trắng được tự làm sạch.
+
+Thư viện ảnh có nhãn nguồn và dự án (`Asset.src`, `Asset.project`, đồng bộ lên relay qua cột `meta`): tab Ảnh và lưới ảnh trong "Dựng bằng AI" nhóm theo *Đang dùng trong email → Dự án này → từng website → Tải lên & dán → Khác*, có lọc "Dự án này / Tất cả", tìm kiếm, chọn cả nhóm. Ảnh được gắn vào dự án khi thêm trong editor hoặc khi áp dụng một phương án AI.
+
 Cửa hàng Shopify: relay đọc thêm `/products.json` (tên, giá, giá cũ, link, ảnh sản phẩm thật) và AI bắt buộc dùng đúng dữ liệu đó cho block sản phẩm. Ảnh lấy bản lớn nhất trong `srcset`. Nếu bạn dán link rồi bấm "Dựng" luôn, Studio tự đọc web trước.
 
 Bảo mật relay: `/ai`, `/site`, `/image` chỉ phục vụ người đã đăng nhập tài khoản relay (hoặc có `RELAY_TOKEN`); relay chỉ tải host công khai, kiểm tra lại từng bước redirect, kết nối đúng địa chỉ đã kiểm tra (chống DNS rebinding), giới hạn trang 2 MB, ảnh 10 MB, 3 stylesheet; mật khẩu băm scrypt bất đồng bộ; hạn mức lưu trữ `USER_QUOTA_MB` (500) và `TOTAL_QUOTA_MB` (5000).

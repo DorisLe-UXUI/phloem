@@ -11,6 +11,7 @@ import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
 import { analyzeSite, brandFromSite, importSiteImages, lightVersionOf, type SiteProduct, type SiteProfile } from '../ai/site';
 import { Btn, Eyebrow, Field, Modal, Seg, Select, TextArea, TextInput } from './components';
+import { groupAssets, pageLabel, usedAssetIds } from '../storage/assetGroups';
 import { Icon } from './icons';
 import { ask } from './confirm';
 
@@ -79,7 +80,9 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       finally { setSiteBusy(''); }
     })();
   }, []);
-  const addFiles = async (list: FileList | File[]) => { const ids: string[] = []; for (const f of Array.from(list)) { if (!f.type.startsWith('image/')) continue; try { ids.push((await assets.add(f)).id); } catch { /* skip */ } } if (ids.length) { upd((f) => ({ imageIds: [...f.imageIds, ...ids] })); toast(`Đã thêm ${ids.length} ảnh.`, 'ok'); } };
+  const addFiles = async (list: FileList | File[]) => { const ids: string[] = []; for (const f of Array.from(list)) { if (!f.type.startsWith('image/')) continue; try { ids.push((await assets.add(f, undefined, { src: { kind: 'upload' } })).id); } catch { /* skip */ } } if (ids.length) { upd((f) => ({ imageIds: [...f.imageIds, ...ids] })); toast(`Đã thêm ${ids.length} ảnh.`, 'ok'); } };
+  /** One clean URL: a link pasted twice ("https://a.com/https://a.com/") or with spaces becomes the last full link. */
+  const cleanUrl = (v: string) => { const parts = v.trim().split(/(?=https?:\/\/)/i).map((x) => x.trim()).filter(Boolean); const u = (parts.length ? parts[parts.length - 1] : v.trim()).replace(/\s+/g, ''); return u && !/^https?:\/\//i.test(u) ? `https://${u}` : u; };
   useEffect(() => {
     const h = (e: ClipboardEvent) => { const t = e.target as HTMLElement | null; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return; const files = Array.from(e.clipboardData?.files || []); if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); void addFiles(files); } };
     window.addEventListener('paste', h); return () => window.removeEventListener('paste', h);
@@ -90,13 +93,16 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const analyzeNow = async (): Promise<GenInput | null> => {
     setSiteErr(''); setSiteBusy('AI đang đọc trang…');
     try {
-      const p: SiteProfile = await analyzeSite(form.website || '');
+      const site = cleanUrl(form.website || '');
+      if (site !== form.website) upd({ website: site });
+      const p: SiteProfile = await analyzeSite(site);
       const wb = brandFromSite(p);
       setSiteBusy('Đang tải logo và ảnh…');
-      const got = await importSiteImages(p, 10, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), !!form.logoAssetId);
+      const got = await importSiteImages(p, 80, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), !!form.logoAssetId);
       let next: GenInput | null = null;
-      upd((f) => { next = { ...f, site: p, webBrand: wb, brandName: f.brandName || wb.name || '', logoAssetId: f.logoAssetId ?? got.logoId ?? null, logoLightAssetId: f.logoAssetId ? f.logoLightAssetId ?? null : got.logoLightId ?? null, imageIds: [...new Set([...f.imageIds, ...got.imageIds])], palette: 'Web' }; return next; });
-      toast(`Đã đọc ${p.siteName || p.title}: ${p.colors.length} màu, ${p.fonts.length} font, ${got.imageIds.length} ảnh${got.logoId ? ', logo' : ''}${p.products?.length ? `, ${p.products.length} sản phẩm` : ''}.`, 'ok');
+      upd((f) => { next = { ...f, site: p, webBrand: wb, brandName: f.brandName || wb.name || '', logoAssetId: f.logoAssetId ?? got.logoId ?? null, logoLightAssetId: f.logoAssetId ? f.logoLightAssetId ?? null : got.logoLightId ?? null, imageIds: [...new Set([...f.imageIds, ...got.suggested])], palette: 'Web' }; return next; });
+      const pagesN = (p.pages || []).length + 1;
+      toast(`Đã đọc ${p.siteName || p.title} (${pagesN} trang): ${p.colors.length} màu, ${p.fonts.length} font, ${got.imageIds.length} ảnh vào thư viện (${got.suggested.length} ảnh được chọn sẵn cho AI)${got.logoId ? ', logo' : ''}${p.products?.length ? `, ${p.products.length} sản phẩm` : ''}.`, 'ok');
       return next;
     } catch (e) { setSiteErr((e as Error).message); return null; }
     finally { setSiteBusy(''); }
@@ -135,17 +141,23 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       A.commit(doc);
       A.patchProject({ brand, fields: v.fields, mobile: null });
       set({ selection: [], modal: null });
+      tagForProject(s.project.id);
       toast(`Đã áp dụng "${v.name}". Chỉnh tiếp trên canvas.`, 'ok');
     } else {
       onClose();
       await A.newProject('blank', brand, v.fields.campaignName || v.name);
       A.commit(doc, false);
       A.patchProject({ fields: v.fields });
+      const pid = get().project?.id; if (pid) tagForProject(pid);
       toast(`Đã tạo project từ "${v.name}".`, 'ok');
     }
   };
 
+  /** Images the composer worked with (site import, uploads, logo) belong to the project the variant lands in. */
+  const tagForProject = (pid: string) => { const ids = [...form.imageIds, form.logoAssetId, form.logoLightAssetId].filter((x): x is string => !!x).filter((id) => !assets.get(id)?.project); if (ids.length) assets.tag(ids, { project: pid }); };
   const all = assets.all();
+  const groups = groupAssets(all, { projectId: s.project?.id ?? null, usedIds: usedAssetIds(s.project), scope: 'all' });
+  const groupSel = (ids: string[]) => { const allOn = ids.every((id) => form.imageIds.includes(id)); upd((f) => ({ imageIds: allOn ? f.imageIds.filter((x) => !ids.includes(x)) : [...f.imageIds, ...ids.filter((x) => !f.imageIds.includes(x))] })); };
   return (
     <Modal title="Dựng bằng AI" icon="sparkle" onClose={onClose} wide
       footer={<>
@@ -192,19 +204,26 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       </div>
       <Field label="Email này để làm gì? Gửi cho ai?" hint="brief"><TextArea rows={2} value={form.brief} placeholder="Sale cuối tuần 30% cho khách cũ, muốn họ quay lại mua đồ gốm trước Tết…" onCommit={(v) => upd({ brief: v })} onInput={(v) => upd({ brief: v })} /></Field>
       <Field label="Nội dung thô" hint="tiêu đề, sản phẩm, giá, link, ngày, chính sách… dán thoải mái"><TextArea rows={6} value={form.content} placeholder={'Cốc men tro 300ml 245.000₫ → 171.000₫ https://terra.vn/p/coc\nĐĩa ăn 24cm 320.000₫ → 224.000₫\nFreeship toàn quốc, đổi trả 30 ngày\nMã TERRA30 đến hết Chủ nhật 19/10'} onCommit={(v) => upd({ content: v })} onInput={(v) => upd({ content: v })} /></Field>
-      <Eyebrow action={{ label: '+ Tải ảnh', onClick: () => file.current?.click() }}>Ảnh ({form.imageIds.length} đã chọn) · dán Ctrl+V hoặc kéo thả vào đây</Eyebrow>
+      <Eyebrow action={{ label: '+ Tải ảnh', onClick: () => file.current?.click() }}>Ảnh ({form.imageIds.length} đã chọn cho AI, tối đa 30 ảnh được xem trước) · dán Ctrl+V hoặc kéo thả vào đây</Eyebrow>
       <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files); }}>
-      <input ref={file} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => { const fs = Array.from((e.target as HTMLInputElement).files || []); const ids: string[] = []; for (const f of fs) { try { ids.push((await assets.add(f)).id); } catch { /* skip */ } } upd((f) => ({ imageIds: [...f.imageIds, ...ids] })); (e.target as HTMLInputElement).value = ''; }} />
-      {all.length ? (
-        <div class="asset-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-          {all.map((a) => (
-            <div key={a.id} class={`asset ${form.imageIds.includes(a.id) ? 'on' : ''}`} style={form.imageIds.includes(a.id) ? { outline: '2px solid var(--neon)', outlineOffset: -2 } : {}} title={a.name} onClick={() => toggleImg(a.id)}>
-              {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
-              {form.imageIds.includes(a.id) && <span style={{ position: 'absolute', top: 4, left: 4, background: 'var(--neon)', color: 'var(--neon-ink)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>{form.imageIds.indexOf(a.id) + 1}</span>}
+      <input ref={file} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => { const fs = Array.from((e.target as HTMLInputElement).files || []); const ids: string[] = []; for (const f of fs) { try { ids.push((await assets.add(f, undefined, { src: { kind: 'upload' } })).id); } catch { /* skip */ } } upd((f) => ({ imageIds: [...f.imageIds, ...ids] })); (e.target as HTMLInputElement).value = ''; }} />
+      {all.length ? groups.map((g) => {
+        const ids = g.items.map((a) => a.id); const on = ids.filter((id) => form.imageIds.includes(id)).length;
+        return (
+          <div key={g.key} class="section" style={{ gap: 6 }}>
+            <div class="row small"><b class="grow" style={{ color: on ? 'var(--neon)' : 'var(--muted)' }}>{g.label} · {on}/{ids.length} chọn</b><button class="chip" style={{ cursor: 'pointer' }} onClick={() => groupSel(ids)}>{on === ids.length ? 'Bỏ chọn nhóm' : 'Chọn cả nhóm'}</button></div>
+            <div class="asset-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+              {g.items.map((a) => (
+                <div key={a.id} class={`asset ${form.imageIds.includes(a.id) ? 'on' : ''}`} style={form.imageIds.includes(a.id) ? { outline: '2px solid var(--neon)', outlineOffset: -2 } : {}} title={`${a.name}${a.src?.page ? ` · ${a.src.page}` : ''} · ${a.w}×${a.h}`} onClick={() => toggleImg(a.id)}>
+                  {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
+                  {form.imageIds.includes(a.id) && <span style={{ position: 'absolute', top: 4, left: 4, background: 'var(--neon)', color: 'var(--neon-ink)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>{form.imageIds.indexOf(a.id) + 1}</span>}
+                  {pageLabel(a) && <div class="nm">{pageLabel(a)}</div>}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ) : <div class="dropzone" onClick={() => file.current?.click()}><Icon name="upload" /> <div>Chưa có ảnh. Dán (Ctrl+V), kéo thả, hoặc bấm để tải lên. Bỏ qua cũng được: AI sẽ để placeholder.</div></div>}
+          </div>
+        );
+      }) : <div class="dropzone" onClick={() => file.current?.click()}><Icon name="upload" /> <div>Chưa có ảnh. Dán (Ctrl+V), kéo thả, hoặc bấm để tải lên. Bỏ qua cũng được: AI sẽ để placeholder.</div></div>}
       </div>
       <Eyebrow>Bảng màu</Eyebrow>
       <div class="presets">

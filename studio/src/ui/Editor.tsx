@@ -37,7 +37,7 @@ export function Editor() {
       const target = sel.length === 1 ? ops.findNode(d, sel[0]) : null;
       const intoImage = target && target.type === 'image' ? target.id : undefined;
       let n = 0;
-      for (const f of files) { if (intoImage && n === 0) await A.addImageFile(f, undefined, intoImage); else await A.addImageFileToScraps(f); n++; }
+      for (const f of files) { if (intoImage && n === 0) await A.addImageFile(f, undefined, intoImage, { kind: 'paste' }); else await A.addImageFileToScraps(f, undefined, { kind: 'paste' }); n++; }
       for (const u of urls.slice(0, 6)) { const id = await A.addImageUrl(u); if (!id) continue; if (intoImage && n === 0) A.placeAsset(id, undefined, intoImage); else A.addScrap(id); n++; }
       if (!n) { toast('Không lấy được ảnh từ clipboard (link bị chặn?). Thử lưu ảnh rồi kéo vào.', 'err'); return; }
       toast(intoImage ? 'Đã thay ảnh cho layer đang chọn.' : n === 1 ? 'Ảnh nằm cạnh email — kéo vào mail để dùng.' : `${n} ảnh nằm cạnh email — kéo vào mail để dùng.`, 'ok');

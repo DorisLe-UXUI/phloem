@@ -47,6 +47,7 @@ export const db = {
     return all.length;
   },
   putAsset: async (a: Asset, blob: Blob) => { await tx('assets', 'readwrite', (s) => s.put(a)); await tx('blobs', 'readwrite', (s) => s.put(blob, a.id)); },
+  putAssetMeta: (a: Asset) => tx('assets', 'readwrite', (s) => s.put(a)),
   getBlob: (id: string) => tx<Blob | undefined>('blobs', 'readonly', (s) => s.get(id)),
   listAssets: () => tx<Asset[]>('assets', 'readonly', (s) => s.getAll()),
   deleteAsset: async (id: string) => { await tx('assets', 'readwrite', (s) => s.delete(id)); await tx('blobs', 'readwrite', (s) => s.delete(id)); },

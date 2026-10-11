@@ -56,6 +56,8 @@ export function decrypt(secret, buf) {
 export function openDb(file) {
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  // Migrations (idempotent): asset meta (source website / project tags) added 2026-10.
+  try { db.exec('ALTER TABLE assets ADD COLUMN meta TEXT'); } catch { /* column exists */ }
   const q = (sql) => db.prepare(sql);
   const S = {
     userByEmail: q('SELECT * FROM users WHERE email = ?'), userById: q('SELECT * FROM users WHERE id = ?'),
@@ -70,10 +72,11 @@ export function openDb(file) {
     projPut: q(`INSERT INTO projects (id, owner, name, json, thumb, thumb_mobile, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at WHERE projects.owner = excluded.owner AND excluded.updated_at >= projects.updated_at`),
     projDel: q('DELETE FROM projects WHERE owner = ? AND id = ?'), projCount: q('SELECT COUNT(*) AS n, COALESCE(SUM(length(json)), 0) AS bytes FROM projects WHERE owner = ?'),
-    assetList: q('SELECT id, name, mime, w, h, bytes, created_at FROM assets WHERE owner = ? ORDER BY created_at DESC'),
-    assetGet: q('SELECT * FROM assets WHERE owner = ? AND id = ?'), assetMeta: q('SELECT id, name, mime, w, h, bytes, created_at FROM assets WHERE owner = ? AND id = ?'),
-    assetPut: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime, w = excluded.w, h = excluded.h, bytes = excluded.bytes, data = excluded.data WHERE assets.owner = excluded.owner`),
+    assetList: q('SELECT id, name, mime, w, h, bytes, meta, created_at FROM assets WHERE owner = ? ORDER BY created_at DESC'),
+    assetGet: q('SELECT * FROM assets WHERE owner = ? AND id = ?'), assetMeta: q('SELECT id, name, mime, w, h, bytes, meta, created_at FROM assets WHERE owner = ? AND id = ?'),
+    assetPut: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime, w = excluded.w, h = excluded.h, bytes = excluded.bytes, data = excluded.data, meta = COALESCE(excluded.meta, assets.meta) WHERE assets.owner = excluded.owner`),
+    assetPatch: q('UPDATE assets SET meta = ?, name = COALESCE(?, name) WHERE owner = ? AND id = ?'),
     assetDel: q('DELETE FROM assets WHERE owner = ? AND id = ?'), assetUsage: q('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes FROM assets WHERE owner = ?'),
     usageAll: q('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM assets) + (SELECT COALESCE(SUM(length(json)), 0) FROM projects) + (SELECT COALESCE(SUM(length(enc)), 0) FROM profiles) + (SELECT COALESCE(SUM(length(json)), 0) FROM kv) AS bytes'),
     kvGet: q('SELECT json, updated_at FROM kv WHERE owner = ? AND key = ?'),
@@ -82,7 +85,8 @@ export function openDb(file) {
     profPut: q('INSERT INTO profiles (owner, enc, updated_at) VALUES (?, ?, ?) ON CONFLICT(owner) DO UPDATE SET enc = excluded.enc, updated_at = excluded.updated_at'),
   };
   const meta = (p) => ({ id: p.id, name: p.name, updatedAt: p.updated_at, createdAt: p.created_at, thumb: p.thumb || undefined, thumbMobile: p.thumb_mobile || undefined, provider: p.provider || undefined, size: p.size });
-  const assetMeta = (a) => ({ id: a.id, name: a.name, mime: a.mime, w: a.w, h: a.h, bytes: a.bytes, createdAt: a.created_at });
+  const parseMeta = (m) => { if (!m) return {}; try { const j = typeof m === 'string' ? JSON.parse(m) : m; return j && typeof j === 'object' ? j : {}; } catch { return {}; } };
+  const assetMeta = (a) => ({ id: a.id, name: a.name, mime: a.mime, w: a.w, h: a.h, bytes: a.bytes, createdAt: a.created_at, ...parseMeta(a.meta) });
 
   return {
     file,
@@ -115,7 +119,8 @@ export function openDb(file) {
       list: (owner) => S.assetList.all(owner).map(assetMeta),
       meta: (owner, id) => { const a = S.assetMeta.get(owner, id); return a ? assetMeta(a) : null; },
       get: (owner, id) => { const a = S.assetGet.get(owner, id); return a ? { ...assetMeta(a), data: Buffer.from(a.data) } : null; },
-      put: (owner, m, data) => { S.assetPut.run(m.id, owner, String(m.name || 'image').slice(0, 200), m.mime || 'application/octet-stream', m.w | 0, m.h | 0, data.length, data, now()); return assetMeta({ ...m, bytes: data.length, created_at: now() }); },
+      put: (owner, m, data) => { const meta = m.meta ? JSON.stringify(m.meta) : null; S.assetPut.run(m.id, owner, String(m.name || 'image').slice(0, 200), m.mime || 'application/octet-stream', m.w | 0, m.h | 0, data.length, data, meta, now()); return assetMeta({ ...m, meta, bytes: data.length, created_at: now() }); },
+      patch: (owner, id, meta, name) => { S.assetPatch.run(JSON.stringify(meta || {}), name ? String(name).slice(0, 200) : null, owner, id); const a = S.assetMeta.get(owner, id); return a ? assetMeta(a) : null; },
       remove: (owner, id) => { S.assetDel.run(owner, id); },
       usage: (owner) => S.assetUsage.get(owner),
     },

@@ -346,11 +346,12 @@ async function dbRoute(url, req, res) {
       if (m === 'GET') { const a = DB.assets.get(u.id, id); if (!a) return json(res, 404, { error: 'không có ảnh này' }); res.statusCode = 200; res.setHeader('Content-Type', a.mime); res.setHeader('Content-Length', a.data.length); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable'); return res.end(a.data); }
       if (m === 'PUT' && id) {
         const data = await raw(req, 15 * 1024 * 1024);
-        const meta = { id, name: decodeURIComponent(String(req.headers['x-asset-name'] || 'image')), mime: String(req.headers['content-type'] || 'application/octet-stream').split(';')[0], w: Number(req.headers['x-asset-w'] || 0), h: Number(req.headers['x-asset-h'] || 0) };
+        const meta = { id, name: decodeURIComponent(String(req.headers['x-asset-name'] || 'image')), mime: String(req.headers['content-type'] || 'application/octet-stream').split(';')[0], w: Number(req.headers['x-asset-w'] || 0), h: Number(req.headers['x-asset-h'] || 0), meta: assetTags(req.headers['x-asset-meta']) };
         if (!meta.mime.startsWith('image/')) return json(res, 415, { error: 'chỉ nhận ảnh' });
         if (!checkQuota(res, u.id, data.length - (DB.assets.meta(u.id, id)?.bytes || 0))) return;
         return json(res, 200, { asset: DB.assets.put(u.id, meta, data) });
       }
+      if (m === 'PATCH' && id) { const p = await body(req); const a = DB.assets.patch(u.id, id, assetTags(p?.meta ? JSON.stringify(p.meta) : ''), p?.name); return a ? json(res, 200, { asset: a }) : json(res, 404, { error: 'không có ảnh này' }); }
       if (m === 'DELETE' && id) { DB.assets.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'profiles') {
@@ -371,8 +372,20 @@ async function dbRoute(url, req, res) {
 }
 
 // Website brand profile for the AI composer (logo, colours, fonts, headings, images) + image proxy for those images.
+/** Library tags an asset carries (source website, page, project). Shape-checked and size-capped; anything else is dropped. */
+function assetTags(rawHeader) {
+  if (!rawHeader) return null;
+  let j; try { j = JSON.parse(decodeURIComponent(String(rawHeader).slice(0, 3000))); } catch { return null; }
+  if (!j || typeof j !== 'object') return null;
+  const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : undefined);
+  const out = {};
+  if (j.src && typeof j.src === 'object') { const k = str(j.src.kind, 16); if (k) out.src = { kind: k, host: str(j.src.host, 120), url: str(j.src.url, 600), page: str(j.src.page, 200) }; }
+  if (j.project === null || typeof j.project === 'string') out.project = j.project === null ? null : j.project.slice(0, 64);
+  if (typeof j.at === 'string') out.at = j.at.slice(0, 40);
+  return Object.keys(out).length ? out : null;
+}
 async function siteRoute(p, res) {
-  try { return json(res, 200, await siteProfile(p?.url)); }
+  try { return json(res, 200, await siteProfile(p?.url, { deep: p?.deep !== false })); }
   catch (e) { return json(res, e.status || 502, { error: `Không đọc được trang: ${e.message}` }); }
 }
 async function csvRoute(p, res) {
@@ -389,8 +402,8 @@ async function imageRoute(target, res) {
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Phloem-Token, Authorization, X-Asset-Name, X-Asset-W, X-Asset-H');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Phloem-Token, Authorization, X-Asset-Name, X-Asset-W, X-Asset-H, X-Asset-Meta');
   res.setHeader('Access-Control-Max-Age', '600');
 }
 function end(res, code) { res.statusCode = code; res.end(); }

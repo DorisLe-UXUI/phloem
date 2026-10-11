@@ -6,7 +6,8 @@ import { assets } from '../storage/assets';
 import { get } from '../store';
 import { getSession, expired } from '../auth/core';
 
-export interface SiteImage { url: string; alt: string; w: number; h: number }
+export interface SiteImage { url: string; alt: string; w: number; h: number; page?: string; bg?: boolean }
+export interface SitePage { url: string; path: string; title: string; headings: string[]; text: string }
 export interface SiteProfile {
   url: string; title: string; lang: string; siteName: string; description: string; themeColor: string;
   logo: string; icon: string; ogImage: string; images: SiteImage[]; headings: string[]; nav: string[]; buttons: string[]; text: string;
@@ -15,6 +16,8 @@ export interface SiteProfile {
   colors: { hex: string; n: number }[]; darks: string[]; lights: string[]; fonts: { name: string; n: number }[];
   platform?: string;
   products?: SiteProduct[];
+  /** Internal pages the relay also read (work, products, about…). */
+  pages?: SitePage[];
 }
 export interface SiteProduct { name: string; price: string; compareAt: string; type: string; url: string; image: string; assetId?: string | null }
 
@@ -111,27 +114,32 @@ export async function lightVersionOf(blob: Blob): Promise<Blob | null> {
 }
 
 /** Pull the logo and up to `max` images through the relay into the asset library. */
-export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (done: number, total: number) => void, skipLogo = false): Promise<{ logoId: string | null; logoLightId: string | null; imageIds: string[] }> {
-  const r = relay(); if (!r) return { logoId: null, logoLightId: null, imageIds: [] };
+export async function importSiteImages(p: SiteProfile, max = 80, onProgress?: (done: number, total: number) => void, skipLogo = false): Promise<{ logoId: string | null; logoLightId: string | null; imageIds: string[]; suggested: string[] }> {
+  const r = relay(); if (!r) return { logoId: null, logoLightId: null, imageIds: [], suggested: [] };
   let logoLightId: string | null = null;
-  const grab = async (url: string, name: string) => {
+  const host = (() => { try { return new URL(p.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+  const grab = async (url: string, name: string, page?: string) => {
     try {
       const res = await fetch(`${r.url}/image?url=${encodeURIComponent(url)}`, { headers: r.headers, signal: AbortSignal.timeout(20_000) });
       if (!res.ok) return null;
       const blob = await res.blob(); if (!blob.type.startsWith('image/') || blob.size < 600) return null;
       const file = blob.type === 'image/svg+xml' ? await svgToPng(blob) : blob;
-      if (name === 'logo') { const light = await lightVersionOf(file); if (light) logoLightId = (await assets.add(light, 'logo-light.png')).id; }
-      return (await assets.add(file, name)).id;
+      const isLogo = name === 'logo';
+      if (isLogo) { const light = await lightVersionOf(file); if (light) logoLightId = (await assets.add(light, 'logo-light.png', { src: { kind: 'logo', host, url } })).id; }
+      const a = await assets.add(file, name, { src: { kind: isLogo ? 'logo' : 'web', host, url, page } });
+      // icons, spacers and tiny thumbnails are useless in an email: drop them again
+      if (!isLogo && (Math.max(a.w, a.h) < 140 || Math.min(a.w, a.h) < 60)) { await assets.remove(a.id); return null; }
+      return a.id;
     } catch { return null; }
   };
   // Every product photo is imported (the composer needs one per card); `max` only caps the generic page images.
-  const urls: { url: string; name: string }[] = [];
+  const urls: { url: string; name: string; page?: string }[] = [];
   const seen = new Set<string>();
-  const push = (url: string, name: string) => { if (url && !seen.has(url)) { seen.add(url); urls.push({ url, name }); } };
-  for (const pr of (p.products || []).slice(0, 40)) if (pr.image) push(pr.image, pr.name);
+  const push = (url: string, name: string, page?: string) => { if (url && !seen.has(url)) { seen.add(url); urls.push({ url, name, page }); } };
+  for (const pr of (p.products || []).slice(0, 40)) if (pr.image) push(pr.image, pr.name, '/products');
   const productCount = urls.length;
-  if (p.ogImage) push(p.ogImage, 'og-image');
-  for (const im of p.images) push(im.url, im.alt || im.url.split('/').pop()?.split('?')[0] || 'image');
+  if (p.ogImage) push(p.ogImage, 'og-image', '/');
+  for (const im of p.images) push(im.url, im.alt || im.url.split('/').pop()?.split('?')[0] || 'image', im.page);
   const list = urls.slice(0, productCount + max);
   const wantLogo = !skipLogo && !!(p.logo || p.logoSvg || p.icon);
   const total = list.length + (wantLogo ? 1 : 0);
@@ -148,13 +156,17 @@ export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (d
   if (wantLogo) { done++; onProgress?.(done, total); }
   const imageIds: string[] = [];
   const byUrl = new Map<string, string>();
-  for (let i = 0; i < list.length; i += 4) {
-    const batch = list.slice(i, i + 4);
-    const ids = await Promise.all(batch.map((x) => grab(x.url, x.name)));
+  for (let i = 0; i < list.length; i += 6) {
+    const batch = list.slice(i, i + 6);
+    const ids = await Promise.all(batch.map((x) => grab(x.url, x.name, x.page)));
     ids.forEach((id, k) => { done++; onProgress?.(done, total); if (id) { imageIds.push(id); byUrl.set(batch[k].url, id); } });
   }
   for (const pr of p.products || []) pr.assetId = byUrl.get(pr.image) ?? null;
-  return { logoId, logoLightId: logoId ? logoLightId : null, imageIds };
+  // Suggested selection for the composer: every product photo, the og image, then the largest page photos (≤ 24 total).
+  const productIds = (p.products || []).map((pr) => pr.assetId).filter((x): x is string => !!x);
+  const rest = imageIds.filter((id) => !productIds.includes(id)).sort((a, b) => { const A = assets.get(a), B = assets.get(b); return (B ? B.w * B.h : 0) - (A ? A.w * A.h : 0); });
+  const suggested = [...productIds, ...rest].slice(0, Math.max(24, productIds.length));
+  return { logoId, logoLightId: logoId ? logoLightId : null, imageIds, suggested };
 }
 
 /** Compact text for the prompt: what the site is, how it speaks, what it looks like. */
@@ -171,6 +183,7 @@ export function siteSummary(p: SiteProfile, brand: Partial<Brand>): string {
     `Thương hiệu GỬI email là ${p.siteName || p.title.split(/[|·•–-]/)[0] || 'website này'}: email nói về chính họ và dịch vụ/sản phẩm của họ. Ảnh có alt mang tên thương hiệu khác (khách hàng, đối tác, case study) chỉ dùng làm "khách hàng tiêu biểu" / dự án đã làm trong articles, gallery, collage, quote; không bao giờ coi thương hiệu đó là người gửi hay chủ đề chính.`,
     `Màu thương hiệu (theo tần suất): ${p.colors.map((c) => c.hex).join(', ') || '(không rõ)'} → primary ${brand.primary}, accent ${brand.accent}`,
     `Font trên web: ${p.fonts.map((f) => f.name).join(', ') || '(không rõ)'} → Phloem dùng ${brand.headingFamily || 'mặc định'} / ${brand.fontFamily || 'mặc định'}`,
+    p.pages && p.pages.length ? `Các trang con đã đọc:\n${p.pages.map((pg) => `- ${pg.path}: ${pg.title}${pg.headings.length ? ` — ${pg.headings.slice(0, 4).join(' | ')}` : ''}${pg.text ? ` — ${pg.text.slice(0, 160)}` : ''}`).join('\n')}` : '',
     p.products && p.products.length ? `Sản phẩm thật trên web (${p.platform || 'cửa hàng'}), dùng đúng tên/giá/link/ảnh:\n${p.products.map((pr) => `- ${pr.name}${pr.type ? ` (${pr.type})` : ''}${pr.price ? ` · giá ${pr.price}` : ''}${pr.compareAt ? ` (giá cũ ${pr.compareAt})` : ''} · ${pr.url}${pr.assetId ? ` · imageId "${pr.assetId}"` : ''}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }

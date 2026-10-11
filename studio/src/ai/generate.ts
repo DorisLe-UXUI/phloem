@@ -140,7 +140,7 @@ async function thumbOf(assetId: string): Promise<AiImage | null> {
   if (!blob || !meta) return null;
   try {
     const bmp = await createImageBitmap(blob);
-    const scale = Math.min(1, 512 / Math.max(bmp.width, bmp.height));
+    const scale = Math.min(1, 384 / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(bmp.width * scale)); c.height = Math.max(1, Math.round(bmp.height * scale));
     c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
@@ -186,10 +186,12 @@ export async function generateVariants(inp: GenInput, onStage?: (s: string) => v
   const presets = [...(inp.webBrand ? ['Web'] : []), ...BRAND_PRESETS.map((p) => p.name)];
   const images: AiImage[] = [];
   const imageLines: string[] = [];
+  const MAX_THUMBS = 30;
   for (const id of inp.imageIds) {
-    const t = await thumbOf(id);
-    const meta = assets.get(id);
-    if (t && meta) { images.push(t); imageLines.push(`- imageId "${id}": file "${meta.name}", ${meta.w}×${meta.h}px (ảnh kèm theo thứ tự)`); }
+    const meta = assets.get(id); if (!meta) continue;
+    const where = meta.src?.kind === 'web' ? ` · từ trang ${meta.src.page || '/'}` : meta.src?.kind === 'logo' ? ' · logo' : '';
+    if (images.length < MAX_THUMBS) { const t = await thumbOf(id); if (t) { images.push(t); imageLines.push(`- imageId "${id}": file "${meta.name}", ${meta.w}×${meta.h}px${where} (ảnh kèm theo thứ tự)`); continue; } }
+    imageLines.push(`- imageId "${id}": file "${meta.name}", ${meta.w}×${meta.h}px${where} (không kèm ảnh xem trước, chọn theo tên)`);
   }
   const lang = inp.language && inp.language !== 'auto' ? inp.language : (inp.site?.lang || '').toLowerCase().startsWith('en') ? 'en' : 'vi';
   const prompt = [

@@ -27,12 +27,15 @@ export class AssetStore implements ImageSource {
   onChange(l: Listener): () => void { this.listeners.add(l); return () => this.listeners.delete(l); }
   private emit() { for (const l of this.listeners) l(); }
 
-  all(): Asset[] { return [...this.meta.values()].sort((a, b) => a.name.localeCompare(b.name)); }
+  /** Project currently open in the editor: new assets are tagged with it. */
+  context: { project: string | null } = { project: null };
+
+  all(): Asset[] { return [...this.meta.values()].sort((a, b) => (b.at || '').localeCompare(a.at || '') || a.name.localeCompare(b.name)); }
   get(id: string): Asset | undefined { return this.meta.get(id); }
 
-  async add(file: File | Blob, name = (file as File).name || 'image'): Promise<Asset> {
+  async add(file: File | Blob, name = (file as File).name || 'image', extra: { src?: Asset['src']; project?: string | null } = {}): Promise<Asset> {
     const bmp = await createImageBitmap(file);
-    const a: Asset = { id: uid('a'), name, mime: file.type || 'image/png', w: bmp.width, h: bmp.height, bytes: file.size };
+    const a: Asset = { id: uid('a'), name, mime: file.type || 'image/png', w: bmp.width, h: bmp.height, bytes: file.size, src: extra.src ?? { kind: 'upload' }, project: extra.project === undefined ? this.context.project : extra.project, at: new Date().toISOString() };
     bmp.close();
     this.meta.set(a.id, a);
     this.blobs.set(a.id, file);
@@ -40,6 +43,20 @@ export class AssetStore implements ImageSource {
     this.emit();
     void cloud.pushAsset(a, file).catch(() => { /* offline: the next full sync retries */ });
     return a;
+  }
+
+  /** Update library tags (project / source) on existing assets; persisted locally and mirrored to the relay. */
+  tag(ids: string[], patch: { project?: string | null; src?: Asset['src'] }) {
+    let changed = 0;
+    for (const id of ids) {
+      const a = this.meta.get(id); if (!a) continue;
+      const next: Asset = { ...a, ...(patch.project !== undefined ? { project: patch.project } : {}), ...(patch.src ? { src: patch.src } : {}) };
+      if (next.project === a.project && next.src === a.src) continue;
+      this.meta.set(id, next); changed++;
+      void db.putAssetMeta(next).catch(() => { /* keep in memory */ });
+      void cloud.pushAssetMeta(next).catch(() => { /* offline */ });
+    }
+    if (changed) this.emit();
   }
 
   async addFromUrl(url: string, name: string): Promise<Asset> {
@@ -59,7 +76,11 @@ export class AssetStore implements ImageSource {
   /** Register assets that exist on the relay but not here; bytes are fetched lazily on first use. */
   registerRemote(list: RemoteAsset[]) {
     let added = 0;
-    for (const r of list) if (!this.meta.has(r.id)) { this.meta.set(r.id, { id: r.id, name: r.name, mime: r.mime, w: r.w, h: r.h, bytes: r.bytes }); added++; }
+    for (const r of list) {
+      const cur = this.meta.get(r.id);
+      if (!cur) { this.meta.set(r.id, { id: r.id, name: r.name, mime: r.mime, w: r.w, h: r.h, bytes: r.bytes, src: r.src, project: r.project ?? null, at: r.at || r.createdAt }); added++; }
+      else if ((r.src || r.project) && !cur.src && !cur.project) { this.meta.set(r.id, { ...cur, src: r.src, project: r.project ?? null, at: cur.at || r.at || r.createdAt }); added++; }
+    }
     if (added) this.emit();
   }
 
