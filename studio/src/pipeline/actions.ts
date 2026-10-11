@@ -376,6 +376,126 @@ export async function addImageUrl(url: string): Promise<string | null> {
   return a.id;
 }
 export function reflow() { commit(ops.reflowBlocks(doc())); }
+// ---------- one-click fixes ----------
+const CTA_RE = /^(mua|xem|đặt|đăng ký|nhận|tải|khám phá|bắt đầu|thử|liên hệ|shop|buy|get|book|order|start|see|view|learn|try|join|subscribe|sign|download|explore|talk|claim|grab|reserve)/i;
+const walkAll = (list: Node[], fn: (n: Node, parent: Node | null) => void, parent: Node | null = null) => { for (const n of list) { fn(n, parent); if (n.type === 'group') walkAll(n.children, fn, n); } };
+
+/** Link every product card / photo that came from the crawled catalog to its real product page. */
+export function linkProducts(): number {
+  const b = brand(); const prods = b.links?.products || []; if (!prods.length) return 0;
+  const byImage = new Map<string, { name: string; url: string }>();
+  for (const pr of prods) if (pr.image) byImage.set(pr.image, pr);
+  const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
+  const byName = new Map(prods.map((pr) => [norm(pr.name), pr]));
+  let n = 0;
+  const fixGroup = (g: Node, url: string) => { if (g.type === 'group' && !g.link) { g.link = url; n++; } };
+  const d = JSON.parse(JSON.stringify(doc())) as Doc;
+  walkAll(d.nodes, (node, parent) => {
+    if (node.type === 'image' && node.assetId) {
+      const a = assets.get(node.assetId); const pr = a?.src?.url ? byImage.get(a.src.url) : undefined;
+      if (pr) { if (parent && parent.type === 'group' && /product|item|card|dish|menu|zig|gallery|spotlight/i.test(parent.name)) fixGroup(parent, pr.url); else if (!node.link) { node.link = pr.url; n++; } }
+    }
+    if (node.type === 'text' && node.text) { const pr = byName.get(norm(node.text)); if (pr) { if (parent && parent.type === 'group' && /product|item|card|dish|menu|zig|gallery|spotlight/i.test(parent.name)) fixGroup(parent, pr.url); else if (!node.link) { node.link = pr.url; n++; } } }
+  });
+  if (n) commit(d);
+  return n;
+}
+
+/** Resolve the Email-tab suggestions automatically; subject/preheader are written by the AI when missing. */
+export async function autoFix(): Promise<string[]> {
+  const changes: string[] = [];
+  const p = get().project!; const b = brand(); const home = b.links?.website || b.links?.nav?.[0]?.url || '';
+  let d = JSON.parse(JSON.stringify(doc())) as Doc;
+  const scale = 375 / d.width;
+  // 1. text that would shrink under 9px on a phone → 15px (footer excluded)
+  const footerY = d.height - 220; let smalls = 0;
+  walkAll(d.nodes, (n) => { if (n.type === 'text' && n.fontSize * scale < 9 && n.y < footerY && (n.text || '').trim().length > 12) { n.fontSize = Math.max(n.fontSize, 15); smalls++; } });
+  if (smalls) { d = ops.mapNodes(d, fixTextHeight); d = ops.reflowBlocks(d); changes.push(`Phóng ${smalls} đoạn chữ nhỏ lên 15px`); }
+  // 2. hero photo taller than 700px → 560px
+  const hero = (() => { let best: Node | null = null; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.w >= d.width * 0.8 && n.h > 700 && (!best || n.y < best.y)) best = n; }); return best as Node | null; })();
+  if (hero) { d = ops.setHeightFlow(d, hero.id, 560); changes.push('Hạ ảnh hero xuống 560px'); }
+  // 3. alt text for photos
+  let alts = 0; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.assetId && !(n.alt || '').trim()) { const a = assets.get(n.assetId); n.alt = (a ? a.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ') : n.name) || 'Ảnh'; alts++; } });
+  if (alts) changes.push(`Điền alt cho ${alts} ảnh`);
+  // 4. buttons / CTA texts / logos / social icons without a link
+  let links = 0;
+  const soc = new Map((b.links?.socials || []).map((x) => [x.label.toLowerCase(), x.url]));
+  walkAll(d.nodes, (n) => {
+    if (n.link) return;
+    if (n.type === 'group' && /^Button ·/.test(n.name) && home) { n.link = home; links++; }
+    else if (n.type === 'group' && /^Social · (\w+)/.test(n.name)) { const key = n.name.replace(/^Social · /, '').toLowerCase(); const u = soc.get(key); if (u) { n.link = u; links++; } }
+    else if (n.name === 'Logo' && home) { n.link = home; links++; }
+    else if (n.type === 'text' && CTA_RE.test((n.text || '').trim()) && (n.text || '').trim().split(/\s+/).length <= 5 && home) { n.link = home; links++; }
+  });
+  if (links) changes.push(`Gắn link cho ${links} nút / logo / icon`);
+  commit(d);
+  const np = linkProducts(); if (np) changes.push(`Gắn link sản phẩm thật cho ${np} ảnh/card`);
+  // 5. footer with unsubscribe / address
+  const dd = doc(); const bottomTexts: TextNode[] = []; walkAll(dd.nodes, (n) => { if (n.type === 'text' && n.y + n.h > dd.height - 260) bottomTexts.push(n); });
+  if (!bottomTexts.some((t) => /huỷ đăng ký|hủy đăng ký|unsubscribe/i.test(t.text || ''))) {
+    const g = makeBlock('footer', b, ops.contentHeight(dd), { brand: b.name, social: b.links?.socials });
+    commit(ops.insertNodes(dd, [g])); changes.push('Chèn footer (huỷ đăng ký, địa chỉ, social)');
+  }
+  // 6. subject / preheader by AI
+  if (!p.fields.subject.trim() || !p.fields.preheader.trim()) {
+    try {
+      const { askClaude, extractJson } = await import('../ai/client');
+      const copy: string[] = []; walkAll(doc().nodes, (n) => { if (n.type === 'text' && n.text && n.text.length > 2) copy.push(n.text); });
+      const txt = await askClaude({ system: 'Bạn là copywriter email. Trả lời CHỈ JSON {"subject":"30–55 ký tự, nói thẳng lợi ích","preheader":"40–90 ký tự nối tiếp subject"} cùng ngôn ngữ với nội dung email.', turns: [{ role: 'user', text: `Thương hiệu: ${b.name}\nNội dung email:\n${copy.slice(0, 40).join('\n')}` }], maxTokens: 400, effort: 'low' });
+      const j = extractJson<{ subject?: string; preheader?: string }>(txt);
+      patchProject({ fields: { ...get().project!.fields, subject: p.fields.subject.trim() || String(j.subject || ''), preheader: p.fields.preheader.trim() || String(j.preheader || '') } });
+      changes.push('AI viết subject / preheader');
+    } catch { changes.push('Subject/preheader: AI chưa sẵn sàng (đăng nhập relay hoặc nhập key)'); }
+  }
+  remeasureAll();
+  toast(changes.length ? `AI đã chỉnh: ${changes.join(' · ')}` : 'Không còn gì để chỉnh.', 'ok');
+  return changes;
+}
+
+/** One click to a 3D feel: extruded headline, tilted floating product, glow, this project's cut-outs as props. */
+export function make3D(): string[] {
+  const changes: string[] = [];
+  const b = brand(); const T = b.vibe;
+  const d = JSON.parse(JSON.stringify(doc())) as Doc;
+  const blocks = d.nodes.filter((n) => n.type === 'group') as Extract<Node, { type: 'group' }>[];
+  const top2 = blocks.slice(0, 3);
+  // headline: the biggest text in the first blocks
+  let head: TextNode | null = null;
+  for (const g of top2) walkAll(g.children, (n) => { if (n.type === 'text' && (!head || n.fontSize > head.fontSize)) head = n; });
+  if (head && (head as TextNode).fontSize >= 26) { const h = head as TextNode; h.effect = T === 'luxury' || T === 'editorial' ? { kind: 'shadow', depth: 14, angle: 50, color: { token: 'primary' } } : { kind: 'extrude', depth: 7, angle: 52, color: { token: 'accent' } }; changes.push('Chữ tiêu đề đùn khối 3D'); }
+  // product / hero image
+  let img: ImageNode | null = null; let imgParent: Node | null = null;
+  for (const g of top2) walkAll(g.children, (n, par) => { if (n.type === 'image' && n.assetId && (!img || n.w * n.h > img.w * img.h)) { img = n; imgParent = par; } }, g);
+  if (img) {
+    const im = img as ImageNode;
+    if (im.fit === 'contain' || /product|sản phẩm/i.test(im.name)) { im.tilt = { rx: 0, ry: 12 }; im.floatShadow = true; changes.push('Sản phẩm nghiêng phối cảnh + bóng nổi'); }
+    else { im.tilt = { rx: 0, ry: 6 }; im.shadow = { blur: 40, y: 18, color: '#000000', opacity: 0.28 }; changes.push('Ảnh hero nghiêng nhẹ như tấm card'); }
+    // glow behind it (inside the same group, right before the image)
+    const par = imgParent as Node | null;
+    const r = Math.round(Math.max(im.w, im.h) * 0.75);
+    const glow = mkRect({ x: Math.round(im.x + im.w / 2 - r), y: Math.round(im.y + im.h / 2 - r), w: r * 2, h: r * 2, fill: null, gradient: { from: { token: 'primary', alpha: 0.55 }, to: { token: 'primary', alpha: 0 }, angle: 0, radial: true }, name: 'Glow' });
+    if (par && par.type === 'group') { const i = par.children.indexOf(im); par.children.splice(i, 0, glow); } else { const i = d.nodes.indexOf(im); d.nodes.splice(Math.max(0, i), 0, glow); }
+    changes.push('Vầng sáng sau sản phẩm');
+    // props: this project's cut-outs not yet on the canvas
+    const used = new Set<string>(); walkAll(d.nodes, (n) => { if (n.type === 'image' && n.assetId) used.add(n.assetId); });
+    const pid = get().project!.id;
+    const props = assets.all().filter((a) => a.src?.kind === 'ai' && (a.project === pid || !a.project) && !used.has(a.id) && a.id !== b.logoAssetId && a.id !== b.logoLightAssetId).slice(0, 4);
+    const slots = [{ x: -0.1, y: 0.55, w: 0.3, r: -12, behind: true }, { x: 0.78, y: 0.5, w: 0.3, r: 14, behind: false }, { x: 0.02, y: 0.02, w: 0.22, r: 10, behind: true }, { x: 0.76, y: 0, w: 0.22, r: -8, behind: false }];
+    props.forEach((a, i) => {
+      const sl = slots[i]; const w = Math.round(im.w * sl.w); const h = Math.round(w * (a.h / a.w));
+      const node = mkImage({ x: Math.round(im.x + im.w * sl.x), y: Math.round(im.y + im.h * sl.y), w, h, assetId: a.id, fit: 'contain', fill: null, rotate: sl.r, floatShadow: false, name: `Prop · ${a.name}`, alt: a.name });
+      if (par && par.type === 'group') { const i2 = par.children.indexOf(im); par.children.splice(sl.behind ? i2 : i2 + 1, 0, node); } else d.nodes.push(node);
+    });
+    if (props.length) changes.push(`Xếp ${props.length} ảnh phụ kiện tách nền quanh sản phẩm`);
+  }
+  // big numbers get a soft extrude too
+  let stats = 0; walkAll(d.nodes, (n) => { if (n.type === 'text' && /^Stat|^Statement|^Value$|^Big number$/.test(n.name) && n.fontSize >= 30 && !n.effect) { n.effect = { kind: 'extrude', depth: 4, angle: 52 }; stats++; } });
+  if (stats) changes.push(`${stats} con số nổi khối`);
+  commit(ops.mapNodes(d, (n) => (n.type === 'group' ? ops.syncGroup(n) : n)));
+  toast(changes.length ? `Đã làm 3D: ${changes.join(' · ')}` : 'Không tìm thấy tiêu đề / ảnh sản phẩm để làm 3D.', 'ok');
+  return changes;
+}
+
 export function optimize(): string[] {
   const d = doc();
   const changes: string[] = [];

@@ -285,7 +285,12 @@ function EmailTab() {
       )}
       {a && (
         <>
-          <Eyebrow action={{ label: 'Tối ưu', onClick: () => setChanges(A.optimize()) }}>Gợi ý · điểm {a.score}</Eyebrow>
+          <Eyebrow>Gợi ý · điểm {a.score}</Eyebrow>
+          <div class="row" style={{ gap: 6 }}>
+            <Btn sm kind="primary" icon="sparkle" onClick={async () => setChanges(await A.autoFix())} title="Tự sửa các gợi ý: chữ nhỏ, hero quá cao, alt, link nút/logo/social, link sản phẩm thật, footer, subject/preheader (AI)">AI tự chỉnh</Btn>
+            <Btn sm icon="bolt" onClick={() => setChanges(A.make3D())} title="Chữ đùn khối, sản phẩm nghiêng + bóng nổi, vầng sáng, phụ kiện tách nền của dự án">Làm 3D</Btn>
+            <Btn sm kind="ghost" onClick={() => setChanges(A.optimize())} title="Chiều rộng 600, làm tròn toạ độ, khớp chiều cao">Tối ưu</Btn>
+          </div>
           <div class="score"><Ring score={a.score} /><div class="grow small muted">{a.score >= 90 ? 'Sẵn sàng gửi. Luật cố định, không AI: cùng thiết kế luôn cùng kết quả.' : a.score >= 70 ? 'Ổn. Vài điểm nên chỉnh trước khi gửi.' : 'Nên sửa các mục “SỬA” trước.'}</div></div>
           {changes && <div class="check ok"><span class="lv">ĐÃ SỬA</span><span class="m">{changes.length ? changes.join(' · ') : 'Artboard đã chuẩn, không cần đổi gì.'}</span></div>}
           <div class="col" style={{ gap: 4 }}>{a.suggestions.map((g) => <SuggestionRow key={g.id} g={g} />)}</div>

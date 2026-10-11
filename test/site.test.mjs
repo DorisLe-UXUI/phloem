@@ -77,6 +77,12 @@ test('extractStyle ranks brand colours (no greys), merges case, finds fonts', ()
   assert.deepEqual(st.fonts.map((f) => f.name).slice(0, 2).sort(), ['Inter', 'Playfair Display']);
 });
 
+test('analyzeHtml returns real nav links and social profiles', () => {
+  const a = analyzeHtml('<html><body><nav><a href="/shop">Shop</a><a href="https://acme.example/about">About</a><a href="#top">Top</a></nav><footer><a href="https://www.facebook.com/sharer/sharer.php?u=x">Share</a><a href="https://www.facebook.com/acme">FB</a><a href="https://instagram.com/acme/">IG</a><a href="https://www.tiktok.com/@acme">TT</a><a href="https://instagram.com/other">IG2</a></footer></body></html>', 'https://acme.example/');
+  assert.deepEqual(a.navLinks, [{ label: 'Shop', url: 'https://acme.example/shop' }, { label: 'About', url: 'https://acme.example/about' }]);
+  assert.deepEqual(a.socials, [{ label: 'Facebook', url: 'https://www.facebook.com/acme' }, { label: 'Instagram', url: 'https://instagram.com/acme/' }, { label: 'TikTok', url: 'https://www.tiktok.com/@acme' }], 'share links skipped, one per network');
+});
+
 test('extractStyle finds named brand tokens and CTA button colours', () => {
   const st = extractStyle(':root{--color-primary:#1f6feb;--brand-accent:rgb(255,197,61);--text-primary:#111;--primary-bg:#fff}.btn-primary{background:#1f6feb}.btn-primary:hover{background:#0b5ed7}.cta{background-color:#ff4fa3}');
   assert.deepEqual(st.vars.map((v) => v.hex), ['#1f6feb', '#ffc53d'], 'text/bg tokens ignored, primary before accent');

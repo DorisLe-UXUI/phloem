@@ -238,11 +238,28 @@ export function analyzeHtml(html, baseUrl, { maxImages = 40 } = {}) {
   const navHtml = (/<nav[\s\S]*?<\/nav>/i.exec(h) || (/<header[\s\S]*?<\/header>/i.exec(h)) || [''])[0];
   const nav = [...navHtml.matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)].map((m) => decode(m[1])).filter((t) => t && t.length <= 24 && !/logo/i.test(t));
   const navUnique = [...new Set(nav)].slice(0, 7);
+  // Real menu (label → absolute URL) so emails link to the site's own pages, never example.com.
+  const navLinks = []; const seenNav = new Set();
+  for (const m of navHtml.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const label = decode(m[2]); const href = attr(`<a ${m[1]}>`, 'href'); const url = href && !/^(#|mailto:|tel:|javascript:)/i.test(href) ? abs(href, baseUrl) : '';
+    if (!label || label.length > 24 || /logo/i.test(label) || !url || seenNav.has(label.toLowerCase())) continue;
+    seenNav.add(label.toLowerCase()); navLinks.push({ label, url }); if (navLinks.length >= 7) break;
+  }
+  // Social profiles linked anywhere on the page (first per network; share/intent links skipped).
+  const SOCIAL = [['Facebook', /(^|\.)facebook\.com$|(^|\.)fb\.com$/], ['Instagram', /(^|\.)instagram\.com$/], ['TikTok', /(^|\.)tiktok\.com$/], ['YouTube', /(^|\.)youtube\.com$|(^|\.)youtu\.be$/], ['X', /(^|\.)x\.com$|(^|\.)twitter\.com$/], ['LinkedIn', /(^|\.)linkedin\.com$/], ['Zalo', /(^|\.)zalo\.me$/], ['Pinterest', /(^|\.)pinterest\.com$/], ['Threads', /(^|\.)threads\.net$/]];
+  const socials = []; const seenSoc = new Set();
+  for (const m of h.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["']/gi)) {
+    let u; try { u = new URL(m[1], baseUrl); } catch { continue; }
+    if (/sharer|share\.php|\/intent\/|\/share\b|\/dialog\//i.test(u.pathname + u.search)) continue;
+    const net = SOCIAL.find(([, re]) => re.test(u.hostname.toLowerCase()));
+    if (!net || seenSoc.has(net[0]) || u.pathname.length < 2) continue;
+    seenSoc.add(net[0]); socials.push({ label: net[0], url: u.origin + u.pathname });
+  }
   const text = [...h.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map((m) => decode(m[1])).filter((t) => t.length > 40).join(' ').slice(0, 900);
   const buttons = [...new Set([...h.matchAll(/<(?:a|button)[^>]*class\s*=\s*"[^"]*(?:btn|button|cta)[^"]*"[^>]*>([\s\S]*?)<\/(?:a|button)>/gi)].map((m) => decode(m[1])).filter((t) => t && t.length <= 30 && !/\[email|@|protected/i.test(t)))].slice(0, 6);
   return {
     title, lang: lang || '', siteName: siteName0, description: meta('description') || meta('og:description') || '', themeColor: hexOf(meta('theme-color')) || '',
-    logo, logoSvg, icon: icons[0]?.href || '', ogImage, images, headings, nav: navUnique, buttons, text,
+    logo, logoSvg, icon: icons[0]?.href || '', ogImage, images, headings, nav: navUnique, navLinks, socials, buttons, text,
     _styles: styles, _inlineCss: inlineCss, _googleFamilies: [...new Set(googleFamilies)],
     _shopify: /cdn\/shop\/|cdn\.shopify\.com|Shopify\.theme/i.test(raw),
   };

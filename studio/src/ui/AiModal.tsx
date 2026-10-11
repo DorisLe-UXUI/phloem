@@ -9,7 +9,7 @@ import * as A from '../pipeline/actions';
 import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type GenInput, type Variant } from '../ai/generate';
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
-import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, type SiteProduct, type SiteProfile } from '../ai/site';
+import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, linksFromSite, type SiteProduct, type SiteProfile } from '../ai/site';
 import { Btn, Eyebrow, Field, Modal, Seg, Select, TextArea, TextInput } from './components';
 import { groupAssets, pageLabel, usedAssetIds } from '../storage/assetGroups';
 import { Icon } from './icons';
@@ -88,7 +88,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     window.addEventListener('paste', h); return () => window.removeEventListener('paste', h);
   }, []);
   const upd = (patch: Partial<GenInput> | ((f: GenInput) => Partial<GenInput>)) => setForm((f) => { const n = { ...f, ...(typeof patch === 'function' ? patch(f) : patch) }; try { localStorage.setItem(LS, JSON.stringify({ ...n, imageIds: [], site: null, logoAssetId: null, logoLightAssetId: null, products: [] })); } catch { /* ignore */ } return n; });
-  const baseBrand = (): Brand => ({ ...DEFAULT_BRAND, ...(form.webBrand || {}), name: form.brandName || form.webBrand?.name || DEFAULT_BRAND.name, logoAssetId: form.logoAssetId ?? null, logoLightAssetId: form.logoLightAssetId ?? null });
+  const baseBrand = (): Brand => ({ ...DEFAULT_BRAND, ...(form.webBrand || {}), name: form.brandName || form.webBrand?.name || DEFAULT_BRAND.name, logoAssetId: form.logoAssetId ?? null, logoLightAssetId: form.logoLightAssetId ?? null, links: form.site ? linksFromSite(form.site) : null });
   /** Read the website, import its images, update the form. Returns the updated form (or null on error). */
   const analyzeNow = async (): Promise<GenInput | null> => {
     setSiteErr(''); setSiteBusy('AI đang đọc trang…');

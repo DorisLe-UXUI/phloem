@@ -24,6 +24,8 @@ export interface Brand {
   logoAssetId: string | null;
   /** White/light version of the logo for dark bands (made automatically from SVG or transparent dark logos). */
   logoLightAssetId?: string | null;
+  /** Real destinations read from the website: home page, menu and social profiles (used for logo/nav/footer links and auto-fix). */
+  links?: { website?: string; nav?: { label: string; url: string }[]; socials?: { label: string; url: string }[]; products?: { name: string; url: string; image?: string }[] } | null;
   /** Brand gradient (primary → accent) on every primary-coloured band; null/undefined = flat. */
   gradient?: { angle: number } | null;
   /** Design personality for blocks built from now on: radii, shadows, pills, decorative shapes, headline scale. */

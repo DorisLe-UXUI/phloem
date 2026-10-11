@@ -21,6 +21,13 @@ export interface SiteProfile {
   products?: SiteProduct[];
   /** Internal pages the relay also read (work, products, about…). */
   pages?: SitePage[];
+  /** Real menu links and social profiles found on the site. */
+  navLinks?: { label: string; url: string }[];
+  socials?: { label: string; url: string }[];
+}
+/** Brand.links from a profile: what every logo / nav item / social icon should point at. */
+export function linksFromSite(p: SiteProfile): NonNullable<Brand['links']> {
+  return { website: p.url, nav: (p.navLinks || []).slice(0, 5), socials: (p.socials || []).slice(0, 6), products: (p.products || []).filter((pr) => pr.url).slice(0, 60).map((pr) => ({ name: pr.name, url: pr.url, image: pr.image })) };
 }
 export interface SiteProduct { name: string; price: string; compareAt: string; type: string; url: string; image: string; assetId?: string | null }
 
@@ -218,7 +225,9 @@ export function siteSummary(p: SiteProfile, brand: Partial<Brand>): string {
     p.description ? `Mô tả: ${p.description}` : '',
     p.lang ? `Ngôn ngữ trang: ${p.lang}` : '',
     p.headings.length ? `Tiêu đề trên trang: ${p.headings.slice(0, 8).join(' | ')}` : '',
-    p.nav.length ? `Menu: ${p.nav.join(' · ')}` : '',
+    p.navLinks && p.navLinks.length ? `Menu thật (dùng ĐÚNG url này cho nav và các nút liên quan): ${p.navLinks.map((l) => `${l.label} → ${l.url}`).join(' · ')}` : p.nav.length ? `Menu: ${p.nav.join(' · ')}` : '',
+    p.socials && p.socials.length ? `Social thật (footer.social PHẢI dùng đúng các link này): ${p.socials.map((l) => `${l.label} → ${l.url}`).join(' · ')}` : 'Social: website không lộ link social → footer.social để [] (không bịa).',
+    `Link thương hiệu: logo và nút chung chung trỏ về ${p.url}. KHÔNG dùng example.com khi đã có website thật.`,
     p.buttons.length ? `Nút trên trang: ${p.buttons.join(' · ')}` : '',
     p.text ? `Trích văn bản: ${p.text.slice(0, 600)}` : '',
     `Thương hiệu GỬI email là ${p.siteName || p.title.split(/[|·•–-]/)[0] || 'website này'}: email nói về chính họ và dịch vụ/sản phẩm của họ. Ảnh có alt mang tên thương hiệu khác (khách hàng, đối tác, case study) chỉ dùng làm "khách hàng tiêu biểu" / dự án đã làm trong articles, gallery, collage, quote; không bao giờ coi thương hiệu đó là người gửi hay chủ đề chính.`,

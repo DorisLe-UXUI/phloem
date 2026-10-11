@@ -136,7 +136,7 @@ ${BLOCK_DOC}
 Quy tắc:
 - Toàn bộ copy (fields + mọi block, kể cả nhãn nút, eyebrow, label countdown/stats, footer) viết bằng ${lang === 'en' ? 'English tự nhiên, ngắn gọn, đúng marketing English (các ví dụ tiếng Việt trong tài liệu block chỉ minh hoạ cấu trúc: hãy viết English)' : 'tiếng Việt tự nhiên, ngắn, cụ thể'}, đúng chính tả. Không dùng lorem ipsum. Không bịa số liệu nếu nội dung không có; nếu thiếu thì dùng stats về chính sách (đổi trả, giao hàng) có trong nội dung hoặc bỏ block stats.
 - Chỉ dùng imageId có trong danh sách ảnh được cung cấp, đúng chuỗi id. Mỗi ảnh dùng tối đa 2 lần. Nếu không có ảnh phù hợp, để image: null (Phloem tự vẽ placeholder).
-- Lấy URL từ nội dung nếu có; nếu không, dùng https://example.com/… có nghĩa.
+- LINK: mọi thứ bấm được phải dẫn đến đúng nơi: nav.links = menu thật của web (label → url), logo → trang chủ, footer.social = social thật (Facebook/Instagram/TikTok…) đã đọc được, nút sản phẩm → link sản phẩm thật, nút chung → trang chủ hoặc trang phù hợp trong menu. Chỉ dùng https://example.com/… khi KHÔNG có website.
 - Mỗi phương án đặt tên ngắn (ví dụ "Tối giản", "Dải màu nổi bật", "Kể chuyện") và một câu "why" giải thích chọn cấu trúc đó cho mục tiêu nào.
 - Chọn palette cho mỗi phương án từ: ${presetNames.join(', ')}. Ưu tiên khác nhau giữa các phương án trừ khi người dùng đã chọn. Palette "Web" (nếu có) là màu lấy từ chính website: dùng cho ít nhất 2 trong 3 phương án, trừ khi người dùng đã chọn bảng màu khác.
 - Thiết kế theo xu hướng hiện nay: một block "anchor" khổ lớn (hero-overlay / dark-band / hero-band / hero-center), hàng icon hoặc badges ngay dưới hero, khoảng trắng rộng, 1 CTA chính lặp lại ở cuối bằng cta-wide, social proof ngắn, footer có social, không quá 2 block chữ dài. Khuyến mãi: thêm code + countdown + giá cũ/mới.
@@ -188,6 +188,23 @@ function normalizeVariants(parsed: { variants?: Variant[] } | null, inp: GenInpu
     }
     if (v.blocks[0]?.kind !== 'nav') v.blocks.unshift({ kind: 'nav', content: { brand: inp.brandName || undefined } });
     if (v.blocks[v.blocks.length - 1]?.kind !== 'footer') v.blocks.push({ kind: 'footer', content: { brand: inp.brandName || undefined } });
+    // Real links win over anything the model made up: menu, socials, and no example.com once a website exists.
+    const site = inp.site;
+    if (site) {
+      const home = site.url;
+      const fix = (u?: string) => (u && !/example\.com/i.test(u) ? u : home);
+      for (const b of v.blocks) {
+        const c = b.content!;
+        if (b.kind === 'nav' && site.navLinks && site.navLinks.length) c.links = site.navLinks.slice(0, 4);
+        if (b.kind === 'footer') { if (site.socials && site.socials.length) c.social = site.socials.slice(0, 6); else if (c.social) c.social = c.social.filter((x) => !/example\.com/i.test(x.url)); c.links = [{ label: 'Home', url: home }]; }
+        if (c.button) c.button = { ...c.button, url: fix(c.button.url) };
+        if (c.link) c.link = { ...c.link, url: fix(c.link.url) };
+        if (c.links && b.kind !== 'nav') c.links = c.links.map((l) => ({ ...l, url: fix(l.url) }));
+        if (c.items) for (const it of c.items) if (it.url) it.url = fix(it.url);
+        if (c.unsubscribeUrl && /example\.com/i.test(c.unsubscribeUrl)) delete c.unsubscribeUrl;
+        if (c.preferencesUrl && /example\.com/i.test(c.preferencesUrl)) delete c.preferencesUrl;
+      }
+    }
     if (inp.palette !== 'auto') v.palette = presets.includes(inp.palette) ? inp.palette : 'Forest';
     else if (!presets.includes(v.palette)) v.palette = 'Forest';
     if (!VIBES.some((x) => x.v === v.vibe)) v.vibe = 'clean';

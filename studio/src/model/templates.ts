@@ -281,8 +281,8 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const st = c.style === 'ink' ? 'dark' : (c.style || 'light');
       const behind: Color = st === 'dark' ? { token: 'ink' } : st === 'band' ? { token: 'primary' } : st === 'soft' ? { token: 'soft' } : { token: 'bg' };
       const linkTok = st === 'dark' ? contrastToken(brand, { token: 'ink' }) : st === 'band' ? 'onPrimary' : 'muted';
-      const links = (c.links && c.links.length ? c.links : DEF.links).slice(0, 5);
-      const home = c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com';
+      const links = (c.links && c.links.length ? c.links : brand.links?.nav && brand.links.nav.length ? brand.links.nav : DEF.links).slice(0, 5);
+      const home = brand.links?.website || (c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com');
       if (st === 'menu') {
         // Boutique header: logo centred, a thin ruled row of category links under it.
         h = 112;
@@ -997,7 +997,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const d = DEF.footer;
       const strip = c.style === 'band' || c.style === 'dark';
       const stripH = strip ? 58 : 0;
-      const brandT = logoNode(brand, c, PAD, y + stripH + 40, 24, 'center', c.links?.[0]?.url || 'https://example.com', { token: 'soft' });
+      const brandT = logoNode(brand, c, PAD, y + stripH + 40, 24, 'center', brand.links?.website || c.links?.[0]?.url || 'https://example.com', { token: 'soft' });
       const addr = text(brand, c.address || d.address, { x: PAD, y: brandT.y + brandT.h + 10, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Address' });
       const unsub = text(brand, c.unsubscribeLabel || 'Huỷ đăng ký', { x: 0, y: addr.y + addr.h + 12, w: 90, fontSize: 12, color: { token: 'muted' }, align: 'right', underline: true, name: 'Unsubscribe', link: c.unsubscribeUrl || d.unsubscribeUrl });
       const prefs = text(brand, c.preferencesLabel || 'Cập nhật thông tin', { x: 0, y: unsub.y, w: 120, fontSize: 12, color: { token: 'muted' }, align: 'left', underline: true, name: 'Preferences', link: c.preferencesUrl || d.preferencesUrl });
@@ -1006,7 +1006,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const total = uw + 20 + pw; unsub.x = Math.round((W - total) / 2); prefs.x = unsub.x + uw + 20;
       const socials: Node[] = [];
       const GLYPH: Record<string, string> = { youtube: '▶', instagram: '◎', tiktok: '♪', facebook: 'f', x: 'X', twitter: 'X', linkedin: 'in', zalo: 'Z', website: '⌂' };
-      const list = (c.social || []).slice(0, 6);
+      const list = (c.social && c.social.length ? c.social : brand.links?.socials || []).slice(0, 6);
       if (strip) {
         // Brand strip on top: "Theo dõi" + icons, like the social bars of big retail emails.
         const stripFill = c.style === 'dark' ? { token: 'ink' as const } : { token: 'primary' as const };
