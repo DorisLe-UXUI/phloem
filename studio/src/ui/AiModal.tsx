@@ -31,6 +31,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   });
   const [transport, setTransport] = useState<AiTransport | 'checking'>('checking');
   const [busy, setBusy] = useState(false);
+  const [variants, setVariants] = useState<Variant[]>([]);
   const [stage, setStage] = useState('');
   // Full-size preview of one variant before choosing it.
   const [preview, setPreview] = useState<number | null>(null);
@@ -55,7 +56,6 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   }, [preview, variants.length]);
   const [relayUp, setRelayUp] = useState(false);
   useEffect(() => { const u = (get().settings.relayUrl || '').replace(/\/$/, ''); if (!u) return; fetch(u + '/', { signal: AbortSignal.timeout(2500) }).then((r) => r.json()).then((j) => setRelayUp(!!j?.ai && !!j?.auth)).catch(() => setRelayUp(false)); }, [s.settings.relayUrl, s.user?.id]);
-  const [variants, setVariants] = useState<Variant[]>([]);
   const [thumbs, setThumbs] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [, bump] = useState(0);
