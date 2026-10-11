@@ -1,0 +1,6247 @@
+"use strict";
+(() => {
+  // node_modules/preact/dist/preact.module.js
+  var n;
+  var l;
+  var u;
+  var t;
+  var i;
+  var o;
+  var r;
+  var f;
+  var e;
+  var c;
+  var s;
+  var a;
+  var h = {};
+  var v = [];
+  var p = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i;
+  var y = Array.isArray;
+  function d(n2, l3) {
+    for (var u4 in l3) n2[u4] = l3[u4];
+    return n2;
+  }
+  function w(n2) {
+    n2 && n2.parentNode && n2.parentNode.removeChild(n2);
+  }
+  function _(l3, u4, t3) {
+    var i4, o3, r3, f4 = {};
+    for (r3 in u4) "key" == r3 ? i4 = u4[r3] : "ref" == r3 ? o3 = u4[r3] : f4[r3] = u4[r3];
+    if (arguments.length > 2 && (f4.children = arguments.length > 3 ? n.call(arguments, 2) : t3), "function" == typeof l3 && null != l3.defaultProps) for (r3 in l3.defaultProps) void 0 === f4[r3] && (f4[r3] = l3.defaultProps[r3]);
+    return g(l3, f4, i4, o3, null);
+  }
+  function g(n2, t3, i4, o3, r3) {
+    var f4 = { type: n2, props: t3, key: i4, ref: o3, __k: null, __: null, __b: 0, __e: null, __d: void 0, __c: null, constructor: void 0, __v: null == r3 ? ++u : r3, __i: -1, __u: 0 };
+    return null == r3 && null != l.vnode && l.vnode(f4), f4;
+  }
+  function b(n2) {
+    return n2.children;
+  }
+  function k(n2, l3) {
+    this.props = n2, this.context = l3;
+  }
+  function x(n2, l3) {
+    if (null == l3) return n2.__ ? x(n2.__, n2.__i + 1) : null;
+    for (var u4; l3 < n2.__k.length; l3++) if (null != (u4 = n2.__k[l3]) && null != u4.__e) return u4.__e;
+    return "function" == typeof n2.type ? x(n2) : null;
+  }
+  function C(n2) {
+    var l3, u4;
+    if (null != (n2 = n2.__) && null != n2.__c) {
+      for (n2.__e = n2.__c.base = null, l3 = 0; l3 < n2.__k.length; l3++) if (null != (u4 = n2.__k[l3]) && null != u4.__e) {
+        n2.__e = n2.__c.base = u4.__e;
+        break;
+      }
+      return C(n2);
+    }
+  }
+  function S(n2) {
+    (!n2.__d && (n2.__d = true) && i.push(n2) && !M.__r++ || o !== l.debounceRendering) && ((o = l.debounceRendering) || r)(M);
+  }
+  function M() {
+    var n2, u4, t3, o3, r3, e3, c3, s3;
+    for (i.sort(f); n2 = i.shift(); ) n2.__d && (u4 = i.length, o3 = void 0, e3 = (r3 = (t3 = n2).__v).__e, c3 = [], s3 = [], t3.__P && ((o3 = d({}, r3)).__v = r3.__v + 1, l.vnode && l.vnode(o3), O(t3.__P, o3, r3, t3.__n, t3.__P.namespaceURI, 32 & r3.__u ? [e3] : null, c3, null == e3 ? x(r3) : e3, !!(32 & r3.__u), s3), o3.__v = r3.__v, o3.__.__k[o3.__i] = o3, j(c3, o3, s3), o3.__e != e3 && C(o3)), i.length > u4 && i.sort(f));
+    M.__r = 0;
+  }
+  function P(n2, l3, u4, t3, i4, o3, r3, f4, e3, c3, s3) {
+    var a3, p3, y3, d3, w3, _2 = t3 && t3.__k || v, g2 = l3.length;
+    for (u4.__d = e3, $(u4, l3, _2), e3 = u4.__d, a3 = 0; a3 < g2; a3++) null != (y3 = u4.__k[a3]) && (p3 = -1 === y3.__i ? h : _2[y3.__i] || h, y3.__i = a3, O(n2, y3, p3, i4, o3, r3, f4, e3, c3, s3), d3 = y3.__e, y3.ref && p3.ref != y3.ref && (p3.ref && N(p3.ref, null, y3), s3.push(y3.ref, y3.__c || d3, y3)), null == w3 && null != d3 && (w3 = d3), 65536 & y3.__u || p3.__k === y3.__k ? e3 = I(y3, e3, n2) : "function" == typeof y3.type && void 0 !== y3.__d ? e3 = y3.__d : d3 && (e3 = d3.nextSibling), y3.__d = void 0, y3.__u &= -196609);
+    u4.__d = e3, u4.__e = w3;
+  }
+  function $(n2, l3, u4) {
+    var t3, i4, o3, r3, f4, e3 = l3.length, c3 = u4.length, s3 = c3, a3 = 0;
+    for (n2.__k = [], t3 = 0; t3 < e3; t3++) null != (i4 = l3[t3]) && "boolean" != typeof i4 && "function" != typeof i4 ? (r3 = t3 + a3, (i4 = n2.__k[t3] = "string" == typeof i4 || "number" == typeof i4 || "bigint" == typeof i4 || i4.constructor == String ? g(null, i4, null, null, null) : y(i4) ? g(b, { children: i4 }, null, null, null) : void 0 === i4.constructor && i4.__b > 0 ? g(i4.type, i4.props, i4.key, i4.ref ? i4.ref : null, i4.__v) : i4).__ = n2, i4.__b = n2.__b + 1, o3 = null, -1 !== (f4 = i4.__i = L(i4, u4, r3, s3)) && (s3--, (o3 = u4[f4]) && (o3.__u |= 131072)), null == o3 || null === o3.__v ? (-1 == f4 && a3--, "function" != typeof i4.type && (i4.__u |= 65536)) : f4 !== r3 && (f4 == r3 - 1 ? a3-- : f4 == r3 + 1 ? a3++ : (f4 > r3 ? a3-- : a3++, i4.__u |= 65536))) : i4 = n2.__k[t3] = null;
+    if (s3) for (t3 = 0; t3 < c3; t3++) null != (o3 = u4[t3]) && 0 == (131072 & o3.__u) && (o3.__e == n2.__d && (n2.__d = x(o3)), V(o3, o3));
+  }
+  function I(n2, l3, u4) {
+    var t3, i4;
+    if ("function" == typeof n2.type) {
+      for (t3 = n2.__k, i4 = 0; t3 && i4 < t3.length; i4++) t3[i4] && (t3[i4].__ = n2, l3 = I(t3[i4], l3, u4));
+      return l3;
+    }
+    n2.__e != l3 && (l3 && n2.type && !u4.contains(l3) && (l3 = x(n2)), u4.insertBefore(n2.__e, l3 || null), l3 = n2.__e);
+    do {
+      l3 = l3 && l3.nextSibling;
+    } while (null != l3 && 8 === l3.nodeType);
+    return l3;
+  }
+  function L(n2, l3, u4, t3) {
+    var i4 = n2.key, o3 = n2.type, r3 = u4 - 1, f4 = u4 + 1, e3 = l3[u4];
+    if (null === e3 || e3 && i4 == e3.key && o3 === e3.type && 0 == (131072 & e3.__u)) return u4;
+    if (t3 > (null != e3 && 0 == (131072 & e3.__u) ? 1 : 0)) for (; r3 >= 0 || f4 < l3.length; ) {
+      if (r3 >= 0) {
+        if ((e3 = l3[r3]) && 0 == (131072 & e3.__u) && i4 == e3.key && o3 === e3.type) return r3;
+        r3--;
+      }
+      if (f4 < l3.length) {
+        if ((e3 = l3[f4]) && 0 == (131072 & e3.__u) && i4 == e3.key && o3 === e3.type) return f4;
+        f4++;
+      }
+    }
+    return -1;
+  }
+  function T(n2, l3, u4) {
+    "-" === l3[0] ? n2.setProperty(l3, null == u4 ? "" : u4) : n2[l3] = null == u4 ? "" : "number" != typeof u4 || p.test(l3) ? u4 : u4 + "px";
+  }
+  function A(n2, l3, u4, t3, i4) {
+    var o3;
+    n: if ("style" === l3) if ("string" == typeof u4) n2.style.cssText = u4;
+    else {
+      if ("string" == typeof t3 && (n2.style.cssText = t3 = ""), t3) for (l3 in t3) u4 && l3 in u4 || T(n2.style, l3, "");
+      if (u4) for (l3 in u4) t3 && u4[l3] === t3[l3] || T(n2.style, l3, u4[l3]);
+    }
+    else if ("o" === l3[0] && "n" === l3[1]) o3 = l3 !== (l3 = l3.replace(/(PointerCapture)$|Capture$/i, "$1")), l3 = l3.toLowerCase() in n2 || "onFocusOut" === l3 || "onFocusIn" === l3 ? l3.toLowerCase().slice(2) : l3.slice(2), n2.l || (n2.l = {}), n2.l[l3 + o3] = u4, u4 ? t3 ? u4.u = t3.u : (u4.u = e, n2.addEventListener(l3, o3 ? s : c, o3)) : n2.removeEventListener(l3, o3 ? s : c, o3);
+    else {
+      if ("http://www.w3.org/2000/svg" == i4) l3 = l3.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
+      else if ("width" != l3 && "height" != l3 && "href" != l3 && "list" != l3 && "form" != l3 && "tabIndex" != l3 && "download" != l3 && "rowSpan" != l3 && "colSpan" != l3 && "role" != l3 && "popover" != l3 && l3 in n2) try {
+        n2[l3] = null == u4 ? "" : u4;
+        break n;
+      } catch (n3) {
+      }
+      "function" == typeof u4 || (null == u4 || false === u4 && "-" !== l3[4] ? n2.removeAttribute(l3) : n2.setAttribute(l3, "popover" == l3 && 1 == u4 ? "" : u4));
+    }
+  }
+  function F(n2) {
+    return function(u4) {
+      if (this.l) {
+        var t3 = this.l[u4.type + n2];
+        if (null == u4.t) u4.t = e++;
+        else if (u4.t < t3.u) return;
+        return t3(l.event ? l.event(u4) : u4);
+      }
+    };
+  }
+  function O(n2, u4, t3, i4, o3, r3, f4, e3, c3, s3) {
+    var a3, h3, v3, p3, w3, _2, g2, m2, x2, C3, S2, M2, $2, I2, H, L2, T3 = u4.type;
+    if (void 0 !== u4.constructor) return null;
+    128 & t3.__u && (c3 = !!(32 & t3.__u), r3 = [e3 = u4.__e = t3.__e]), (a3 = l.__b) && a3(u4);
+    n: if ("function" == typeof T3) try {
+      if (m2 = u4.props, x2 = "prototype" in T3 && T3.prototype.render, C3 = (a3 = T3.contextType) && i4[a3.__c], S2 = a3 ? C3 ? C3.props.value : a3.__ : i4, t3.__c ? g2 = (h3 = u4.__c = t3.__c).__ = h3.__E : (x2 ? u4.__c = h3 = new T3(m2, S2) : (u4.__c = h3 = new k(m2, S2), h3.constructor = T3, h3.render = q), C3 && C3.sub(h3), h3.props = m2, h3.state || (h3.state = {}), h3.context = S2, h3.__n = i4, v3 = h3.__d = true, h3.__h = [], h3._sb = []), x2 && null == h3.__s && (h3.__s = h3.state), x2 && null != T3.getDerivedStateFromProps && (h3.__s == h3.state && (h3.__s = d({}, h3.__s)), d(h3.__s, T3.getDerivedStateFromProps(m2, h3.__s))), p3 = h3.props, w3 = h3.state, h3.__v = u4, v3) x2 && null == T3.getDerivedStateFromProps && null != h3.componentWillMount && h3.componentWillMount(), x2 && null != h3.componentDidMount && h3.__h.push(h3.componentDidMount);
+      else {
+        if (x2 && null == T3.getDerivedStateFromProps && m2 !== p3 && null != h3.componentWillReceiveProps && h3.componentWillReceiveProps(m2, S2), !h3.__e && (null != h3.shouldComponentUpdate && false === h3.shouldComponentUpdate(m2, h3.__s, S2) || u4.__v === t3.__v)) {
+          for (u4.__v !== t3.__v && (h3.props = m2, h3.state = h3.__s, h3.__d = false), u4.__e = t3.__e, u4.__k = t3.__k, u4.__k.some(function(n3) {
+            n3 && (n3.__ = u4);
+          }), M2 = 0; M2 < h3._sb.length; M2++) h3.__h.push(h3._sb[M2]);
+          h3._sb = [], h3.__h.length && f4.push(h3);
+          break n;
+        }
+        null != h3.componentWillUpdate && h3.componentWillUpdate(m2, h3.__s, S2), x2 && null != h3.componentDidUpdate && h3.__h.push(function() {
+          h3.componentDidUpdate(p3, w3, _2);
+        });
+      }
+      if (h3.context = S2, h3.props = m2, h3.__P = n2, h3.__e = false, $2 = l.__r, I2 = 0, x2) {
+        for (h3.state = h3.__s, h3.__d = false, $2 && $2(u4), a3 = h3.render(h3.props, h3.state, h3.context), H = 0; H < h3._sb.length; H++) h3.__h.push(h3._sb[H]);
+        h3._sb = [];
+      } else do {
+        h3.__d = false, $2 && $2(u4), a3 = h3.render(h3.props, h3.state, h3.context), h3.state = h3.__s;
+      } while (h3.__d && ++I2 < 25);
+      h3.state = h3.__s, null != h3.getChildContext && (i4 = d(d({}, i4), h3.getChildContext())), x2 && !v3 && null != h3.getSnapshotBeforeUpdate && (_2 = h3.getSnapshotBeforeUpdate(p3, w3)), P(n2, y(L2 = null != a3 && a3.type === b && null == a3.key ? a3.props.children : a3) ? L2 : [L2], u4, t3, i4, o3, r3, f4, e3, c3, s3), h3.base = u4.__e, u4.__u &= -161, h3.__h.length && f4.push(h3), g2 && (h3.__E = h3.__ = null);
+    } catch (n3) {
+      if (u4.__v = null, c3 || null != r3) {
+        for (u4.__u |= c3 ? 160 : 128; e3 && 8 === e3.nodeType && e3.nextSibling; ) e3 = e3.nextSibling;
+        r3[r3.indexOf(e3)] = null, u4.__e = e3;
+      } else u4.__e = t3.__e, u4.__k = t3.__k;
+      l.__e(n3, u4, t3);
+    }
+    else null == r3 && u4.__v === t3.__v ? (u4.__k = t3.__k, u4.__e = t3.__e) : u4.__e = z(t3.__e, u4, t3, i4, o3, r3, f4, c3, s3);
+    (a3 = l.diffed) && a3(u4);
+  }
+  function j(n2, u4, t3) {
+    u4.__d = void 0;
+    for (var i4 = 0; i4 < t3.length; i4++) N(t3[i4], t3[++i4], t3[++i4]);
+    l.__c && l.__c(u4, n2), n2.some(function(u5) {
+      try {
+        n2 = u5.__h, u5.__h = [], n2.some(function(n3) {
+          n3.call(u5);
+        });
+      } catch (n3) {
+        l.__e(n3, u5.__v);
+      }
+    });
+  }
+  function z(u4, t3, i4, o3, r3, f4, e3, c3, s3) {
+    var a3, v3, p3, d3, _2, g2, m2, b2 = i4.props, k3 = t3.props, C3 = t3.type;
+    if ("svg" === C3 ? r3 = "http://www.w3.org/2000/svg" : "math" === C3 ? r3 = "http://www.w3.org/1998/Math/MathML" : r3 || (r3 = "http://www.w3.org/1999/xhtml"), null != f4) {
+      for (a3 = 0; a3 < f4.length; a3++) if ((_2 = f4[a3]) && "setAttribute" in _2 == !!C3 && (C3 ? _2.localName === C3 : 3 === _2.nodeType)) {
+        u4 = _2, f4[a3] = null;
+        break;
+      }
+    }
+    if (null == u4) {
+      if (null === C3) return document.createTextNode(k3);
+      u4 = document.createElementNS(r3, C3, k3.is && k3), c3 && (l.__m && l.__m(t3, f4), c3 = false), f4 = null;
+    }
+    if (null === C3) b2 === k3 || c3 && u4.data === k3 || (u4.data = k3);
+    else {
+      if (f4 = f4 && n.call(u4.childNodes), b2 = i4.props || h, !c3 && null != f4) for (b2 = {}, a3 = 0; a3 < u4.attributes.length; a3++) b2[(_2 = u4.attributes[a3]).name] = _2.value;
+      for (a3 in b2) if (_2 = b2[a3], "children" == a3) ;
+      else if ("dangerouslySetInnerHTML" == a3) p3 = _2;
+      else if (!(a3 in k3)) {
+        if ("value" == a3 && "defaultValue" in k3 || "checked" == a3 && "defaultChecked" in k3) continue;
+        A(u4, a3, null, _2, r3);
+      }
+      for (a3 in k3) _2 = k3[a3], "children" == a3 ? d3 = _2 : "dangerouslySetInnerHTML" == a3 ? v3 = _2 : "value" == a3 ? g2 = _2 : "checked" == a3 ? m2 = _2 : c3 && "function" != typeof _2 || b2[a3] === _2 || A(u4, a3, _2, b2[a3], r3);
+      if (v3) c3 || p3 && (v3.__html === p3.__html || v3.__html === u4.innerHTML) || (u4.innerHTML = v3.__html), t3.__k = [];
+      else if (p3 && (u4.innerHTML = ""), P(u4, y(d3) ? d3 : [d3], t3, i4, o3, "foreignObject" === C3 ? "http://www.w3.org/1999/xhtml" : r3, f4, e3, f4 ? f4[0] : i4.__k && x(i4, 0), c3, s3), null != f4) for (a3 = f4.length; a3--; ) w(f4[a3]);
+      c3 || (a3 = "value", "progress" === C3 && null == g2 ? u4.removeAttribute("value") : void 0 !== g2 && (g2 !== u4[a3] || "progress" === C3 && !g2 || "option" === C3 && g2 !== b2[a3]) && A(u4, a3, g2, b2[a3], r3), a3 = "checked", void 0 !== m2 && m2 !== u4[a3] && A(u4, a3, m2, b2[a3], r3));
+    }
+    return u4;
+  }
+  function N(n2, u4, t3) {
+    try {
+      if ("function" == typeof n2) {
+        var i4 = "function" == typeof n2.__u;
+        i4 && n2.__u(), i4 && null == u4 || (n2.__u = n2(u4));
+      } else n2.current = u4;
+    } catch (n3) {
+      l.__e(n3, t3);
+    }
+  }
+  function V(n2, u4, t3) {
+    var i4, o3;
+    if (l.unmount && l.unmount(n2), (i4 = n2.ref) && (i4.current && i4.current !== n2.__e || N(i4, null, u4)), null != (i4 = n2.__c)) {
+      if (i4.componentWillUnmount) try {
+        i4.componentWillUnmount();
+      } catch (n3) {
+        l.__e(n3, u4);
+      }
+      i4.base = i4.__P = null;
+    }
+    if (i4 = n2.__k) for (o3 = 0; o3 < i4.length; o3++) i4[o3] && V(i4[o3], u4, t3 || "function" != typeof n2.type);
+    t3 || w(n2.__e), n2.__c = n2.__ = n2.__e = n2.__d = void 0;
+  }
+  function q(n2, l3, u4) {
+    return this.constructor(n2, u4);
+  }
+  function B(u4, t3, i4) {
+    var o3, r3, f4, e3;
+    l.__ && l.__(u4, t3), r3 = (o3 = "function" == typeof i4) ? null : i4 && i4.__k || t3.__k, f4 = [], e3 = [], O(t3, u4 = (!o3 && i4 || t3).__k = _(b, null, [u4]), r3 || h, h, t3.namespaceURI, !o3 && i4 ? [i4] : r3 ? null : t3.firstChild ? n.call(t3.childNodes) : null, f4, !o3 && i4 ? i4 : r3 ? r3.__e : t3.firstChild, o3, e3), j(f4, u4, e3);
+  }
+  n = v.slice, l = { __e: function(n2, l3, u4, t3) {
+    for (var i4, o3, r3; l3 = l3.__; ) if ((i4 = l3.__c) && !i4.__) try {
+      if ((o3 = i4.constructor) && null != o3.getDerivedStateFromError && (i4.setState(o3.getDerivedStateFromError(n2)), r3 = i4.__d), null != i4.componentDidCatch && (i4.componentDidCatch(n2, t3 || {}), r3 = i4.__d), r3) return i4.__E = i4;
+    } catch (l4) {
+      n2 = l4;
+    }
+    throw n2;
+  } }, u = 0, t = function(n2) {
+    return null != n2 && null == n2.constructor;
+  }, k.prototype.setState = function(n2, l3) {
+    var u4;
+    u4 = null != this.__s && this.__s !== this.state ? this.__s : this.__s = d({}, this.state), "function" == typeof n2 && (n2 = n2(d({}, u4), this.props)), n2 && d(u4, n2), null != n2 && this.__v && (l3 && this._sb.push(l3), S(this));
+  }, k.prototype.forceUpdate = function(n2) {
+    this.__v && (this.__e = true, n2 && this.__h.push(n2), S(this));
+  }, k.prototype.render = b, i = [], r = "function" == typeof Promise ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, f = function(n2, l3) {
+    return n2.__v.__b - l3.__v.__b;
+  }, M.__r = 0, e = 0, c = F(false), s = F(true), a = 0;
+
+  // node_modules/preact/hooks/dist/hooks.module.js
+  var t2;
+  var r2;
+  var u2;
+  var i2;
+  var o2 = 0;
+  var f2 = [];
+  var c2 = l;
+  var e2 = c2.__b;
+  var a2 = c2.__r;
+  var v2 = c2.diffed;
+  var l2 = c2.__c;
+  var m = c2.unmount;
+  var s2 = c2.__;
+  function d2(n2, t3) {
+    c2.__h && c2.__h(r2, n2, o2 || t3), o2 = 0;
+    var u4 = r2.__H || (r2.__H = { __: [], __h: [] });
+    return n2 >= u4.__.length && u4.__.push({}), u4.__[n2];
+  }
+  function h2(n2) {
+    return o2 = 1, p2(D, n2);
+  }
+  function p2(n2, u4, i4) {
+    var o3 = d2(t2++, 2);
+    if (o3.t = n2, !o3.__c && (o3.__ = [i4 ? i4(u4) : D(void 0, u4), function(n3) {
+      var t3 = o3.__N ? o3.__N[0] : o3.__[0], r3 = o3.t(t3, n3);
+      t3 !== r3 && (o3.__N = [r3, o3.__[1]], o3.__c.setState({}));
+    }], o3.__c = r2, !r2.u)) {
+      var f4 = function(n3, t3, r3) {
+        if (!o3.__c.__H) return true;
+        var u5 = o3.__c.__H.__.filter(function(n4) {
+          return !!n4.__c;
+        });
+        if (u5.every(function(n4) {
+          return !n4.__N;
+        })) return !c3 || c3.call(this, n3, t3, r3);
+        var i5 = false;
+        return u5.forEach(function(n4) {
+          if (n4.__N) {
+            var t4 = n4.__[0];
+            n4.__ = n4.__N, n4.__N = void 0, t4 !== n4.__[0] && (i5 = true);
+          }
+        }), !(!i5 && o3.__c.props === n3) && (!c3 || c3.call(this, n3, t3, r3));
+      };
+      r2.u = true;
+      var c3 = r2.shouldComponentUpdate, e3 = r2.componentWillUpdate;
+      r2.componentWillUpdate = function(n3, t3, r3) {
+        if (this.__e) {
+          var u5 = c3;
+          c3 = void 0, f4(n3, t3, r3), c3 = u5;
+        }
+        e3 && e3.call(this, n3, t3, r3);
+      }, r2.shouldComponentUpdate = f4;
+    }
+    return o3.__N || o3.__;
+  }
+  function y2(n2, u4) {
+    var i4 = d2(t2++, 3);
+    !c2.__s && C2(i4.__H, u4) && (i4.__ = n2, i4.i = u4, r2.__H.__h.push(i4));
+  }
+  function A2(n2) {
+    return o2 = 5, T2(function() {
+      return { current: n2 };
+    }, []);
+  }
+  function T2(n2, r3) {
+    var u4 = d2(t2++, 7);
+    return C2(u4.__H, r3) && (u4.__ = n2(), u4.__H = r3, u4.__h = n2), u4.__;
+  }
+  function j2() {
+    for (var n2; n2 = f2.shift(); ) if (n2.__P && n2.__H) try {
+      n2.__H.__h.forEach(z2), n2.__H.__h.forEach(B2), n2.__H.__h = [];
+    } catch (t3) {
+      n2.__H.__h = [], c2.__e(t3, n2.__v);
+    }
+  }
+  c2.__b = function(n2) {
+    r2 = null, e2 && e2(n2);
+  }, c2.__ = function(n2, t3) {
+    n2 && t3.__k && t3.__k.__m && (n2.__m = t3.__k.__m), s2 && s2(n2, t3);
+  }, c2.__r = function(n2) {
+    a2 && a2(n2), t2 = 0;
+    var i4 = (r2 = n2.__c).__H;
+    i4 && (u2 === r2 ? (i4.__h = [], r2.__h = [], i4.__.forEach(function(n3) {
+      n3.__N && (n3.__ = n3.__N), n3.i = n3.__N = void 0;
+    })) : (i4.__h.forEach(z2), i4.__h.forEach(B2), i4.__h = [], t2 = 0)), u2 = r2;
+  }, c2.diffed = function(n2) {
+    v2 && v2(n2);
+    var t3 = n2.__c;
+    t3 && t3.__H && (t3.__H.__h.length && (1 !== f2.push(t3) && i2 === c2.requestAnimationFrame || ((i2 = c2.requestAnimationFrame) || w2)(j2)), t3.__H.__.forEach(function(n3) {
+      n3.i && (n3.__H = n3.i), n3.i = void 0;
+    })), u2 = r2 = null;
+  }, c2.__c = function(n2, t3) {
+    t3.some(function(n3) {
+      try {
+        n3.__h.forEach(z2), n3.__h = n3.__h.filter(function(n4) {
+          return !n4.__ || B2(n4);
+        });
+      } catch (r3) {
+        t3.some(function(n4) {
+          n4.__h && (n4.__h = []);
+        }), t3 = [], c2.__e(r3, n3.__v);
+      }
+    }), l2 && l2(n2, t3);
+  }, c2.unmount = function(n2) {
+    m && m(n2);
+    var t3, r3 = n2.__c;
+    r3 && r3.__H && (r3.__H.__.forEach(function(n3) {
+      try {
+        z2(n3);
+      } catch (n4) {
+        t3 = n4;
+      }
+    }), r3.__H = void 0, t3 && c2.__e(t3, r3.__v));
+  };
+  var k2 = "function" == typeof requestAnimationFrame;
+  function w2(n2) {
+    var t3, r3 = function() {
+      clearTimeout(u4), k2 && cancelAnimationFrame(t3), setTimeout(n2);
+    }, u4 = setTimeout(r3, 100);
+    k2 && (t3 = requestAnimationFrame(r3));
+  }
+  function z2(n2) {
+    var t3 = r2, u4 = n2.__c;
+    "function" == typeof u4 && (n2.__c = void 0, u4()), r2 = t3;
+  }
+  function B2(n2) {
+    var t3 = r2;
+    n2.__c = n2.__(), r2 = t3;
+  }
+  function C2(n2, t3) {
+    return !n2 || n2.length !== t3.length || t3.some(function(t4, r3) {
+      return t4 !== n2[r3];
+    });
+  }
+  function D(n2, t3) {
+    return "function" == typeof t3 ? t3(n2) : t3;
+  }
+
+  // src/shared/types.ts
+  var DEFAULT_SLICER_OPTIONS = {
+    maxSliceHeight: 1500,
+    mergeRows: true,
+    minRowHeight: 4
+  };
+  var DEFAULT_SETTINGS = {
+    relayUrl: "http://localhost:8787",
+    relayToken: "",
+    activeProfileId: null,
+    maxSliceHeight: 1500,
+    mergeRows: true,
+    altFromLayerName: true,
+    uiHeight: 680,
+    language: "vi"
+  };
+  var DEFAULT_UTM = "utm_source={provider}&utm_medium=email&utm_campaign={campaign}&utm_content={slice}";
+  function newProfile(provider, name) {
+    return {
+      id: `p_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      provider,
+      auth: { type: "apikey", apiKey: "" },
+      audienceId: "",
+      audienceName: "",
+      fromName: "",
+      fromEmail: "",
+      replyTo: "",
+      templateId: "",
+      templateSection: "body",
+      utmTemplate: DEFAULT_UTM,
+      footerHtml: "",
+      imageFormat: "PNG",
+      scale: 2,
+      jpgQuality: 85,
+      permissions: {},
+      accountLabel: ""
+    };
+  }
+
+  // studio/src/model/history.ts
+  var History = class {
+    constructor(limit = 100) {
+      this.limit = limit;
+      this.past = [];
+      this.future = [];
+    }
+    push(doc2) {
+      if (this.past.length && this.past[this.past.length - 1] === doc2) return;
+      this.past.push(doc2);
+      if (this.past.length > this.limit) this.past.shift();
+      this.future = [];
+    }
+    undo(current) {
+      const prev = this.past.pop();
+      if (!prev) return null;
+      this.future.push(current);
+      return prev;
+    }
+    redo(current) {
+      const next = this.future.pop();
+      if (!next) return null;
+      this.past.push(current);
+      return next;
+    }
+    get canUndo() {
+      return this.past.length > 0;
+    }
+    get canRedo() {
+      return this.future.length > 0;
+    }
+    clear() {
+      this.past = [];
+      this.future = [];
+    }
+  };
+
+  // studio/src/store.ts
+  var LS_PROFILES = "phloem.studio.profiles";
+  var LS_SETTINGS = "phloem.studio.settings";
+  function loadLS(k3, fb) {
+    try {
+      const v3 = localStorage.getItem(k3);
+      return v3 ? { ...fb, ...JSON.parse(v3) } : fb;
+    } catch {
+      return fb;
+    }
+  }
+  var initialState = {
+    route: { name: "home" },
+    projects: [],
+    project: null,
+    variant: "desktop",
+    selection: [],
+    hover: null,
+    tool: "select",
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+    editingText: null,
+    enteredGroup: null,
+    modal: null,
+    rightTab: "design",
+    leftTab: "layers",
+    profiles: (() => {
+      try {
+        return JSON.parse(localStorage.getItem(LS_PROFILES) || "[]");
+      } catch {
+        return [];
+      }
+    })(),
+    settings: loadLS(LS_SETTINGS, { ...DEFAULT_SETTINGS, snap: true, grid: false, autosave: true }),
+    toasts: [],
+    dirty: false,
+    savedAt: null,
+    busy: null,
+    log: [],
+    result: null,
+    clipboard: null,
+    fontsLoaded: 0
+  };
+  var state = initialState;
+  var subs = /* @__PURE__ */ new Set();
+  var scheduled = false;
+  var history = new History();
+  function get() {
+    return state;
+  }
+  function set(patch) {
+    const p3 = typeof patch === "function" ? patch(state) : patch;
+    state = { ...state, ...p3 };
+    if ("profiles" in p3) {
+      try {
+        localStorage.setItem(LS_PROFILES, JSON.stringify(state.profiles));
+      } catch {
+      }
+    }
+    if ("settings" in p3) {
+      try {
+        localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings));
+      } catch {
+      }
+    }
+    if (!scheduled) {
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        for (const s3 of subs) s3();
+      });
+    }
+  }
+  function subscribe(fn) {
+    subs.add(fn);
+    return () => subs.delete(fn);
+  }
+  function useStore() {
+    const [, force] = h2(0);
+    y2(() => subscribe(() => force((n2) => n2 + 1)), []);
+    return state;
+  }
+  var toastId = 0;
+  function toast(text2, kind = "info") {
+    const id = ++toastId;
+    set((s3) => ({ toasts: [...s3.toasts, { id, text: text2, kind }] }));
+    setTimeout(() => set((s3) => ({ toasts: s3.toasts.filter((t3) => t3.id !== id) })), kind === "err" ? 7e3 : 3500);
+  }
+  function log(t3, k3) {
+    set((s3) => ({ log: [...s3.log.slice(-40), { t: t3, k: k3 }] }));
+  }
+
+  // src/shared/geom.ts
+  function intersect(a3, b2) {
+    const x2 = Math.max(a3.x, b2.x);
+    const y3 = Math.max(a3.y, b2.y);
+    const r3 = Math.min(a3.x + a3.w, b2.x + b2.w);
+    const btm = Math.min(a3.y + a3.h, b2.y + b2.h);
+    if (r3 <= x2 || btm <= y3) return null;
+    return { x: x2, y: y3, w: r3 - x2, h: btm - y3 };
+  }
+  function area(r3) {
+    return r3 ? r3.w * r3.h : 0;
+  }
+  function iou(a3, b2) {
+    const i4 = area(intersect(a3, b2));
+    if (!i4) return 0;
+    return i4 / (area(a3) + area(b2) - i4);
+  }
+  function contains(outer, px, py) {
+    return px >= outer.x && px < outer.x + outer.w && py >= outer.y && py < outer.y + outer.h;
+  }
+  function clamp(v3, lo, hi) {
+    return Math.max(lo, Math.min(hi, v3));
+  }
+  function uniqSorted(nums) {
+    return Array.from(new Set(nums.map((n2) => Math.round(n2)))).sort((a3, b2) => a3 - b2);
+  }
+
+  // src/shared/slicer.ts
+  function flatten(root) {
+    const out = [];
+    const walk = (n2, d3) => {
+      for (const c3 of n2.children) {
+        if (!c3.visible) continue;
+        out.push({ node: c3, depth: d3 });
+        walk(c3, d3 + 1);
+      }
+    };
+    walk(root, 1);
+    return out;
+  }
+  function clipToFrame(r3, W2, H) {
+    return intersect(r3, { x: 0, y: 0, w: W2, h: H });
+  }
+  function linkRegions(root) {
+    const W2 = root.w, H = root.h;
+    const regs = [];
+    for (const { node, depth } of flatten(root)) {
+      if (!node.link) continue;
+      const c3 = clipToFrame(node, W2, H);
+      if (!c3 || c3.w < 1 || c3.h < 1) continue;
+      regs.push({ ...c3, node, depth });
+    }
+    return regs;
+  }
+  function pickRegion(regs, px, py) {
+    let best = null;
+    for (const r3 of regs) {
+      if (!contains(r3, px, py)) continue;
+      if (!best || r3.depth > best.depth || r3.depth === best.depth && area(r3) < area(best)) best = r3;
+    }
+    return best;
+  }
+  function cellsForRow(regs, y3, h3, W2) {
+    const overlapping = regs.filter((r3) => r3.y < y3 + h3 && r3.y + r3.h > y3);
+    if (!overlapping.length) return [{ x: 0, w: W2, link: null, linkNodeId: null }];
+    const xs = uniqSorted([0, W2, ...overlapping.flatMap((r3) => [clamp(r3.x, 0, W2), clamp(r3.x + r3.w, 0, W2)])]);
+    const cells = [];
+    for (let i4 = 0; i4 < xs.length - 1; i4++) {
+      const x2 = xs[i4], w3 = xs[i4 + 1] - xs[i4];
+      if (w3 <= 0) continue;
+      const reg = pickRegion(overlapping, x2 + w3 / 2, y3 + h3 / 2);
+      const link = reg ? reg.node.link : null;
+      const linkNodeId = reg ? reg.node.id : null;
+      const prev = cells[cells.length - 1];
+      if (prev && prev.link === link && prev.linkNodeId === linkNodeId) prev.w += w3;
+      else cells.push({ x: x2, w: w3, link, linkNodeId });
+    }
+    return cells;
+  }
+  function sameStructure(a3, b2) {
+    if (a3.cells.length !== b2.cells.length) return false;
+    for (let i4 = 0; i4 < a3.cells.length; i4++) {
+      const p3 = a3.cells[i4], q2 = b2.cells[i4];
+      if (p3.x !== q2.x || p3.w !== q2.w || p3.link !== q2.link || p3.linkNodeId !== q2.linkNodeId) return false;
+    }
+    return true;
+  }
+  function naturalCuts(root) {
+    const ys = [];
+    for (const c3 of root.children) {
+      if (!c3.visible) continue;
+      ys.push(c3.y, c3.y + c3.h);
+    }
+    return uniqSorted(ys).filter((y3) => y3 > 0 && y3 < root.h);
+  }
+  function splitTall(rows, maxH, natural) {
+    const out = [];
+    for (const row of rows) {
+      if (row.h <= maxH) {
+        out.push(row);
+        continue;
+      }
+      let y3 = row.y;
+      const end = row.y + row.h;
+      while (end - y3 > maxH) {
+        const target = y3 + maxH;
+        const candidates = natural.filter((n2) => n2 > y3 + maxH * 0.5 && n2 <= target);
+        const cut = candidates.length ? candidates[candidates.length - 1] : target;
+        out.push({ y: y3, h: cut - y3, cells: row.cells.map((c3) => ({ ...c3 })) });
+        y3 = cut;
+      }
+      if (end - y3 > 0) out.push({ y: y3, h: end - y3, cells: row.cells.map((c3) => ({ ...c3 })) });
+    }
+    return out;
+  }
+  function bestAlt(root, cell, linkNode) {
+    let best = null;
+    const texts = [];
+    for (const { node } of flatten(root)) {
+      const inter = intersect(node, cell);
+      if (!inter) continue;
+      const covered = area(inter) / Math.max(1, area(node));
+      if (covered < 0.5) continue;
+      if (node.alt && node.alt.trim()) {
+        const score = area(inter) * (node.altSource === "field" ? 4 : node.altSource === "name" ? 3 : 1);
+        if (!best || score > best.score) best = { alt: node.alt.trim(), nodeId: node.id, score };
+      }
+      if (node.isText && node.text && node.text.trim()) texts.push({ node, score: area(inter) });
+    }
+    if (best) return { alt: best.alt, nodeId: best.nodeId };
+    if (linkNode && linkNode.alt && linkNode.alt.trim()) return { alt: linkNode.alt.trim(), nodeId: linkNode.id };
+    if (texts.length) {
+      texts.sort((a3, b2) => a3.node.y - b2.node.y || a3.node.x - b2.node.x);
+      const joined = texts.map((t3) => t3.node.text.replace(/\s+/g, " ").trim()).join(" \xB7 ");
+      return { alt: joined.length > 140 ? joined.slice(0, 137).trimEnd() + "\u2026" : joined, nodeId: texts[0].node.id };
+    }
+    return { alt: "", nodeId: null };
+  }
+  function ownerAndLabel(root, cell) {
+    let best = null;
+    const inside = [];
+    for (const { node } of flatten(root)) {
+      const inter = intersect(node, cell);
+      if (!inter) continue;
+      const v3 = iou(node, cell);
+      if (!best || v3 > best.v) best = { id: node.id, v: v3 };
+      if (area(inter) / Math.max(1, area(node)) >= 0.5 && !/^(Rectangle|Frame|Group|Vector|Ellipse|Line|Image)( \d+)?$/i.test(node.name)) {
+        inside.push({ name: node.name, a: area(inter) });
+      }
+    }
+    inside.sort((a3, b2) => b2.a - a3.a);
+    const label = inside.slice(0, 2).map((n2) => n2.name).join(" \xB7 ") || "slice";
+    return { ownerNodeId: best ? best.id : null, label };
+  }
+  function planSlices(root, opts = {}) {
+    const o3 = { ...DEFAULT_SLICER_OPTIONS, ...opts };
+    const W2 = Math.round(root.w), H = Math.round(root.h);
+    const regs = linkRegions(root);
+    const ys = uniqSorted([0, H, ...regs.flatMap((r3) => [clamp(r3.y, 0, H), clamp(r3.y + r3.h, 0, H)])]);
+    let rows = [];
+    for (let i4 = 0; i4 < ys.length - 1; i4++) {
+      const y3 = ys[i4], h3 = ys[i4 + 1] - ys[i4];
+      if (h3 <= 0) continue;
+      rows.push({ y: y3, h: h3, cells: cellsForRow(regs, y3, h3, W2) });
+    }
+    const merged = [];
+    for (const r3 of rows) {
+      const prev = merged[merged.length - 1];
+      if (r3.h < o3.minRowHeight && prev) {
+        prev.h += r3.h;
+        continue;
+      }
+      if (r3.h < o3.minRowHeight && !prev && rows.length > 1) {
+        merged.push(r3);
+        continue;
+      }
+      if (prev && prev.h < o3.minRowHeight) {
+        r3.y = prev.y;
+        r3.h += prev.h;
+        merged.pop();
+      }
+      merged.push(r3);
+    }
+    rows = merged;
+    if (o3.mergeRows) {
+      const out = [];
+      for (const r3 of rows) {
+        const prev = out[out.length - 1];
+        if (prev && sameStructure(prev, r3) && prev.h + r3.h <= o3.maxSliceHeight) prev.h += r3.h;
+        else out.push(r3);
+      }
+      rows = out;
+    }
+    rows = splitTall(rows, o3.maxSliceHeight, naturalCuts(root));
+    const sliceRows = [];
+    const slices = [];
+    let index = 0;
+    rows.forEach((r3, ri) => {
+      const cells = [];
+      r3.cells.forEach((c3, ci) => {
+        const rect2 = { x: c3.x, y: r3.y, w: c3.w, h: r3.h };
+        const linkNode = c3.linkNodeId ? regs.find((g2) => g2.node.id === c3.linkNodeId)?.node ?? null : null;
+        const alt = bestAlt(root, rect2, linkNode);
+        const own = ownerAndLabel(root, rect2);
+        const s3 = {
+          key: `r${ri}c${ci}`,
+          index: index++,
+          x: rect2.x,
+          y: rect2.y,
+          w: rect2.w,
+          h: rect2.h,
+          link: c3.link,
+          linkNodeId: c3.linkNodeId,
+          alt: alt.alt,
+          altNodeId: alt.nodeId,
+          ownerNodeId: own.ownerNodeId,
+          label: own.label
+        };
+        cells.push(s3);
+        slices.push(s3);
+      });
+      sliceRows.push({ y: r3.y, h: r3.h, cells });
+    });
+    return { frameId: root.id, frameName: root.name, width: W2, height: H, rows: sliceRows, slices };
+  }
+  function cellHasImage(root, cell) {
+    for (const { node } of flatten(root)) {
+      if (!node.hasImage) continue;
+      const inter = intersect(node, cell);
+      if (inter && area(inter) / Math.max(1, area(node)) >= 0.3) return true;
+    }
+    return false;
+  }
+
+  // src/shared/utm.ts
+  function slug(v3) {
+    return v3.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "x";
+  }
+  function isMergeTag(url) {
+    return /\*\|[^|]+\|\*/.test(url) || /\{\{.*\}\}/.test(url) || /\{%.*%\}/.test(url);
+  }
+  function isUtmSkippable(url) {
+    const u4 = url.trim();
+    return !u4 || /^(mailto:|tel:|sms:|#)/i.test(u4) || isMergeTag(u4) || /[?&]utm_[a-z]+=/i.test(u4);
+  }
+  function hostOf(url) {
+    const m2 = /^https?:\/\/(?:[^@\/?#]+@)?([^:\/?#]+)/i.exec(url.trim());
+    return m2 ? m2[1].toLowerCase() : null;
+  }
+  function fillTemplate(template, vars) {
+    return template.replace(/\{(provider|campaign|frame|slice|date|host)\}/g, (_2, k3) => slug(String(vars[k3] ?? "")));
+  }
+  function applyUtm(url, template, vars) {
+    const u4 = url.trim();
+    if (!template.trim() || isUtmSkippable(u4)) return u4;
+    if (!/^https?:\/\//i.test(u4)) return u4;
+    const host = hostOf(u4);
+    if (!host) return u4;
+    const qs = fillTemplate(template.replace(/^[?&]+/, ""), { ...vars, host });
+    const hashIdx = u4.indexOf("#");
+    const base2 = hashIdx >= 0 ? u4.slice(0, hashIdx) : u4;
+    const frag = hashIdx >= 0 ? u4.slice(hashIdx) : "";
+    const sep = base2.includes("?") ? base2.endsWith("?") || base2.endsWith("&") ? "" : "&" : "?";
+    return `${base2}${sep}${qs}${frag}`;
+  }
+
+  // src/shared/checks.ts
+  var CTA_NAME = /\b(btn|button|cta|nút)\b/i;
+  var CTA_TEXT = /^(shop|buy|mua|xem|order|get|đặt|learn|see|read|view|start|đăng ký|sign ?up|subscribe|claim|book|try|download|tải|khám phá|nhận|bắt đầu|explore|discover|join|continue|checkout|thanh toán)\b/i;
+  var GMAIL_CLIP_BYTES = 102 * 1024;
+  var WEIGHT_WARN = 1e6;
+  var WEIGHT_ERROR = 3e6;
+  var OUTLOOK_MAX_IMG_H = 1728;
+  function validateLink(url) {
+    const u4 = url.trim();
+    if (!u4) return { ok: false, reason: "r\u1ED7ng" };
+    if (isMergeTag(u4)) return { ok: true };
+    if (/^(mailto:|tel:|sms:)/i.test(u4)) return { ok: true };
+    if (/\s/.test(u4)) return { ok: false, reason: "c\xF3 kho\u1EA3ng tr\u1EAFng" };
+    if (!/^https?:\/\//i.test(u4)) return { ok: false, reason: "thi\u1EBFu https://" };
+    const host = hostOf(u4);
+    if (!host || !/^[a-z0-9.-]+$/i.test(host) || !host.includes(".") && host !== "localhost") return { ok: false, reason: "t\xEAn mi\u1EC1n kh\xF4ng h\u1EE3p l\u1EC7" };
+    if (/^http:\/\//i.test(u4)) return { ok: true, soft: "d\xF9ng http, n\xEAn \u0111\u1ED5i sang https" };
+    return { ok: true };
+  }
+  function looksLikeCta(root, cell) {
+    for (const { node } of flatten(root)) {
+      const inter = intersect(node, cell);
+      if (!inter) continue;
+      const covered = inter.w * inter.h / Math.max(1, node.w * node.h);
+      if (covered < 0.6) continue;
+      if (CTA_NAME.test(node.name)) return node;
+      if (node.isText && node.text && node.text.trim().split(/\s+/).length <= 5 && CTA_TEXT.test(node.text.trim())) return node;
+    }
+    return null;
+  }
+  function runChecks(inp) {
+    const { root, plan } = inp;
+    const out = [];
+    if (plan.width !== 600) {
+      out.push({
+        level: plan.width >= 560 && plan.width <= 700 ? "info" : "warn",
+        code: "frame-width",
+        message: `Frame r\u1ED9ng ${plan.width}px \u2014 chu\u1EA9n email l\xE0 600px (t\u1ED1i \u0111a 640).`
+      });
+    }
+    if (plan.height > 3500) out.push({ level: "info", code: "email-long", message: `Email cao ${plan.height}px \u2014 d\xE0i h\u01A1n m\u1EE9c ng\u01B0\u1EDDi \u0111\u1ECDc th\u01B0\u1EDDng l\u01B0\u1EDBt (\u22482500px).` });
+    let imgNoLink = 0, imgNoAlt = 0;
+    const seenLinks = /* @__PURE__ */ new Map();
+    for (const s3 of plan.slices) {
+      const hasImg = cellHasImage(root, s3);
+      if (!s3.link) {
+        const cta = looksLikeCta(root, s3);
+        if (cta) out.push({ level: "warn", code: "cta-no-link", message: `"${cta.text?.trim() || cta.name}" tr\xF4ng nh\u01B0 n\xFAt CTA nh\u01B0ng ch\u01B0a c\xF3 link.`, nodeId: cta.id, sliceKey: s3.key });
+        else if (hasImg) imgNoLink++;
+      } else {
+        const v3 = validateLink(s3.link);
+        if (!v3.ok) out.push({ level: "error", code: "link-invalid", message: `Link l\u1ED7i (${v3.reason}): ${s3.link}`, nodeId: s3.linkNodeId ?? void 0, sliceKey: s3.key });
+        else if (v3.soft) out.push({ level: "info", code: "link-http", message: `${v3.soft}: ${s3.link}`, nodeId: s3.linkNodeId ?? void 0, sliceKey: s3.key });
+      }
+      if (!s3.alt.trim()) {
+        if (hasImg || s3.link) out.push({ level: "warn", code: "alt-missing", message: `L\xE1t ${s3.index + 1} (${s3.label}) thi\u1EBFu alt text.`, nodeId: s3.ownerNodeId ?? void 0, sliceKey: s3.key });
+        if (hasImg) imgNoAlt++;
+      }
+      if (s3.h > OUTLOOK_MAX_IMG_H) out.push({ level: "warn", code: "slice-tall", message: `L\xE1t ${s3.index + 1} cao ${s3.h}px \u2014 Outlook c\u1EAFt \u1EA3nh cao h\u01A1n ${OUTLOOK_MAX_IMG_H}px.`, sliceKey: s3.key });
+      if (s3.link && s3.linkNodeId) {
+        const prev = seenLinks.get(s3.link);
+        if (prev && prev !== s3.linkNodeId) {
+        }
+        seenLinks.set(s3.link, s3.linkNodeId);
+      }
+    }
+    if (imgNoLink > 0) out.push({ level: "info", code: "img-no-link", message: `${imgNoLink} l\xE1t \u1EA3nh kh\xF4ng c\xF3 link (b\xECnh th\u01B0\u1EDDng n\u1EBFu l\xE0 \u1EA3nh trang tr\xED).` });
+    const linked = flatten(root).map((f4) => f4.node).filter((n2) => n2.link);
+    for (let i4 = 0; i4 < linked.length; i4++) for (let j3 = i4 + 1; j3 < linked.length; j3++) {
+      const a3 = linked[i4], b2 = linked[j3];
+      if (a3.link === b2.link) continue;
+      const inter = intersect(a3, b2);
+      if (!inter) continue;
+      const small = Math.min(a3.w * a3.h, b2.w * b2.h);
+      const isNested = inter.w * inter.h >= small * 0.95;
+      if (!isNested && inter.w * inter.h > 0.1 * small) {
+        out.push({ level: "warn", code: "links-overlap", message: `"${a3.name}" v\xE0 "${b2.name}" c\xF3 link kh\xE1c nhau nh\u01B0ng ch\u1ED3ng l\xEAn nhau \u2014 v\xF9ng ch\u1ED3ng s\u1EBD nh\u1EADn link c\u1EE7a layer s\xE2u h\u01A1n.`, nodeId: b2.id });
+      }
+    }
+    if (plan.slices.length > 40) out.push({ level: "warn", code: "slices-many", message: `${plan.slices.length} l\xE1t \u1EA3nh \u2014 nhi\u1EC1u request, email n\u1EB7ng. G\u1ED9p b\u1EDBt link ho\u1EB7c \u0111\u01A1n gi\u1EA3n ho\xE1 l\u01B0\u1EDBi.` });
+    if (inp.imageBytes != null) {
+      const kb = Math.round(inp.imageBytes / 1024);
+      if (inp.imageBytes > WEIGHT_ERROR) out.push({ level: "error", code: "weight", message: `T\u1ED5ng \u1EA3nh ${kb}KB \u2014 qu\xE1 n\u1EB7ng (>3MB). D\xF9ng JPG ho\u1EB7c scale 1x.` });
+      else if (inp.imageBytes > WEIGHT_WARN) out.push({ level: "warn", code: "weight", message: `T\u1ED5ng \u1EA3nh ${kb}KB \u2014 n\u1EB7ng (>1MB), t\u1EA3i ch\u1EADm tr\xEAn 4G.` });
+    }
+    if (inp.htmlBytes != null && inp.htmlBytes > GMAIL_CLIP_BYTES) {
+      out.push({ level: "warn", code: "gmail-clip", message: `HTML ${Math.round(inp.htmlBytes / 1024)}KB \u2014 Gmail c\u1EAFt email qu\xE1 102KB.` });
+    }
+    if (inp.fields) {
+      if (!inp.fields.subject.trim()) out.push({ level: "info", code: "subject-missing", message: "Ch\u01B0a c\xF3 subject \u2014 c\u1EA7n khi t\u1EA1o draft." });
+      if (!inp.fields.preheader.trim()) out.push({ level: "info", code: "preheader-missing", message: "Ch\u01B0a c\xF3 preheader \u2014 d\xF2ng xem tr\u01B0\u1EDBc trong h\u1ED9p th\u01B0." });
+    }
+    if (inp.hasMobile === false && plan.width > 480) out.push({ level: "info", code: "mobile-none", message: "Ch\u01B0a c\xF3 frame mobile \u2014 email s\u1EBD scale theo t\u1EC9 l\u1EC7 tr\xEAn \u0111i\u1EC7n tho\u1EA1i." });
+    const order = { error: 0, warn: 1, info: 2 };
+    return out.sort((a3, b2) => order[a3.level] - order[b2.level]);
+  }
+
+  // src/shared/suggestions.ts
+  var FOOTER_WORDS = /(unsubscribe|hu[yỷ] đăng ký|huỷ nhận|preferences|địa chỉ|address|©|\(c\)|all rights|bản quyền|liên hệ|contact)/i;
+  function hexToRgb(hex2) {
+    const m2 = /^#?([0-9a-f]{6})$/i.exec(hex2.trim());
+    if (!m2) return null;
+    const n2 = parseInt(m2[1], 16);
+    return [n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255];
+  }
+  function lum(c3) {
+    const f4 = (v3) => {
+      v3 /= 255;
+      return v3 <= 0.03928 ? v3 / 12.92 : Math.pow((v3 + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * f4(c3[0]) + 0.7152 * f4(c3[1]) + 0.0722 * f4(c3[2]);
+  }
+  function contrastRatio(a3, b2) {
+    const ca = hexToRgb(a3), cb = hexToRgb(b2);
+    if (!ca || !cb) return null;
+    const la = lum(ca), lb = lum(cb);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+  function backgroundFor(root, target) {
+    let best = null;
+    for (const { node } of flatten(root)) {
+      if (node === target || node.isText || !node.fill && !node.hasImage) continue;
+      const inside = node.x <= target.x && node.y <= target.y && node.x + node.w >= target.x + target.w && node.y + node.h >= target.y + target.h;
+      if (!inside) continue;
+      if (!best || node.w * node.h < best.w * best.h) best = node;
+    }
+    if (best) return best.hasImage ? null : best.fill;
+    return root.hasImage ? null : root.fill;
+  }
+  function suggest(inp) {
+    const { root, plan, fields } = inp;
+    const out = [];
+    let penalty = 0;
+    const nodes = flatten(root).map((f4) => f4.node);
+    const texts = nodes.filter((n2) => n2.isText && n2.text && n2.text.trim());
+    const links = nodes.filter((n2) => n2.link);
+    const images = nodes.filter((n2) => n2.hasImage);
+    if (plan.width !== 600) {
+      penalty += 10;
+      out.push({ id: "width", level: "fix", title: `\u0110\u01B0a frame v\u1EC1 600px (hi\u1EC7n ${plan.width}px)`, detail: "Email 600px hi\u1EC3n th\u1ECB \u0111\xFAng \u1EDF Gmail, Outlook, Apple Mail m\xE0 kh\xF4ng b\u1ECB thu nh\u1ECF hay tr\xE0n ngang.", action: { kind: "snap-width", width: 600 } });
+    } else out.push({ id: "width", level: "good", title: "Chi\u1EC1u r\u1ED9ng 600px", detail: "Chu\u1EA9n cho m\u1ECDi h\u1ED9p th\u01B0." });
+    const frac = root.children.filter((c3) => c3.visible && (Math.abs(c3.x - Math.round(c3.x)) > 0.01 || Math.abs(c3.y - Math.round(c3.y)) > 0.01 || Math.abs(c3.h - Math.round(c3.h)) > 0.01));
+    if (frac.length) {
+      penalty += 5;
+      out.push({ id: "pixels", level: "fix", title: `${frac.length} layer l\u1EC7ch n\u1EEDa pixel`, detail: "To\u1EA1 \u0111\u1ED9 l\u1EBB l\xE0m m\xE9p l\xE1t \u1EA3nh b\u1ECB nho\xE8 ho\u1EB7c l\u1ED9 \u0111\u01B0\u1EDDng ch\u1EC9 1px gi\u1EEFa c\xE1c l\xE1t. L\xE0m tr\xF2n v\u1EC1 pixel nguy\xEAn.", nodeId: frac[0].id, action: { kind: "round-pixels" } });
+    }
+    const fold = 600;
+    const ctaAbove = links.some((n2) => n2.y < fold);
+    if (!links.length) {
+      penalty += 20;
+      out.push({ id: "cta-none", level: "fix", title: "Email ch\u01B0a c\xF3 link n\xE0o", detail: "M\u1ED7i email c\u1EA7n \xEDt nh\u1EA5t m\u1ED9t \u0111\xEDch \u0111\u1EBFn. Th\xEAm n\xFAt CTA ho\u1EB7c g\u1EAFn link v\xE0o \u1EA3nh/ch\u1EEF (hyperlink, prototype, hay #link= trong t\xEAn layer).", action: { kind: "insert-block", block: "cta" } });
+    } else if (!ctaAbove) {
+      penalty += 10;
+      out.push({ id: "cta-fold", level: "tip", title: "Kh\xF4ng c\xF3 CTA trong 600px \u0111\u1EA7u", detail: "Ph\u1EA7n l\u1EDBn ng\u01B0\u1EDDi \u0111\u1ECDc quy\u1EBFt \u0111\u1ECBnh trong m\xE0n h\xECnh \u0111\u1EA7u. K\xE9o m\u1ED9t n\xFAt ho\u1EB7c link l\xEAn tr\xEAn fold.", nodeId: links[0].id, action: { kind: "focus", nodeId: links[0].id } });
+    } else out.push({ id: "cta-fold", level: "good", title: "C\xF3 CTA tr\xEAn fold", detail: "Ng\u01B0\u1EDDi \u0111\u1ECDc th\u1EA5y \u0111\xEDch \u0111\u1EBFn ngay m\xE0n \u0111\u1EA7u." });
+    const distinct = new Set(links.map((n2) => n2.link));
+    if (distinct.size > 8) {
+      penalty += 5;
+      out.push({ id: "cta-many", level: "tip", title: `${distinct.size} link kh\xE1c nhau`, detail: "Nhi\u1EC1u \u0111\xEDch l\xE0m lo\xE3ng h\xE0nh \u0111\u1ED9ng ch\xEDnh. Gi\u1EEF 1 CTA ch\xEDnh, c\xE1c link ph\u1EE5 nh\u1ECF h\u01A1n." });
+    }
+    const scale = plan.width > 0 ? 375 / plan.width : 1;
+    const footerY = plan.height - 220;
+    const small = texts.filter((t3) => t3.fontSize != null && t3.fontSize * scale < 9 && t3.y < footerY && (t3.text || "").trim().length > 12);
+    if (small.length) {
+      penalty += Math.min(12, small.length * 3);
+      const minPx = Math.ceil(9 / scale);
+      out.push({ id: "text-small", level: "tip", title: `${small.length} \u0111o\u1EA1n ch\u1EEF s\u1EBD nh\u1ECF h\u01A1n 9px tr\xEAn \u0111i\u1EC7n tho\u1EA1i`, detail: `Email l\xE0 \u1EA3nh n\xEAn ch\u1EEF b\u1ECB thu c\xF2n ${(scale * 100).toFixed(0)}% tr\xEAn m\xE0n 375px. N\u1ED9i dung ch\xEDnh n\xEAn \u2265 ${minPx}px, ho\u1EB7c l\xE0m b\u1EA3n mobile ri\xEAng (footer kh\xF4ng t\xEDnh).`, nodeId: small[0].id, action: { kind: "focus", nodeId: small[0].id } });
+    } else if (texts.length) out.push({ id: "text-small", level: "good", title: "Ch\u1EEF \u0111\u1EE7 to tr\xEAn mobile", detail: "N\u1ED9i dung ch\xEDnh \u2265 9px sau khi thu v\u1EC1 375px." });
+    if (plan.height > 2500) {
+      penalty += 5;
+      out.push({ id: "length", level: "tip", title: `Email cao ${plan.height}px`, detail: "Sau ~2500px t\u1EC9 l\u1EC7 cu\u1ED9n gi\u1EA3m m\u1EA1nh. C\u1EAFt b\u1EDBt ho\u1EB7c chuy\u1EC3n ph\u1EA7n ph\u1EE5 sang landing page." });
+    }
+    const hero = images.filter((n2) => n2.w >= plan.width * 0.8).sort((a3, b2) => a3.y - b2.y)[0];
+    if (hero && hero.h > 700) {
+      penalty += 5;
+      out.push({ id: "hero-tall", level: "tip", title: `\u1EA2nh hero cao ${Math.round(hero.h)}px`, detail: "Hero qu\xE1 cao \u0111\u1EA9y n\u1ED9i dung v\xE0 CTA xu\u1ED1ng d\u01B0\u1EDBi fold. N\xEAn \u2264 500\u2013600px.", nodeId: hero.id, action: { kind: "focus", nodeId: hero.id } });
+    }
+    const bottom = texts.filter((t3) => t3.y + t3.h > plan.height - 260);
+    const hasFooter = bottom.some((t3) => FOOTER_WORDS.test(t3.text || ""));
+    if (!hasFooter) {
+      out.push({ id: "footer", level: "tip", title: "Ch\u01B0a th\u1EA5y footer (hu\u1EF7 \u0111\u0103ng k\xFD, \u0111\u1ECBa ch\u1EC9)", detail: "N\u1EBFu d\xE1n v\xE0o template c\xF3 brand th\xEC template \u0111\xE3 c\xF3 footer \u2014 b\u1ECF qua. N\u1EBFu t\u1EA1o draft tr\u1EF1c ti\u1EBFp, Mailchimp/Klaviyo y\xEAu c\u1EA7u footer c\xF3 link hu\u1EF7 \u0111\u0103ng k\xFD.", action: { kind: "insert-block", block: "footer" } });
+    }
+    if (!texts.length && images.length) {
+      penalty += 5;
+      out.push({ id: "img-only", level: "tip", title: "Email to\xE0n \u1EA3nh", detail: "Khi \u1EA3nh b\u1ECB ch\u1EB7n, ng\u01B0\u1EDDi \u0111\u1ECDc ch\u1EC9 th\u1EA5y alt text. \u0110i\u1EC1n alt cho m\u1ECDi l\xE1t v\xE0 c\xE2n nh\u1EAFc gi\u1EEF preheader r\xF5 ngh\u0129a." });
+    }
+    let lowContrast = null;
+    for (const t3 of texts) {
+      if (!t3.fill) continue;
+      const bg = backgroundFor(root, t3);
+      if (!bg) continue;
+      const cr = contrastRatio(t3.fill, bg);
+      const big = (t3.fontSize ?? 14) >= 24;
+      if (cr != null && cr < (big ? 3 : 4.5)) {
+        lowContrast = t3;
+        break;
+      }
+    }
+    if (lowContrast) {
+      penalty += 5;
+      out.push({ id: "contrast", level: "tip", title: "C\xF3 ch\u1EEF t\u01B0\u01A1ng ph\u1EA3n th\u1EA5p", detail: `"${(lowContrast.text || "").slice(0, 40)}" kh\xF4ng \u0111\u1EA1t 4.5:1 so v\u1EDBi n\u1EC1n. T\u0103ng t\u01B0\u01A1ng ph\u1EA3n \u0111\u1EC3 \u0111\u1ECDc \u0111\u01B0\u1EE3c d\u01B0\u1EDBi n\u1EAFng v\xE0 v\u1EDBi ng\u01B0\u1EDDi k\xE9m th\u1ECB l\u1EF1c.`, nodeId: lowContrast.id, action: { kind: "focus", nodeId: lowContrast.id } });
+    }
+    if (!fields.subject.trim()) {
+      penalty += 5;
+      out.push({ id: "subject", level: "fix", title: "Ch\u01B0a c\xF3 subject", detail: "C\u1EA7n \u0111\u1EC3 t\u1EA1o draft. 30\u201350 k\xFD t\u1EF1, n\xF3i th\u1EB3ng l\u1EE3i \xEDch.", action: { kind: "set-field", field: "subject" } });
+    } else if (fields.subject.length > 60) out.push({ id: "subject-long", level: "tip", title: `Subject d\xE0i ${fields.subject.length} k\xFD t\u1EF1`, detail: "\u0110i\u1EC7n tho\u1EA1i c\u1EAFt sau ~40\u201350 k\xFD t\u1EF1. \u0110\u01B0a \xFD ch\xEDnh l\xEAn \u0111\u1EA7u.", action: { kind: "set-field", field: "subject" } });
+    if (!fields.preheader.trim()) {
+      penalty += 3;
+      out.push({ id: "preheader", level: "tip", title: "Ch\u01B0a c\xF3 preheader", detail: "D\xF2ng xem tr\u01B0\u1EDBc d\u01B0\u1EDBi subject trong h\u1ED9p th\u01B0. N\u1EBFu b\u1ECF tr\u1ED1ng, h\u1ED9p th\u01B0 s\u1EBD l\u1EA5y alt text c\u1EE7a \u1EA3nh \u0111\u1EA7u.", action: { kind: "set-field", field: "preheader" } });
+    }
+    if (!inp.hasMobile) out.push({ id: "mobile", level: "tip", title: "T\u1EA1o frame mobile", detail: "Phloem s\u1EBD nh\xFAng c\u1EA3 hai b\u1EA3n: \u0111i\u1EC7n tho\u1EA1i nh\u1EADn b\u1EA3n mobile, desktop nh\u1EADn b\u1EA3n g\u1ED1c. Kh\xF4ng b\u1EAFt bu\u1ED9c \u2014 b\u1EA3n g\u1ED1c v\u1EABn scale \u0111\u01B0\u1EE3c.", action: { kind: "create-mobile" } });
+    else out.push({ id: "mobile", level: "good", title: "C\xF3 frame mobile", detail: "\u0110i\u1EC7n tho\u1EA1i s\u1EBD nh\u1EADn b\u1EA3n ri\xEAng." });
+    if (plan.slices.length > 30) {
+      penalty += 5;
+      out.push({ id: "slices", level: "tip", title: `${plan.slices.length} l\xE1t \u1EA3nh`, detail: "M\u1ED7i l\xE1t l\xE0 m\u1ED9t request. L\u01B0\u1EDBi s\u1EA3n ph\u1EA9m d\xE0y l\xE0 b\xECnh th\u01B0\u1EDDng, nh\u01B0ng link l\u1EC7ch h\xE0ng nhau sinh th\xEAm l\xE1t \u2014 c\u0103n c\xE1c \xF4 theo c\xF9ng m\u1ED9t h\xE0ng." });
+    }
+    const score = Math.max(0, Math.min(100, 100 - penalty));
+    const order = { fix: 0, tip: 1, good: 2 };
+    out.sort((a3, b2) => order[a3.level] - order[b2.level]);
+    return { suggestions: out, score };
+  }
+
+  // studio/src/model/types.ts
+  var DEFAULT_BRAND = {
+    primary: "#0F3D2E",
+    onPrimary: "#FFFFFF",
+    ink: "#121512",
+    muted: "#5F6761",
+    bg: "#FFFFFF",
+    soft: "#F3F5F3",
+    line: "#E3E7E4",
+    fontFamily: "Inter",
+    headingFamily: "Inter"
+  };
+  var BRAND_PRESETS = [
+    { name: "Forest", brand: { primary: "#0F3D2E", onPrimary: "#FFFFFF", ink: "#121512", muted: "#5F6761", bg: "#FFFFFF", soft: "#F3F5F3", line: "#E3E7E4" } },
+    { name: "Neon", brand: { primary: "#39FF14", onPrimary: "#04140A", ink: "#E6F4EA", muted: "#8FA796", bg: "#070A08", soft: "#0C120E", line: "#1A2A1E" } },
+    { name: "Coral", brand: { primary: "#E8553D", onPrimary: "#FFFFFF", ink: "#1C1917", muted: "#6B645F", bg: "#FFFBF7", soft: "#FDF1EB", line: "#F0E4DC" } },
+    { name: "Ocean", brand: { primary: "#0E4C92", onPrimary: "#FFFFFF", ink: "#0B1B2B", muted: "#5B6B7A", bg: "#FFFFFF", soft: "#EEF4FA", line: "#D9E4EF" } },
+    { name: "Mono", brand: { primary: "#111111", onPrimary: "#FFFFFF", ink: "#111111", muted: "#666666", bg: "#FFFFFF", soft: "#F4F4F4", line: "#E5E5E5" } },
+    { name: "Plum", brand: { primary: "#5B2A86", onPrimary: "#FFFFFF", ink: "#1E1225", muted: "#6F6378", bg: "#FFFFFF", soft: "#F5EFFA", line: "#E7DDF0" } }
+  ];
+  var FONTS = [
+    { family: "Inter", label: "Inter", google: "Inter:wght@400;500;600;700;800" },
+    { family: "Be Vietnam Pro", label: "Be Vietnam Pro", google: "Be+Vietnam+Pro:wght@400;500;600;700;800" },
+    { family: "Roboto", label: "Roboto", google: "Roboto:wght@400;500;700;900" },
+    { family: "Montserrat", label: "Montserrat", google: "Montserrat:wght@400;500;600;700;800" },
+    { family: "Playfair Display", label: "Playfair Display", google: "Playfair+Display:wght@400;600;700;800" },
+    { family: "Lora", label: "Lora", google: "Lora:wght@400;500;600;700" },
+    { family: "DM Sans", label: "DM Sans", google: "DM+Sans:wght@400;500;600;700" },
+    { family: "Space Grotesk", label: "Space Grotesk", google: "Space+Grotesk:wght@400;500;600;700" },
+    { family: "Helvetica", label: "Helvetica / Arial" },
+    { family: "Georgia", label: "Georgia" },
+    { family: "Courier New", label: "Courier" }
+  ];
+  function uid(prefix = "n") {
+    return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  }
+  function resolveColor(c3, brand2) {
+    if (c3 == null) return null;
+    if (typeof c3 === "string") return c3;
+    return brand2[c3.token];
+  }
+
+  // studio/src/model/ops.ts
+  function union(a3, b2) {
+    if (!a3) return { ...b2 };
+    const x2 = Math.min(a3.x, b2.x), y3 = Math.min(a3.y, b2.y);
+    return { x: x2, y: y3, w: Math.max(a3.x + a3.w, b2.x + b2.w) - x2, h: Math.max(a3.y + a3.h, b2.y + b2.h) - y3 };
+  }
+  function intersects(a3, b2) {
+    return a3.x < b2.x + b2.w && a3.x + a3.w > b2.x && a3.y < b2.y + b2.h && a3.y + a3.h > b2.y;
+  }
+  function containsPt(r3, px, py) {
+    return px >= r3.x && px <= r3.x + r3.w && py >= r3.y && py <= r3.y + r3.h;
+  }
+  function bounds(n2) {
+    if (n2.type === "group") {
+      let r3 = null;
+      for (const c3 of n2.children) r3 = union(r3, bounds(c3));
+      return r3 ?? { x: n2.x, y: n2.y, w: 0, h: 0 };
+    }
+    return { x: n2.x, y: n2.y, w: n2.w, h: n2.h };
+  }
+  function syncGroup(g2) {
+    const b2 = bounds(g2);
+    if (g2.x === b2.x && g2.y === b2.y && g2.w === b2.w && g2.h === b2.h) return g2;
+    return { ...g2, ...b2 };
+  }
+  function flat(nodes) {
+    const out = [];
+    const walk = (list) => {
+      for (const n2 of list) {
+        out.push(n2);
+        if (n2.type === "group") walk(n2.children);
+      }
+    };
+    walk(nodes);
+    return out;
+  }
+  function findNode(doc2, id) {
+    for (const n2 of flat(doc2.nodes)) if (n2.id === id) return n2;
+    return null;
+  }
+  function findParent(doc2, id) {
+    let found = null;
+    const walk = (list, parent) => {
+      for (const n2 of list) {
+        if (n2.id === id) {
+          found = parent;
+          return true;
+        }
+        if (n2.type === "group" && walk(n2.children, n2)) return true;
+      }
+      return false;
+    };
+    walk(doc2.nodes, null);
+    return found;
+  }
+  function topLevelOf(doc2, id) {
+    for (const n2 of doc2.nodes) if (n2.id === id || n2.type === "group" && flat(n2.children).some((c3) => c3.id === id)) return n2;
+    return null;
+  }
+  function mapNodes(doc2, fn) {
+    let changed = false;
+    const walk = (list) => {
+      let out = null;
+      list.forEach((n2, i4) => {
+        let m2 = n2;
+        if (n2.type === "group") {
+          const kids = walk(n2.children);
+          if (kids !== n2.children) m2 = syncGroup({ ...n2, children: kids });
+        }
+        m2 = fn(m2);
+        if (m2.type === "group") m2 = syncGroup(m2);
+        if (m2 !== n2) {
+          if (!out) out = list.slice();
+          out[i4] = m2;
+          changed = true;
+        }
+      });
+      return out ?? list;
+    };
+    const nodes = walk(doc2.nodes);
+    return changed ? { ...doc2, nodes } : doc2;
+  }
+  function updateNode(doc2, id, patch) {
+    return mapNodes(doc2, (n2) => n2.id === id ? typeof patch === "function" ? patch(n2) : { ...n2, ...patch } : n2);
+  }
+  function updateNodes(doc2, ids, fn) {
+    const set2 = new Set(ids);
+    return mapNodes(doc2, (n2) => set2.has(n2.id) ? fn(n2) : n2);
+  }
+  function removeNodes(doc2, ids) {
+    const set2 = new Set(ids);
+    const walk = (list) => list.filter((n2) => !set2.has(n2.id)).map((n2) => n2.type === "group" ? syncGroup({ ...n2, children: walk(n2.children) }) : n2).filter((n2) => n2.type !== "group" || n2.children.length);
+    return { ...doc2, nodes: walk(doc2.nodes) };
+  }
+  function insertNodes(doc2, nodes, index = doc2.nodes.length) {
+    const list = doc2.nodes.slice();
+    list.splice(index, 0, ...nodes);
+    return { ...doc2, nodes: list };
+  }
+  function shift(n2, dx, dy) {
+    if (n2.type === "group") return { ...n2, x: n2.x + dx, y: n2.y + dy, children: n2.children.map((c3) => shift(c3, dx, dy)) };
+    return { ...n2, x: n2.x + dx, y: n2.y + dy };
+  }
+  function moveBy(doc2, ids, dx, dy) {
+    if (!dx && !dy) return doc2;
+    const set2 = new Set(ids);
+    const walk = (list) => list.map((n2) => set2.has(n2.id) ? shift(n2, dx, dy) : n2.type === "group" ? syncGroup({ ...n2, children: walk(n2.children) }) : n2);
+    return { ...doc2, nodes: walk(doc2.nodes) };
+  }
+  function fitTo(n2, to, scaleText = true) {
+    const from = bounds(n2);
+    const sx = from.w ? to.w / from.w : 1, sy = from.h ? to.h / from.h : 1;
+    const map = (m2) => {
+      const x2 = to.x + (m2.x - from.x) * sx, y3 = to.y + (m2.y - from.y) * sy, w3 = m2.w * sx, h3 = m2.h * sy;
+      if (m2.type === "group") return syncGroup({ ...m2, children: m2.children.map(map) });
+      if (m2.type === "text") {
+        const fs = scaleText && Math.abs(sx - sy) < 0.02 ? Math.max(6, Math.round(m2.fontSize * sx * 10) / 10) : m2.fontSize;
+        return { ...m2, x: x2, y: y3, w: w3, h: h3, fontSize: fs };
+      }
+      if (m2.type === "rect") return { ...m2, x: x2, y: y3, w: w3, h: h3, radius: Math.round(m2.radius * Math.min(sx, sy)) };
+      return { ...m2, x: x2, y: y3, w: w3, h: h3 };
+    };
+    return map(n2);
+  }
+  function resizeTo(doc2, id, to, scaleText = true) {
+    return updateNode(doc2, id, (n2) => fitTo(n2, { x: to.x, y: to.y, w: Math.max(1, to.w), h: Math.max(1, to.h) }, scaleText));
+  }
+  function cloneNode(n2) {
+    const c3 = { ...n2, id: uid() };
+    if (c3.type === "group") c3.children = n2.children.map(cloneNode);
+    return c3;
+  }
+  function duplicate(doc2, ids, dx = 16, dy = 16) {
+    const picked = doc2.nodes.filter((n2) => ids.includes(n2.id));
+    const clones = picked.map((n2) => shift(cloneNode(n2), dx, dy));
+    let nodes = doc2.nodes.slice();
+    for (let i4 = picked.length - 1; i4 >= 0; i4--) {
+      const idx = nodes.indexOf(picked[i4]);
+      nodes.splice(idx + 1, 0, clones[i4]);
+    }
+    return { doc: { ...doc2, nodes }, ids: clones.map((c3) => c3.id) };
+  }
+  function group(doc2, ids, name = "Group") {
+    const members = doc2.nodes.filter((n2) => ids.includes(n2.id));
+    if (members.length < 1) return { doc: doc2, id: "" };
+    const idx = doc2.nodes.indexOf(members[members.length - 1]);
+    const g2 = syncGroup({ id: uid("g"), type: "group", name, x: 0, y: 0, w: 0, h: 0, visible: true, locked: false, opacity: 1, link: null, alt: "", children: members });
+    const nodes = doc2.nodes.filter((n2) => !ids.includes(n2.id));
+    const insertAt = Math.min(idx - (members.length - 1), nodes.length);
+    nodes.splice(Math.max(0, insertAt), 0, g2);
+    return { doc: { ...doc2, nodes }, id: g2.id };
+  }
+  function ungroup(doc2, id) {
+    const walk = (list) => {
+      let ids = [];
+      const out = [];
+      for (const n2 of list) {
+        if (n2.id === id && n2.type === "group") {
+          out.push(...n2.children);
+          ids = n2.children.map((c3) => c3.id);
+        } else if (n2.type === "group") {
+          const r4 = walk(n2.children);
+          ids = ids.concat(r4.ids);
+          out.push(syncGroup({ ...n2, children: r4.list }));
+        } else out.push(n2);
+      }
+      return { list: out, ids };
+    };
+    const r3 = walk(doc2.nodes);
+    return { doc: { ...doc2, nodes: r3.list }, ids: r3.ids };
+  }
+  function reorder(doc2, id, dir) {
+    const walk = (list) => {
+      const i4 = list.findIndex((n3) => n3.id === id);
+      if (i4 < 0) return list.map((n3) => n3.type === "group" ? { ...n3, children: walk(n3.children) } : n3);
+      const out = list.slice();
+      const [n2] = out.splice(i4, 1);
+      const j3 = dir === "up" ? Math.min(out.length, i4 + 1) : dir === "down" ? Math.max(0, i4 - 1) : dir === "top" ? out.length : 0;
+      out.splice(j3, 0, n2);
+      return out;
+    };
+    return { ...doc2, nodes: walk(doc2.nodes) };
+  }
+  function selectionBounds(doc2, ids) {
+    let r3 = null;
+    for (const id of ids) {
+      const n2 = findNode(doc2, id);
+      if (n2 && n2.visible) r3 = union(r3, bounds(n2));
+    }
+    return r3;
+  }
+  function align(doc2, ids, how) {
+    const nodes = ids.map((id) => findNode(doc2, id)).filter((n2) => !!n2);
+    if (!nodes.length) return doc2;
+    const ref = nodes.length === 1 ? { x: 0, y: 0, w: doc2.width, h: doc2.height } : selectionBounds(doc2, ids);
+    let out = doc2;
+    for (const n2 of nodes) {
+      const b2 = bounds(n2);
+      let dx = 0, dy = 0;
+      if (how === "left") dx = ref.x - b2.x;
+      if (how === "hcenter") dx = ref.x + ref.w / 2 - (b2.x + b2.w / 2);
+      if (how === "right") dx = ref.x + ref.w - (b2.x + b2.w);
+      if (how === "top") dy = ref.y - b2.y;
+      if (how === "vcenter") dy = ref.y + ref.h / 2 - (b2.y + b2.h / 2);
+      if (how === "bottom") dy = ref.y + ref.h - (b2.y + b2.h);
+      out = moveBy(out, [n2.id], Math.round(dx), Math.round(dy));
+    }
+    return out;
+  }
+  function distribute(doc2, ids, axis) {
+    const nodes = ids.map((id) => findNode(doc2, id)).filter((n2) => !!n2);
+    if (nodes.length < 3) return doc2;
+    const bs = nodes.map((n2) => ({ n: n2, b: bounds(n2) })).sort((a3, b2) => axis === "h" ? a3.b.x - b2.b.x : a3.b.y - b2.b.y);
+    const first = bs[0].b, last = bs[bs.length - 1].b;
+    const total = axis === "h" ? last.x + last.w - first.x : last.y + last.h - first.y;
+    const sizes = bs.reduce((a3, { b: b2 }) => a3 + (axis === "h" ? b2.w : b2.h), 0);
+    const gap = (total - sizes) / (bs.length - 1);
+    let out = doc2, cursor = axis === "h" ? first.x : first.y;
+    for (const { n: n2, b: b2 } of bs) {
+      const target = Math.round(cursor);
+      out = moveBy(out, [n2.id], axis === "h" ? target - b2.x : 0, axis === "v" ? target - b2.y : 0);
+      cursor += (axis === "h" ? b2.w : b2.h) + gap;
+    }
+    return out;
+  }
+  function hitTest(doc2, px, py, within = null, deep = false) {
+    const list = within ? within.children : doc2.nodes;
+    for (let i4 = list.length - 1; i4 >= 0; i4--) {
+      const n2 = list[i4];
+      if (!n2.visible || n2.locked) continue;
+      if (!containsPt(bounds(n2), px, py)) continue;
+      if (n2.type === "group") {
+        const inner = hitTest(doc2, px, py, n2, deep);
+        if (!inner) continue;
+        return deep ? inner : n2;
+      }
+      return n2;
+    }
+    return null;
+  }
+  function nodesInRect(doc2, r3) {
+    return doc2.nodes.filter((n2) => n2.visible && !n2.locked && intersects(bounds(n2), r3)).map((n2) => n2.id);
+  }
+  function contentHeight(doc2) {
+    let h3 = 0;
+    for (const n2 of doc2.nodes) {
+      const b2 = bounds(n2);
+      h3 = Math.max(h3, b2.y + b2.h);
+    }
+    return Math.round(h3);
+  }
+  function roundAll(doc2) {
+    return mapNodes(doc2, (n2) => {
+      if (n2.type === "group") return n2;
+      const x2 = Math.round(n2.x), y3 = Math.round(n2.y), w3 = Math.max(1, Math.round(n2.w)), h3 = Math.max(1, Math.round(n2.h));
+      return x2 === n2.x && y3 === n2.y && w3 === n2.w && h3 === n2.h ? n2 : { ...n2, x: x2, y: y3, w: w3, h: h3 };
+    });
+  }
+  function reflowBlocks(doc2, gap = 0) {
+    const ordered = doc2.nodes.map((n2, i4) => ({ n: n2, i: i4, b: bounds(n2) })).sort((a3, b2) => a3.b.y - b2.b.y || a3.i - b2.i);
+    let y3 = 0, out = doc2;
+    for (const { n: n2, b: b2 } of ordered) {
+      if (!n2.block) {
+        y3 = Math.max(y3, b2.y + b2.h);
+        continue;
+      }
+      out = moveBy(out, [n2.id], 0, Math.round(y3 - b2.y));
+      y3 += b2.h + gap;
+    }
+    return { ...out, height: Math.max(contentHeight(out), 1) };
+  }
+  function setDocWidth(doc2, width) {
+    if (width === doc2.width) return doc2;
+    const s3 = width / doc2.width;
+    const nodes = doc2.nodes.map((n2) => fitTo(n2, { x: bounds(n2).x * s3, y: bounds(n2).y * s3, w: bounds(n2).w * s3, h: bounds(n2).h * s3 }, true));
+    return roundAll({ ...doc2, width, height: Math.round(doc2.height * s3), nodes });
+  }
+  function makeMobile(doc2, width = 375) {
+    const m2 = setDocWidth(doc2, width);
+    return mapNodes(m2, (n2) => n2.type === "text" && n2.fontSize < 13 ? { ...n2, fontSize: 13 } : n2);
+  }
+  function setHeightFlow(doc2, id, newH) {
+    const n2 = findNode(doc2, id);
+    if (!n2) return doc2;
+    const delta = Math.round(newH - n2.h);
+    if (!delta) return doc2;
+    const oldBottom = n2.y + n2.h;
+    const parent = findParent(doc2, id);
+    let out = updateNode(doc2, id, { h: newH });
+    const parentOldBottom = parent ? parent.y + parent.h : oldBottom;
+    if (parent) {
+      for (const s3 of parent.children) {
+        if (s3.id === id) continue;
+        const isBg = s3.type === "rect" && s3.y <= n2.y && s3.y + s3.h >= oldBottom - 1 && s3.w >= parent.w * 0.9 && s3.h >= parent.h * 0.9;
+        if (isBg) out = updateNode(out, s3.id, { h: Math.max(1, s3.h + delta) });
+        else if (s3.y >= oldBottom - 1) out = moveBy(out, [s3.id], 0, delta);
+      }
+    }
+    const top = parent ? topLevelOf(doc2, id) : null;
+    const below = doc2.nodes.filter((t3) => t3.id !== id && (!top || t3.id !== top.id) && bounds(t3).y >= parentOldBottom - 1).map((t3) => t3.id);
+    if (below.length) out = moveBy(out, below, 0, delta);
+    const ch = contentHeight(out);
+    if (ch > out.height || delta < 0 && out.height - ch < 4) out = { ...out, height: Math.max(100, ch) };
+    return out;
+  }
+
+  // studio/src/render/textLayout.ts
+  var measureCtx = null;
+  function mctx() {
+    if (!measureCtx) {
+      const c3 = document.createElement("canvas");
+      measureCtx = c3.getContext("2d");
+    }
+    return measureCtx;
+  }
+  var GENERIC = {
+    Helvetica: "Helvetica, Arial, sans-serif",
+    Georgia: 'Georgia, "Times New Roman", serif',
+    "Courier New": '"Courier New", Courier, monospace'
+  };
+  function fontStack(family) {
+    if (GENERIC[family]) return GENERIC[family];
+    return `"${family}", Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+  }
+  function fontString(n2, brand2, scale = 1) {
+    const fam = n2.fontFamily === "brand" ? brand2.fontFamily : n2.fontFamily === "heading" ? brand2.headingFamily : n2.fontFamily;
+    return `${n2.italic ? "italic " : ""}${n2.fontWeight} ${n2.fontSize * scale}px ${fontStack(fam)}`;
+  }
+  function layoutText(n2, brand2, ctx = mctx(), scale = 1) {
+    const font = fontString(n2, brand2, scale);
+    ctx.font = font;
+    try {
+      ctx.letterSpacing = `${n2.letterSpacing * scale}px`;
+    } catch {
+    }
+    const maxW = Math.max(1, n2.w * scale);
+    const lines = [];
+    const measure = (s3) => ctx.measureText(s3).width + (n2.letterSpacing ? n2.letterSpacing * scale * s3.length : 0);
+    for (const para of n2.text.split("\n")) {
+      if (!para) {
+        lines.push({ text: "", width: 0 });
+        continue;
+      }
+      const words = para.split(/(\s+)/).filter((w3) => w3.length);
+      let cur = "";
+      for (const w3 of words) {
+        const test = cur + w3;
+        if (cur && measure(test) > maxW && !/^\s+$/.test(w3)) {
+          lines.push({ text: cur.replace(/\s+$/, ""), width: measure(cur.replace(/\s+$/, "")) });
+          cur = /^\s+$/.test(w3) ? "" : w3;
+          while (measure(cur) > maxW && cur.length > 1) {
+            let cut = cur.length - 1;
+            while (cut > 1 && measure(cur.slice(0, cut)) > maxW) cut--;
+            lines.push({ text: cur.slice(0, cut), width: measure(cur.slice(0, cut)) });
+            cur = cur.slice(cut);
+          }
+        } else cur = test;
+      }
+      lines.push({ text: cur.replace(/\s+$/, ""), width: measure(cur.replace(/\s+$/, "")) });
+    }
+    const lineHeight = n2.fontSize * n2.lineHeight * scale;
+    return { lines, lineHeight, height: lines.length * lineHeight, font };
+  }
+  function textHeight(n2, brand2) {
+    return Math.ceil(layoutText(n2, brand2).height);
+  }
+
+  // studio/src/model/templates.ts
+  var W = 600;
+  var PAD = 24;
+  var base = (name) => ({ id: uid(), name, visible: true, locked: true, opacity: 1, link: null, alt: "" });
+  function text(brand2, t3, o3) {
+    const n2 = {
+      ...base(o3.name ?? t3.slice(0, 24)),
+      type: "text",
+      locked: false,
+      text: t3,
+      h: 0,
+      fontFamily: o3.fontFamily ?? "brand",
+      fontSize: o3.fontSize ?? 15,
+      fontWeight: o3.fontWeight ?? 400,
+      italic: false,
+      underline: false,
+      color: o3.color ?? { token: "ink" },
+      align: o3.align ?? "left",
+      lineHeight: o3.lineHeight ?? 1.45,
+      letterSpacing: o3.letterSpacing ?? 0,
+      autoHeight: true,
+      vAlign: "top",
+      ...o3
+    };
+    n2.h = o3.h ?? textHeight(n2, brand2);
+    return n2;
+  }
+  function rect(o3) {
+    return { ...base(o3.name ?? "Rectangle"), type: "rect", locked: false, fill: { token: "soft" }, stroke: null, radius: 0, ...o3 };
+  }
+  function image(o3) {
+    return { ...base(o3.name ?? "Image"), type: "image", locked: false, assetId: null, fit: "cover", radius: 0, fill: null, overlay: null, ...o3 };
+  }
+  function group2(name, children, extra = {}) {
+    return syncGroup({ ...base(name), type: "group", locked: false, x: 0, y: 0, w: 0, h: 0, children, ...extra });
+  }
+  function button(brand2, label, url, x2, y3, o3 = {}) {
+    const fs = o3.fontSize ?? 15;
+    const probe = text(brand2, label, { x: 0, y: 0, w: 400, fontSize: fs, fontWeight: 600, name: label });
+    const wText = Math.min(400, Math.ceil(measureWidth(brand2, probe)));
+    const w3 = o3.w ?? wText + 56, h3 = o3.h ?? 48;
+    const bg = rect({ x: x2, y: y3, w: w3, h: h3, fill: { token: "primary" }, radius: o3.radius ?? 6, name: "Button bg" });
+    const t3 = text(brand2, label, { x: x2, y: y3, w: w3, h: h3, fontSize: fs, fontWeight: 600, color: { token: "onPrimary" }, align: "center", autoHeight: false, vAlign: "middle", name: label });
+    return group2(`Button \xB7 ${label}`, [bg, t3], { link: url, alt: label });
+  }
+  function measureWidth(brand2, n2) {
+    return Math.max(...layoutText({ ...n2, w: 1e4 }, brand2).lines.map((l3) => l3.width), 10);
+  }
+  var BLOCKS = [
+    { kind: "nav", name: "Nav", desc: "Logo + 3 link" },
+    { kind: "hero", name: "Hero", desc: "\u1EA2nh l\u1EDBn, ti\xEAu \u0111\u1EC1, CTA" },
+    { kind: "text", name: "Text", desc: "Ti\xEAu \u0111\u1EC1 + \u0111o\u1EA1n" },
+    { kind: "cta", name: "CTA", desc: "N\xFAt ch\xEDnh gi\u1EEFa" },
+    { kind: "products-2", name: "S\u1EA3n ph\u1EA9m \xD72", desc: "2 c\u1ED9t, m\u1ED7i \xF4 1 link" },
+    { kind: "products-3", name: "S\u1EA3n ph\u1EA9m \xD73", desc: "3 c\u1ED9t, m\u1ED7i \xF4 1 link" },
+    { kind: "feature-row", name: "\u1EA2nh + ch\u1EEF", desc: "\u1EA2nh tr\xE1i, n\u1ED9i dung ph\u1EA3i" },
+    { kind: "divider", name: "Divider", desc: "\u0110\u01B0\u1EDDng k\u1EBB m\u1EA3nh" },
+    { kind: "spacer", name: "Spacer", desc: "Kho\u1EA3ng tr\u1ED1ng 24px" },
+    { kind: "footer", name: "Footer", desc: "\u0110\u1ECBa ch\u1EC9, hu\u1EF7 \u0111\u0103ng k\xFD" }
+  ];
+  function makeBlock(kind, brand2, y3) {
+    const kids = [];
+    let h3 = 0;
+    const bgRect = (hh, fill = { token: "bg" }) => rect({ x: 0, y: y3, w: W, h: hh, fill, name: "Block bg" });
+    switch (kind) {
+      case "nav": {
+        h3 = 64;
+        kids.push(bgRect(h3));
+        kids.push(text(brand2, "BRAND", { x: PAD, y: y3 + 21, w: 120, fontSize: 18, fontWeight: 800, letterSpacing: 1, name: "Logo", link: "https://example.com" }));
+        const links = ["S\u1EA3n ph\u1EA9m", "B\u1ED9 s\u01B0u t\u1EADp", "V\u1EC1 ch\xFAng t\xF4i"];
+        let x2 = W - PAD;
+        for (let i4 = links.length - 1; i4 >= 0; i4--) {
+          const t3 = text(brand2, links[i4], { x: 0, y: y3 + 23, w: 120, fontSize: 14, color: { token: "muted" }, align: "right", name: links[i4], link: `https://example.com/${["shop", "collections", "about"][i4]}` });
+          const tw = Math.ceil(measureWidth(brand2, t3)) + 2;
+          t3.w = tw;
+          t3.x = x2 - tw;
+          x2 -= tw + 22;
+          kids.push(t3);
+        }
+        break;
+      }
+      case "hero": {
+        const imgH = 340;
+        kids.push(image({ x: 0, y: y3, w: W, h: imgH, name: "Hero image", alt: "\u1EA2nh ch\u1EE7 \u0111\u1EC1 c\u1EE7a email", link: "https://example.com/shop" }));
+        const head = text(brand2, "Ti\xEAu \u0111\u1EC1 l\u1EDBn, n\xF3i th\u1EB3ng l\u1EE3i \xEDch", { x: PAD, y: y3 + imgH + 32, w: W - PAD * 2, fontSize: 30, fontWeight: 800, lineHeight: 1.2, fontFamily: "heading", name: "Headline" });
+        const sub = text(brand2, "M\u1ED9t c\xE2u ph\u1EE5 gi\u1EA3i th\xEDch v\xEC sao ng\u01B0\u1EDDi \u0111\u1ECDc n\xEAn quan t\xE2m h\xF4m nay. Ng\u1EAFn, c\u1EE5 th\u1EC3, c\xF3 h\u1EA1n.", { x: PAD, y: head.y + head.h + 12, w: W - PAD * 2, fontSize: 16, color: { token: "muted" }, lineHeight: 1.5, name: "Subhead" });
+        const btn = button(brand2, "Kh\xE1m ph\xE1 ngay", "https://example.com/shop", PAD, sub.y + sub.h + 20);
+        h3 = btn.y + btn.h + 36 - y3;
+        kids.unshift(bgRect(h3));
+        kids.push(head, sub, btn);
+        break;
+      }
+      case "text": {
+        const head = text(brand2, "Ti\xEAu \u0111\u1EC1 ph\u1EA7n", { x: PAD, y: y3 + 24, w: W - PAD * 2, fontSize: 22, fontWeight: 700, lineHeight: 1.3, fontFamily: "heading", name: "Heading" });
+        const body = text(brand2, "\u0110o\u1EA1n n\u1ED9i dung. Gi\u1EEF 2\u20134 d\xF2ng, m\u1ED7i d\xF2ng m\u1ED9t \xFD. Email l\xE0 \u1EA3nh n\xEAn c\u1EE1 ch\u1EEF t\u1EEB 14px tr\u1EDF l\xEAn \u0111\u1EC3 \u0111\u1ECDc \u0111\u01B0\u1EE3c tr\xEAn \u0111i\u1EC7n tho\u1EA1i.", { x: PAD, y: head.y + head.h + 10, w: W - PAD * 2, fontSize: 15, lineHeight: 1.6, name: "Paragraph" });
+        h3 = body.y + body.h + 24 - y3;
+        kids.push(bgRect(h3), head, body);
+        break;
+      }
+      case "cta": {
+        const btn = button(brand2, "Mua ngay", "https://example.com/shop", 0, y3 + 12);
+        btn.x = Math.round((W - btn.w) / 2);
+        const dx = btn.x - btn.children[0].x;
+        btn.children.forEach((c3) => {
+          c3.x += dx;
+        });
+        h3 = btn.h + 24;
+        kids.push(bgRect(h3), syncGroup(btn));
+        break;
+      }
+      case "products-2":
+      case "products-3": {
+        const n2 = kind === "products-3" ? 3 : 2;
+        const gap = 24, inner = W - PAD * 2, cw = Math.floor((inner - gap * (n2 - 1)) / n2);
+        const cards = [];
+        let bottom = y3;
+        for (let i4 = 0; i4 < n2; i4++) {
+          const x2 = PAD + i4 * (cw + gap);
+          const url = `https://example.com/products/item-${i4 + 1}`;
+          const img = image({ x: x2, y: y3 + 16, w: cw, h: cw, radius: 6, name: `Product image ${i4 + 1}`, alt: `S\u1EA3n ph\u1EA9m ${i4 + 1}` });
+          const name = text(brand2, `T\xEAn s\u1EA3n ph\u1EA9m ${i4 + 1}`, { x: x2, y: img.y + img.h + 10, w: cw, fontSize: 15, fontWeight: 600, name: "Name" });
+          const price = text(brand2, "450.000\u20AB", { x: x2, y: name.y + name.h + 4, w: cw, fontSize: 14, color: { token: "muted" }, name: "Price" });
+          bottom = Math.max(bottom, price.y + price.h);
+          cards.push(group2(`Product ${i4 + 1}`, [img, name, price], { link: url, alt: `S\u1EA3n ph\u1EA9m ${i4 + 1} \u2014 450.000\u20AB` }));
+        }
+        h3 = bottom + 16 - y3;
+        kids.push(bgRect(h3), ...cards);
+        break;
+      }
+      case "feature-row": {
+        const imgW = 264, imgH = 200;
+        const img = image({ x: PAD, y: y3 + 16, w: imgW, h: imgH, radius: 6, name: "Feature image", alt: "Minh ho\u1EA1 t\xEDnh n\u0103ng" });
+        const cx = PAD + imgW + 24, cwid = W - PAD - cx;
+        const head = text(brand2, "\u0110i\u1EC3m n\u1ED5i b\u1EADt", { x: cx, y: y3 + 24, w: cwid, fontSize: 19, fontWeight: 700, lineHeight: 1.3, fontFamily: "heading", name: "Heading" });
+        const body = text(brand2, "Hai d\xF2ng m\xF4 t\u1EA3. N\xF3i k\u1EBFt qu\u1EA3 ng\u01B0\u1EDDi d\xF9ng nh\u1EADn \u0111\u01B0\u1EE3c, kh\xF4ng n\xF3i t\xEDnh n\u0103ng.", { x: cx, y: head.y + head.h + 8, w: cwid, fontSize: 14, color: { token: "muted" }, lineHeight: 1.55, name: "Body" });
+        const more = text(brand2, "Xem th\xEAm \u2192", { x: cx, y: body.y + body.h + 10, w: cwid, fontSize: 14, fontWeight: 600, color: { token: "primary" }, name: "Link", link: "https://example.com/feature" });
+        h3 = Math.max(img.y + img.h, more.y + more.h) + 16 - y3;
+        kids.push(bgRect(h3), img, head, body, more);
+        break;
+      }
+      case "divider": {
+        h3 = 33;
+        kids.push(bgRect(h3), rect({ x: PAD, y: y3 + 16, w: W - PAD * 2, h: 1, fill: { token: "line" }, name: "Line" }));
+        break;
+      }
+      case "spacer": {
+        h3 = 24;
+        kids.push(bgRect(h3));
+        break;
+      }
+      case "footer": {
+        const brandT = text(brand2, "BRAND", { x: PAD, y: y3 + 28, w: W - PAD * 2, fontSize: 13, fontWeight: 700, letterSpacing: 1, align: "center", name: "Brand" });
+        const addr = text(brand2, "123 \u0110\u01B0\u1EDDng L\xEA L\u1EE3i, Qu\u1EADn 1, TP.HCM \xB7 hello@example.com", { x: PAD, y: brandT.y + brandT.h + 8, w: W - PAD * 2, fontSize: 12, color: { token: "muted" }, align: "center", name: "Address" });
+        const unsub = text(brand2, "Hu\u1EF7 \u0111\u0103ng k\xFD", { x: 0, y: addr.y + addr.h + 10, w: 90, fontSize: 12, color: { token: "muted" }, align: "right", underline: true, name: "Unsubscribe", link: "https://example.com/unsubscribe" });
+        const prefs = text(brand2, "C\u1EADp nh\u1EADt th\xF4ng tin", { x: 0, y: unsub.y, w: 120, fontSize: 12, color: { token: "muted" }, align: "left", underline: true, name: "Preferences", link: "https://example.com/preferences" });
+        const uw = Math.ceil(measureWidth(brand2, unsub)) + 2, pw = Math.ceil(measureWidth(brand2, prefs)) + 2;
+        unsub.w = uw;
+        prefs.w = pw;
+        const total = uw + 20 + pw;
+        unsub.x = Math.round((W - total) / 2);
+        prefs.x = unsub.x + uw + 20;
+        h3 = unsub.y + unsub.h + 28 - y3;
+        kids.push(bgRect(h3, { token: "soft" }), brandT, addr, unsub, prefs);
+        break;
+      }
+    }
+    const g2 = group2(BLOCKS.find((b2) => b2.kind === kind)?.name ?? kind, kids, { block: kind });
+    return g2;
+  }
+  var TEMPLATES = [
+    { kind: "newsletter", name: "Newsletter", desc: "Nav \xB7 hero \xB7 b\xE0i vi\u1EBFt \xB7 CTA \xB7 footer", blocks: ["nav", "hero", "text", "feature-row", "divider", "feature-row", "cta", "footer"], fields: { campaignName: "Newsletter", subject: "Th\xE1ng n\xE0y c\xF3 g\xEC m\u1EDBi", preheader: "3 \u0111i\u1EC1u \u0111\xE1ng xem trong 2 ph\xFAt" } },
+    { kind: "product-grid", name: "Product grid", desc: "L\u01B0\u1EDBi 3 c\u1ED9t \xD72, m\u1ED7i \xF4 m\u1ED9t link", blocks: ["nav", "hero", "products-3", "products-3", "cta", "footer"], fields: { campaignName: "H\xE0ng m\u1EDBi v\u1EC1", subject: "H\xE0ng m\u1EDBi v\u1EC1 \u2014 ch\u1ECDn tr\u01B0\u1EDBc khi h\u1EBFt", preheader: "6 s\u1EA3n ph\u1EA9m v\u1EEBa l\xEAn k\u1EC7" } },
+    { kind: "promo", name: "Promo / Sale", desc: "Hero l\u1EDBn, 2 s\u1EA3n ph\u1EA9m, CTA", blocks: ["nav", "hero", "products-2", "cta", "footer"], fields: { campaignName: "Promo cu\u1ED1i tu\u1EA7n", subject: "Gi\u1EA3m 30% \u0111\u1EBFn h\u1EBFt Ch\u1EE7 nh\u1EADt", preheader: "M\xE3 PHLOEM30 \xB7 Freeship to\xE0n qu\u1ED1c" } },
+    { kind: "welcome", name: "Welcome", desc: "Ch\xE0o m\u1EEBng + \u01B0u \u0111\xE3i \u0111\u1EA7u", blocks: ["nav", "hero", "text", "cta", "footer"], fields: { campaignName: "Welcome #1", subject: "Ch\xE0o m\u1EEBng b\u1EA1n \u2014 b\u1EAFt \u0111\u1EA7u t\u1EEB \u0111\xE2y", preheader: "\u01AFu \u0111\xE3i 10% cho \u0111\u01A1n \u0111\u1EA7u ti\xEAn" } },
+    { kind: "cart", name: "Cart reminder", desc: "Nh\u1EAFc gi\u1ECF h\xE0ng, 2 m\xF3n", blocks: ["nav", "text", "products-2", "cta", "footer"], fields: { campaignName: "Nh\u1EAFc gi\u1ECF h\xE0ng", subject: "B\u1EA1n \u0111\u1EC3 qu\xEAn v\xE0i m\xF3n trong gi\u1ECF", preheader: "Gi\u1EEF gi\u1ECF h\xE0ng th\xEAm 24 gi\u1EDD" } },
+    { kind: "mobile-pair", name: "Tr\u1ED1ng", desc: "Artboard 600px tr\u1EAFng", blocks: [], fields: { campaignName: "Email m\u1EDBi", subject: "", preheader: "" } }
+  ];
+  function makeTemplate(kind, brand2) {
+    const def = TEMPLATES.find((t3) => t3.kind === kind) ?? TEMPLATES[0];
+    const nodes = [];
+    let y3 = 0;
+    for (const b2 of def.blocks) {
+      const g2 = makeBlock(b2, brand2, y3);
+      nodes.push(g2);
+      y3 += g2.h;
+    }
+    return { doc: { width: W, height: Math.max(y3, 400), bg: { token: "bg" }, nodes }, fields: { ...def.fields }, name: def.name };
+  }
+
+  // studio/src/model/toNNode.ts
+  function docToNNode(doc2, brand2) {
+    const conv = (n2) => {
+      const b2 = bounds(n2);
+      const base2 = {
+        id: n2.id,
+        name: n2.name,
+        type: n2.type.toUpperCase(),
+        x: b2.x,
+        y: b2.y,
+        w: b2.w,
+        h: b2.h,
+        visible: n2.visible && n2.opacity > 0,
+        link: n2.link || null,
+        linkSource: n2.link ? "field" : null,
+        alt: n2.alt || null,
+        altSource: n2.alt ? "field" : null,
+        hasImage: n2.type === "image" && !!n2.assetId,
+        isText: n2.type === "text",
+        text: n2.type === "text" ? n2.text : null,
+        fontSize: n2.type === "text" ? n2.fontSize : null,
+        fill: n2.type === "rect" ? resolveColor(n2.fill, brand2) : n2.type === "text" ? resolveColor(n2.color, brand2) : n2.type === "image" ? resolveColor(n2.fill, brand2) : null,
+        children: n2.type === "group" ? n2.children.map(conv) : []
+      };
+      return base2;
+    };
+    return {
+      id: "root",
+      name: "Email",
+      type: "FRAME",
+      x: 0,
+      y: 0,
+      w: doc2.width,
+      h: doc2.height,
+      visible: true,
+      link: null,
+      linkSource: null,
+      alt: null,
+      altSource: null,
+      hasImage: false,
+      isText: false,
+      text: null,
+      fontSize: null,
+      fill: resolveColor(doc2.bg, brand2),
+      children: doc2.nodes.map(conv)
+    };
+  }
+
+  // studio/src/render/renderer.ts
+  function rr(ctx, x2, y3, w3, h3, r3) {
+    const rad = Math.max(0, Math.min(r3, w3 / 2, h3 / 2));
+    ctx.beginPath();
+    if (!rad) {
+      ctx.rect(x2, y3, w3, h3);
+      return;
+    }
+    ctx.moveTo(x2 + rad, y3);
+    ctx.arcTo(x2 + w3, y3, x2 + w3, y3 + h3, rad);
+    ctx.arcTo(x2 + w3, y3 + h3, x2, y3 + h3, rad);
+    ctx.arcTo(x2, y3 + h3, x2, y3, rad);
+    ctx.arcTo(x2, y3, x2 + w3, y3, rad);
+    ctx.closePath();
+  }
+  function col(c3, brand2) {
+    return resolveColor(c3, brand2);
+  }
+  function drawRect(ctx, n2, brand2, s3) {
+    const x2 = n2.x * s3, y3 = n2.y * s3, w3 = n2.w * s3, h3 = n2.h * s3;
+    const fill = col(n2.fill, brand2);
+    if (fill) {
+      rr(ctx, x2, y3, w3, h3, n2.radius * s3);
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    if (n2.stroke && n2.stroke.width > 0) {
+      const sc = col(n2.stroke.color, brand2);
+      if (sc) {
+        rr(ctx, x2 + n2.stroke.width * s3 / 2, y3 + n2.stroke.width * s3 / 2, w3 - n2.stroke.width * s3, h3 - n2.stroke.width * s3, Math.max(0, n2.radius * s3 - n2.stroke.width * s3 / 2));
+        ctx.strokeStyle = sc;
+        ctx.lineWidth = n2.stroke.width * s3;
+        ctx.stroke();
+      }
+    }
+  }
+  function drawPlaceholder(ctx, x2, y3, w3, h3, s3, label) {
+    ctx.save();
+    ctx.fillStyle = "#E6EBE7";
+    ctx.fillRect(x2, y3, w3, h3);
+    ctx.strokeStyle = "rgba(0,0,0,0.06)";
+    ctx.lineWidth = 1 * s3;
+    const step = 14 * s3;
+    ctx.beginPath();
+    for (let d3 = -h3; d3 < w3; d3 += step) {
+      ctx.moveTo(x2 + d3, y3 + h3);
+      ctx.lineTo(x2 + d3 + h3, y3);
+    }
+    ctx.stroke();
+    const cx = x2 + w3 / 2, cy = y3 + h3 / 2;
+    const sz = Math.min(28 * s3, w3 * 0.3, h3 * 0.3);
+    if (sz > 8) {
+      ctx.strokeStyle = "#8A948C";
+      ctx.lineWidth = 1.5 * s3;
+      rr(ctx, cx - sz / 2, cy - sz / 2 - 6 * s3, sz, sz * 0.8, 3 * s3);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - sz / 2 + 4 * s3, cy + sz * 0.3 - 6 * s3);
+      ctx.lineTo(cx - sz * 0.15, cy - 4 * s3);
+      ctx.lineTo(cx + sz * 0.05, cy + sz * 0.1 - 6 * s3);
+      ctx.lineTo(cx + sz * 0.2, cy - 2 * s3);
+      ctx.lineTo(cx + sz / 2 - 4 * s3, cy + sz * 0.3 - 6 * s3);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx + sz * 0.22, cy - sz * 0.25 - 6 * s3, sz * 0.08, 0, Math.PI * 2);
+      ctx.fillStyle = "#8A948C";
+      ctx.fill();
+      if (h3 > 60 * s3 && w3 > 90 * s3) {
+        ctx.fillStyle = "#6E786F";
+        ctx.font = `${11 * s3}px Inter, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(label, cx, cy + sz * 0.5);
+      }
+    }
+    ctx.restore();
+  }
+  function drawImage(ctx, n2, brand2, s3, src, editor) {
+    const x2 = n2.x * s3, y3 = n2.y * s3, w3 = n2.w * s3, h3 = n2.h * s3;
+    const img = n2.assetId ? src.image(n2.assetId) : void 0;
+    ctx.save();
+    rr(ctx, x2, y3, w3, h3, n2.radius * s3);
+    ctx.clip();
+    const fill = col(n2.fill, brand2);
+    if (fill) {
+      ctx.fillStyle = fill;
+      ctx.fillRect(x2, y3, w3, h3);
+    }
+    if (img && img.width) {
+      const iw = img.width, ih = img.height;
+      let dw = w3, dh = h3, dx = x2, dy = y3;
+      if (n2.fit !== "fill") {
+        const r3 = n2.fit === "cover" ? Math.max(w3 / iw, h3 / ih) : Math.min(w3 / iw, h3 / ih);
+        dw = iw * r3;
+        dh = ih * r3;
+        dx = x2 + (w3 - dw) / 2;
+        dy = y3 + (h3 - dh) / 2;
+      }
+      ctx.drawImage(img, dx, dy, dw, dh);
+    } else if (!fill || editor) {
+      if (editor || !fill) drawPlaceholder(ctx, x2, y3, w3, h3, s3, `\u1EA2nh ${Math.round(n2.w)}\xD7${Math.round(n2.h)} \xB7 k\xE9o \u1EA3nh v\xE0o`);
+    }
+    if (n2.overlay && n2.overlay.opacity > 0) {
+      ctx.globalAlpha = n2.overlay.opacity;
+      ctx.fillStyle = n2.overlay.color;
+      ctx.fillRect(x2, y3, w3, h3);
+    }
+    ctx.restore();
+  }
+  function drawText(ctx, n2, brand2, s3) {
+    const lay = layoutText(n2, brand2, ctx, s3);
+    const color = col(n2.color, brand2) || "#000";
+    ctx.save();
+    ctx.font = lay.font;
+    try {
+      ctx.letterSpacing = `${n2.letterSpacing * s3}px`;
+    } catch {
+    }
+    ctx.fillStyle = color;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    const x2 = n2.x * s3, w3 = n2.w * s3, h3 = n2.h * s3;
+    let y0 = n2.y * s3;
+    if (!n2.autoHeight) {
+      if (n2.vAlign === "middle") y0 += (h3 - lay.height) / 2;
+      else if (n2.vAlign === "bottom") y0 += h3 - lay.height;
+    }
+    const ascent = n2.fontSize * s3 * 0.78;
+    const pad = (lay.lineHeight - n2.fontSize * s3) / 2;
+    lay.lines.forEach((ln, i4) => {
+      let lx = x2;
+      if (n2.align === "center") lx = x2 + (w3 - ln.width) / 2;
+      else if (n2.align === "right") lx = x2 + w3 - ln.width;
+      const ly = y0 + i4 * lay.lineHeight + pad + ascent;
+      ctx.fillText(ln.text, lx, ly);
+      if (n2.underline && ln.width) {
+        ctx.fillRect(lx, ly + 2 * s3, ln.width, Math.max(1, s3));
+      }
+    });
+    ctx.restore();
+  }
+  function drawNode(ctx, n2, brand2, s3, src, editor, skip) {
+    if (!n2.visible || skip && skip.has(n2.id)) return;
+    ctx.save();
+    if (n2.opacity < 1) ctx.globalAlpha *= n2.opacity;
+    switch (n2.type) {
+      case "rect":
+        drawRect(ctx, n2, brand2, s3);
+        break;
+      case "image":
+        drawImage(ctx, n2, brand2, s3, src, editor);
+        break;
+      case "text":
+        drawText(ctx, n2, brand2, s3);
+        break;
+      case "group":
+        for (const c3 of n2.children) drawNode(ctx, c3, brand2, s3, src, editor, skip);
+        break;
+    }
+    ctx.restore();
+  }
+  function renderDoc(ctx, doc2, brand2, src, o3) {
+    const s3 = o3.scale;
+    ctx.save();
+    ctx.translate(o3.ox ?? 0, o3.oy ?? 0);
+    ctx.beginPath();
+    ctx.rect(0, 0, doc2.width * s3, doc2.height * s3);
+    ctx.clip();
+    const bg = col(doc2.bg, brand2) || "#ffffff";
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, doc2.width * s3, doc2.height * s3);
+    for (const n2 of doc2.nodes) drawNode(ctx, n2, brand2, s3, src, !!o3.editor, o3.skip);
+    ctx.restore();
+  }
+  function renderToCanvas(doc2, brand2, src, scale) {
+    const c3 = document.createElement("canvas");
+    c3.width = Math.max(1, Math.round(doc2.width * scale));
+    c3.height = Math.max(1, Math.round(doc2.height * scale));
+    const ctx = c3.getContext("2d");
+    renderDoc(ctx, doc2, brand2, src, { scale, editor: false });
+    return c3;
+  }
+  function thumbnail(doc2, brand2, src, width = 240) {
+    const scale = width / doc2.width;
+    const c3 = renderToCanvas({ ...doc2, height: Math.min(doc2.height, doc2.width * 1.6) }, brand2, src, scale);
+    return c3.toDataURL("image/jpeg", 0.8);
+  }
+
+  // studio/src/render/fonts.ts
+  var loaded = /* @__PURE__ */ new Set();
+  function ensureFont(family) {
+    const def = FONTS.find((f4) => f4.family === family);
+    if (!def || !def.google || loaded.has(family)) return;
+    loaded.add(family);
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${def.google}&display=swap`;
+    document.head.appendChild(link);
+    const weights = (def.google.match(/wght@([\d;]+)/)?.[1] || "400").split(";");
+    Promise.all(weights.map((w3) => document.fonts.load(`${w3} 16px "${family}"`).catch(() => []))).then(() => set((s3) => ({ fontsLoaded: s3.fontsLoaded + 1 })));
+  }
+  function ensureFonts(families) {
+    for (const f4 of new Set(families)) ensureFont(f4);
+  }
+
+  // studio/src/storage/idb.ts
+  var DB = "phloem-studio";
+  var VER = 1;
+  function open() {
+    return new Promise((res, rej) => {
+      const r3 = indexedDB.open(DB, VER);
+      r3.onupgradeneeded = () => {
+        const db2 = r3.result;
+        if (!db2.objectStoreNames.contains("projects")) db2.createObjectStore("projects", { keyPath: "id" });
+        if (!db2.objectStoreNames.contains("assets")) db2.createObjectStore("assets", { keyPath: "id" });
+        if (!db2.objectStoreNames.contains("blobs")) db2.createObjectStore("blobs");
+      };
+      r3.onsuccess = () => res(r3.result);
+      r3.onerror = () => rej(r3.error);
+    });
+  }
+  function tx(store, mode, fn) {
+    return open().then((db2) => new Promise((res, rej) => {
+      const t3 = db2.transaction(store, mode);
+      const req = fn(t3.objectStore(store));
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    }));
+  }
+  var db = {
+    putProject: (p3) => tx("projects", "readwrite", (s3) => s3.put(p3)),
+    getProject: (id) => tx("projects", "readonly", (s3) => s3.get(id)),
+    deleteProject: (id) => tx("projects", "readwrite", (s3) => s3.delete(id)),
+    listProjects: async () => {
+      const all = await tx("projects", "readonly", (s3) => s3.getAll());
+      return all.map((p3) => ({ id: p3.id, name: p3.name, updatedAt: p3.updatedAt, thumb: p3.thumb })).sort((a3, b2) => b2.updatedAt.localeCompare(a3.updatedAt));
+    },
+    putAsset: async (a3, blob) => {
+      await tx("assets", "readwrite", (s3) => s3.put(a3));
+      await tx("blobs", "readwrite", (s3) => s3.put(blob, a3.id));
+    },
+    getBlob: (id) => tx("blobs", "readonly", (s3) => s3.get(id)),
+    listAssets: () => tx("assets", "readonly", (s3) => s3.getAll()),
+    deleteAsset: async (id) => {
+      await tx("assets", "readwrite", (s3) => s3.delete(id));
+      await tx("blobs", "readwrite", (s3) => s3.delete(id));
+    }
+  };
+
+  // studio/src/storage/assets.ts
+  var AssetStore = class {
+    constructor() {
+      this.meta = /* @__PURE__ */ new Map();
+      this.blobs = /* @__PURE__ */ new Map();
+      this.urls = /* @__PURE__ */ new Map();
+      this.images = /* @__PURE__ */ new Map();
+      this.listeners = /* @__PURE__ */ new Set();
+      this.ready = this.load();
+    }
+    async load() {
+      try {
+        const list = await db.listAssets();
+        for (const a3 of list) this.meta.set(a3.id, a3);
+      } catch {
+      }
+    }
+    onChange(l3) {
+      this.listeners.add(l3);
+      return () => this.listeners.delete(l3);
+    }
+    emit() {
+      for (const l3 of this.listeners) l3();
+    }
+    all() {
+      return [...this.meta.values()].sort((a3, b2) => a3.name.localeCompare(b2.name));
+    }
+    get(id) {
+      return this.meta.get(id);
+    }
+    async add(file, name = file.name || "image") {
+      const bmp = await createImageBitmap(file);
+      const a3 = { id: uid("a"), name, mime: file.type || "image/png", w: bmp.width, h: bmp.height, bytes: file.size };
+      bmp.close();
+      this.meta.set(a3.id, a3);
+      this.blobs.set(a3.id, file);
+      try {
+        await db.putAsset(a3, file);
+      } catch {
+      }
+      this.emit();
+      return a3;
+    }
+    async addFromUrl(url, name) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return this.add(await res.blob(), name);
+    }
+    async remove(id) {
+      this.meta.delete(id);
+      this.blobs.delete(id);
+      this.images.delete(id);
+      const u4 = this.urls.get(id);
+      if (u4) URL.revokeObjectURL(u4);
+      this.urls.delete(id);
+      try {
+        await db.deleteAsset(id);
+      } catch {
+      }
+      this.emit();
+    }
+    async blob(id) {
+      if (this.blobs.has(id)) return this.blobs.get(id);
+      try {
+        const b2 = await db.getBlob(id);
+        if (b2) this.blobs.set(id, b2);
+        return b2;
+      } catch {
+        return void 0;
+      }
+    }
+    /** Object URL for <img>/preview use. */
+    url(id) {
+      const u4 = this.urls.get(id);
+      if (u4) return u4;
+      const b2 = this.blobs.get(id);
+      if (b2) {
+        const nu = URL.createObjectURL(b2);
+        this.urls.set(id, nu);
+        return nu;
+      }
+      void this.blob(id).then((bb) => {
+        if (bb) {
+          this.urls.set(id, URL.createObjectURL(bb));
+          this.emit();
+        }
+      });
+      return void 0;
+    }
+    /** Decoded image for canvas drawing; kicks off loading and emits when ready. */
+    image(id) {
+      const img = this.images.get(id);
+      if (img) return img.complete && img.naturalWidth ? img : void 0;
+      const el = new Image();
+      this.images.set(id, el);
+      el.onload = () => this.emit();
+      const u4 = this.url(id);
+      if (u4) el.src = u4;
+      else {
+        const check = () => {
+          const uu = this.urls.get(id);
+          if (uu) {
+            el.src = uu;
+            off();
+          }
+        };
+        const off = this.onChange(check);
+      }
+      return void 0;
+    }
+    /** Make sure every asset used by the doc is decoded before rendering for export. */
+    async ensure(ids) {
+      await Promise.all(ids.map(async (id) => {
+        if (!this.meta.has(id)) return;
+        await this.blob(id);
+        const u4 = this.url(id);
+        const img = this.images.get(id) ?? new Image();
+        this.images.set(id, img);
+        if (!img.src && u4) img.src = u4;
+        if (img.complete && img.naturalWidth) return;
+        await new Promise((res) => {
+          img.onload = () => {
+            this.emit();
+            res();
+          };
+          img.onerror = () => res();
+        });
+      }));
+    }
+  };
+  var assets = new AssetStore();
+
+  // src/shared/hash.ts
+  function fnv1a(bytes) {
+    let h3 = 2166136261;
+    for (let i4 = 0; i4 < bytes.length; i4++) {
+      h3 ^= bytes[i4];
+      h3 = Math.imul(h3, 16777619) >>> 0;
+    }
+    return (h3 >>> 0).toString(16).padStart(8, "0") + bytes.length.toString(16);
+  }
+  var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  function toBase64(bytes) {
+    let out = "";
+    let i4 = 0;
+    for (; i4 + 2 < bytes.length; i4 += 3) {
+      const n2 = bytes[i4] << 16 | bytes[i4 + 1] << 8 | bytes[i4 + 2];
+      out += B64[n2 >> 18 & 63] + B64[n2 >> 12 & 63] + B64[n2 >> 6 & 63] + B64[n2 & 63];
+    }
+    if (i4 < bytes.length) {
+      const n2 = bytes[i4] << 16 | (i4 + 1 < bytes.length ? bytes[i4 + 1] : 0) << 8;
+      out += B64[n2 >> 18 & 63] + B64[n2 >> 12 & 63] + (i4 + 1 < bytes.length ? B64[n2 >> 6 & 63] : "=") + "=";
+    }
+    return out;
+  }
+  function utf8Bytes(s3) {
+    const TE = globalThis.TextEncoder;
+    if (typeof TE !== "undefined") return new TE().encode(s3);
+    const out = [];
+    for (let i4 = 0; i4 < s3.length; i4++) {
+      let c3 = s3.charCodeAt(i4);
+      if (c3 >= 55296 && c3 < 56320 && i4 + 1 < s3.length) {
+        c3 = 65536 + (c3 - 55296 << 10) + (s3.charCodeAt(++i4) - 56320);
+      }
+      if (c3 < 128) out.push(c3);
+      else if (c3 < 2048) out.push(192 | c3 >> 6, 128 | c3 & 63);
+      else if (c3 < 65536) out.push(224 | c3 >> 12, 128 | c3 >> 6 & 63, 128 | c3 & 63);
+      else out.push(240 | c3 >> 18, 128 | c3 >> 12 & 63, 128 | c3 >> 6 & 63, 128 | c3 & 63);
+    }
+    return new Uint8Array(out);
+  }
+
+  // src/ui/imageops.ts
+  function toBlob(bytes, mime) {
+    const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return new Blob([ab], { type: mime });
+  }
+  async function decode(bytes) {
+    const blob = toBlob(bytes, "image/png");
+    if ("createImageBitmap" in window) return createImageBitmap(blob);
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => rej(new Error("decode failed"));
+      img.src = URL.createObjectURL(blob);
+    });
+  }
+  async function toJpeg(bytes, quality) {
+    const img = await decode(bytes);
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    const blob = await new Promise((res, rej) => canvas.toBlob((b2) => b2 ? res(b2) : rej(new Error("toBlob failed")), "image/jpeg", Math.min(1, Math.max(0.3, quality / 100))));
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  async function finalizeSlices(slices, format, jpgQuality) {
+    if (format === "PNG") return slices;
+    const out = [];
+    for (const s3 of slices) {
+      try {
+        const jpg = await toJpeg(s3.bytes, jpgQuality);
+        if (jpg.length < s3.bytes.length) out.push({ ...s3, bytes: jpg, format: "JPG", hash: fnv1a(jpg) });
+        else out.push(s3);
+      } catch {
+        out.push(s3);
+      }
+    }
+    return out;
+  }
+  function mimeOf(format) {
+    return format === "JPG" ? "image/jpeg" : "image/png";
+  }
+  function extOf(format) {
+    return format === "JPG" ? "jpg" : "png";
+  }
+
+  // src/ui/clipboard.ts
+  async function copyText(text2) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text2);
+        return true;
+      }
+    } catch {
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text2;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text2.length);
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  async function downloadBytes(name, bytes, mime) {
+    const claude = window.claude;
+    if (claude && typeof claude.use === "function") {
+      try {
+        const dl = await claude.use("downloads");
+        if (dl) {
+          await dl.save({ filename: name, data: toBlob(bytes, mime) });
+          return;
+        }
+      } catch (e3) {
+        const code = e3?.code;
+        if (code === "declined") return;
+        throw new Error(`Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c file (${code || e3.message}).`);
+      }
+    }
+    const url = URL.createObjectURL(toBlob(bytes, mime));
+    const a3 = document.createElement("a");
+    a3.href = url;
+    a3.download = name;
+    a3.rel = "noopener";
+    document.body.appendChild(a3);
+    a3.click();
+    setTimeout(() => {
+      document.body.removeChild(a3);
+      URL.revokeObjectURL(url);
+    }, 1500);
+  }
+
+  // studio/src/pipeline/actions.ts
+  function doc() {
+    const s3 = get();
+    const p3 = s3.project;
+    return s3.variant === "mobile" && p3.mobile ? p3.mobile : p3.desktop;
+  }
+  function brand() {
+    return get().project?.brand ?? DEFAULT_BRAND;
+  }
+  var saveTimer = null;
+  function commit(next, pushHistory = true) {
+    const s3 = get();
+    if (!s3.project) return;
+    const cur = doc();
+    if (next === cur) return;
+    if (pushHistory) history.push(cur);
+    const project = s3.variant === "mobile" && s3.project.mobile ? { ...s3.project, mobile: next } : { ...s3.project, desktop: next };
+    set({ project, dirty: true });
+    scheduleSave();
+  }
+  function patchProject(p3) {
+    const s3 = get();
+    if (!s3.project) return;
+    set({ project: { ...s3.project, ...p3 }, dirty: true });
+    scheduleSave();
+  }
+  function scheduleSave() {
+    if (!get().settings.autosave) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => {
+      void saveProject();
+    }, 900);
+  }
+  async function saveProject() {
+    const s3 = get();
+    if (!s3.project) return;
+    const p3 = { ...s3.project, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    let thumb;
+    try {
+      thumb = thumbnail(p3.desktop, p3.brand, assets, 320);
+    } catch {
+    }
+    try {
+      await db.putProject({ ...p3, thumb });
+      set({ project: p3, dirty: false, savedAt: p3.updatedAt });
+      void refreshProjects();
+    } catch (e3) {
+      toast(`Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c: ${e3.message}`, "err");
+    }
+  }
+  async function refreshProjects() {
+    try {
+      set({ projects: await db.listProjects() });
+    } catch {
+    }
+  }
+  function undo() {
+    const prev = history.undo(doc());
+    if (prev) {
+      commit(prev, false);
+      set({ selection: get().selection.filter((id) => findNode(prev, id)) });
+    }
+  }
+  function redo() {
+    const next = history.redo(doc());
+    if (next) commit(next, false);
+  }
+  function select(ids, additive = false) {
+    const s3 = get();
+    const next = additive ? Array.from(/* @__PURE__ */ new Set([...s3.selection, ...ids])) : ids;
+    set({ selection: next, editingText: null });
+  }
+  function toggleSelect(id) {
+    const s3 = get();
+    set({ selection: s3.selection.includes(id) ? s3.selection.filter((x2) => x2 !== id) : [...s3.selection, id] });
+  }
+  function clearSelection() {
+    set({ selection: [], editingText: null, enteredGroup: null });
+  }
+  function selectAll() {
+    set({ selection: doc().nodes.filter((n2) => n2.visible && !n2.locked).map((n2) => n2.id) });
+  }
+  function selectedNodes() {
+    const d3 = doc();
+    return get().selection.map((id) => findNode(d3, id)).filter((n2) => !!n2);
+  }
+  function updateSelected(fn) {
+    const s3 = get();
+    if (!s3.selection.length) return;
+    commit(updateNodes(doc(), s3.selection, fn));
+  }
+  function updateNode2(id, patch) {
+    commit(updateNode(doc(), id, patch));
+  }
+  function fixTextHeight(n2) {
+    if (n2.type !== "text" || !n2.autoHeight) return n2;
+    const h3 = textHeight(n2, brand());
+    return h3 === n2.h ? n2 : { ...n2, h: h3 };
+  }
+  function patchTextFlow(id, patch, pushHistory = true) {
+    const d3 = doc();
+    const n2 = findNode(d3, id);
+    if (!n2 || n2.type !== "text") return;
+    const next = { ...n2, ...patch };
+    const h3 = next.autoHeight ? textHeight(next, brand()) : next.h;
+    let out = updateNode(d3, id, { ...patch, h: n2.h });
+    out = setHeightFlow(out, id, h3);
+    commit(out, pushHistory);
+  }
+  function remeasureAll() {
+    const d3 = doc();
+    const next = mapNodes(d3, fixTextHeight);
+    if (next !== d3) commit(next, false);
+  }
+  function deleteSelection() {
+    const s3 = get();
+    if (!s3.selection.length) return;
+    commit(removeNodes(doc(), s3.selection));
+    set({ selection: [] });
+  }
+  function duplicateSelection() {
+    const s3 = get();
+    if (!s3.selection.length) return;
+    const r3 = duplicate(doc(), topLevelIds(s3.selection));
+    commit(r3.doc);
+    set({ selection: r3.ids });
+  }
+  function groupSelection() {
+    const ids = topLevelIds(get().selection);
+    if (ids.length < 2) return;
+    const r3 = group(doc(), ids);
+    commit(r3.doc);
+    set({ selection: [r3.id] });
+  }
+  function ungroupSelection() {
+    let d3 = doc();
+    let ids = [];
+    for (const id of get().selection) {
+      const n2 = findNode(d3, id);
+      if (n2?.type === "group") {
+        const r3 = ungroup(d3, id);
+        d3 = r3.doc;
+        ids = ids.concat(r3.ids);
+      } else ids.push(id);
+    }
+    commit(d3);
+    set({ selection: ids });
+  }
+  function reorderSelection(dir) {
+    let d3 = doc();
+    for (const id of get().selection) d3 = reorder(d3, id, dir);
+    commit(d3);
+  }
+  function alignSelection(how) {
+    commit(align(doc(), get().selection, how));
+  }
+  function distributeSelection(axis) {
+    commit(distribute(doc(), get().selection, axis));
+  }
+  function nudge(dx, dy) {
+    const s3 = get();
+    if (!s3.selection.length) return;
+    commit(moveBy(doc(), s3.selection, dx, dy));
+  }
+  function toggleVisible(id) {
+    updateNode2(id, (n2) => ({ ...n2, visible: !n2.visible }));
+  }
+  function toggleLocked(id) {
+    updateNode2(id, (n2) => ({ ...n2, locked: !n2.locked }));
+  }
+  function topLevelIds(ids) {
+    const d3 = doc();
+    return Array.from(new Set(ids.map((id) => topLevelOf(d3, id)?.id).filter((x2) => !!x2)));
+  }
+  function copySelection() {
+    const d3 = doc();
+    const nodes = topLevelIds(get().selection).map((id) => findNode(d3, id)).filter(Boolean);
+    set({ clipboard: JSON.parse(JSON.stringify(nodes)) });
+    toast(`\u0110\xE3 copy ${nodes.length} layer`, "ok");
+  }
+  function cutSelection() {
+    copySelection();
+    deleteSelection();
+  }
+  function pasteClipboard() {
+    const s3 = get();
+    const cb = s3.clipboard;
+    if (!cb || !cb.length) return;
+    const clones = cb.map((n2) => cloneNode(n2)).map((n2) => ({ ...n2 }));
+    let d3 = insertNodes(doc(), clones);
+    d3 = moveBy(d3, clones.map((c3) => c3.id), 16, 16);
+    commit(d3);
+    set({ selection: clones.map((c3) => c3.id) });
+  }
+  function addBlock(kind, at) {
+    const d3 = doc();
+    const y3 = at ?? contentHeight(d3);
+    const g2 = makeBlock(kind, brand(), y3);
+    if (d3.width !== 600) {
+      const s3 = d3.width / 600;
+      Object.assign(g2, fitTo(g2, { x: 0, y: y3, w: d3.width, h: g2.h * s3 }));
+    }
+    const next = { ...insertNodes(d3, [g2]), height: Math.max(d3.height, y3 + g2.h) };
+    commit(next);
+    set({ selection: [g2.id] });
+    return g2.id;
+  }
+  function addText(x2, y3) {
+    const n2 = text(brand(), "Nh\u1EADp ch\u1EEF", { x: x2, y: y3, w: 240, fontSize: 18, name: "Text" });
+    n2.locked = false;
+    commit(insertNodes(doc(), [n2]));
+    set({ selection: [n2.id], editingText: n2.id, tool: "select" });
+    return n2.id;
+  }
+  function addRect(r3) {
+    const n2 = rect({ x: Math.round(r3.x), y: Math.round(r3.y), w: Math.max(2, Math.round(r3.w)), h: Math.max(2, Math.round(r3.h)), fill: { token: "primary" }, name: "Rectangle" });
+    commit(insertNodes(doc(), [n2]));
+    set({ selection: [n2.id], tool: "select" });
+    return n2.id;
+  }
+  async function addImageFile(file, at, into) {
+    const a3 = await assets.add(file);
+    const d3 = doc();
+    if (into) {
+      commit(updateNode(d3, into, (n3) => n3.type === "image" ? { ...n3, assetId: a3.id, name: n3.name === "Image" ? a3.name : n3.name } : n3));
+      return into;
+    }
+    const w3 = Math.min(d3.width, a3.w), h3 = Math.round(w3 * (a3.h / a3.w));
+    const n2 = image({ x: Math.round(at ? at.x - w3 / 2 : (d3.width - w3) / 2), y: Math.round(at ? at.y - h3 / 2 : contentHeight(d3)), w: w3, h: h3, assetId: a3.id, name: a3.name, alt: a3.name.replace(/\.[a-z0-9]+$/i, "") });
+    commit({ ...insertNodes(d3, [n2]), height: Math.max(d3.height, n2.y + n2.h) });
+    set({ selection: [n2.id], tool: "select" });
+    return n2.id;
+  }
+  function setImageAsset(id, assetId) {
+    updateNode2(id, (n2) => n2.type === "image" ? { ...n2, assetId } : n2);
+  }
+  function setDocHeightToContent() {
+    const d3 = doc();
+    commit({ ...d3, height: Math.max(contentHeight(d3), 100) });
+  }
+  function setDocProps(p3) {
+    commit({ ...doc(), ...p3 });
+  }
+  function reflow() {
+    commit(reflowBlocks(doc()));
+  }
+  function optimize() {
+    const d3 = doc();
+    const changes = [];
+    let next = d3;
+    if (get().variant === "desktop" && d3.width !== 600 && d3.width >= 560 && d3.width <= 700) {
+      next = setDocWidth(next, 600);
+      changes.push(`\u0110\u01B0a chi\u1EC1u r\u1ED9ng ${d3.width} \u2192 600px`);
+    }
+    const rounded = roundAll(next);
+    if (rounded !== next) {
+      next = rounded;
+      changes.push("L\xE0m tr\xF2n to\u1EA1 \u0111\u1ED9 l\u1EBB pixel");
+    }
+    const h3 = Math.max(contentHeight(next), 100);
+    if (h3 !== next.height) {
+      next = { ...next, height: h3 };
+      changes.push(`Chi\u1EC1u cao artboard kh\u1EDBp n\u1ED9i dung (${h3}px)`);
+    }
+    if (next !== d3) commit(next);
+    return changes;
+  }
+  function setVariant(v3) {
+    const p3 = get().project;
+    if (!p3) return;
+    if (v3 === "mobile" && !p3.mobile) return;
+    history.clear();
+    set({ variant: v3, selection: [], editingText: null, enteredGroup: null });
+  }
+  function createMobileVariant() {
+    const p3 = get().project;
+    if (!p3) return;
+    const m2 = mapNodes(makeMobile(p3.desktop), fixTextHeight);
+    patchProject({ mobile: m2 });
+    setVariant("mobile");
+    toast("\u0110\xE3 t\u1EA1o b\u1EA3n mobile 375px t\u1EEB b\u1EA3n desktop. Ch\u1EC9nh ch\u1EEF/\u1EA3nh cho g\u1ECDn.", "ok");
+  }
+  function deleteMobileVariant() {
+    patchProject({ mobile: null });
+    setVariant("desktop");
+  }
+  function applyBrand(b2) {
+    const p3 = get().project;
+    if (!p3) return;
+    const nb = { ...p3.brand, ...b2 };
+    ensureFonts([nb.fontFamily, nb.headingFamily]);
+    patchProject({ brand: nb });
+    remeasureAll();
+  }
+  var cache = null;
+  function analyze() {
+    const s3 = get();
+    if (!s3.project) return null;
+    const d3 = doc(), b2 = s3.project.brand, f4 = JSON.stringify(s3.project.fields), hasMobile = !!s3.project.mobile;
+    if (cache && cache.doc === d3 && cache.brand === b2 && cache.fields === f4 && cache.mobile === hasMobile) return cache.a;
+    const root = docToNNode(d3, b2);
+    const plan = planSlices(root, { maxSliceHeight: s3.settings.maxSliceHeight, mergeRows: s3.settings.mergeRows });
+    const checks = runChecks({ root, plan, fields: { ...s3.project.fields, mobileFrameId: hasMobile ? "m" : null }, hasMobile });
+    const placeholders = flat(d3.nodes).filter((n2) => n2.type === "image" && !n2.assetId && n2.visible);
+    if (placeholders.length) checks.unshift({ level: "warn", code: "placeholder", message: `${placeholders.length} \u1EA3nh placeholder ch\u01B0a thay (${placeholders.slice(0, 3).map((n2) => n2.name).join(", ")}${placeholders.length > 3 ? "\u2026" : ""}). K\xE9o \u1EA3nh th\u1EADt v\xE0o tr\u01B0\u1EDBc khi g\u1EEDi.`, nodeId: placeholders[0].id });
+    const sg = suggest({ root, plan, fields: { ...s3.project.fields, mobileFrameId: hasMobile ? "m" : null }, hasMobile });
+    const a3 = { root, plan, checks, suggestions: sg.suggestions, score: sg.score };
+    cache = { doc: d3, brand: b2, fields: f4, mobile: hasMobile, a: a3 };
+    return a3;
+  }
+  function applySuggestion(a3) {
+    switch (a3.kind) {
+      case "snap-width":
+        commit(setDocWidth(doc(), a3.width));
+        break;
+      case "round-pixels":
+        commit(roundAll(doc()));
+        break;
+      case "insert-block":
+        addBlock(a3.block);
+        break;
+      case "focus":
+        select([a3.nodeId]);
+        set({ rightTab: "design" });
+        break;
+      case "set-field":
+        set({ rightTab: "email" });
+        setTimeout(() => document.getElementById(`f-${a3.field}`)?.focus(), 50);
+        break;
+      case "create-mobile":
+        createMobileVariant();
+        break;
+    }
+  }
+  async function openProject(id) {
+    try {
+      const p3 = await db.getProject(id);
+      if (!p3) {
+        toast("Kh\xF4ng t\xECm th\u1EA5y project.", "err");
+        return;
+      }
+      history.clear();
+      const { thumb: _t, ...project } = p3;
+      ensureFonts([project.brand.fontFamily, project.brand.headingFamily]);
+      set({ route: { name: "editor", projectId: id }, project, variant: "desktop", selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [] });
+    } catch (e3) {
+      toast(`Kh\xF4ng m\u1EDF \u0111\u01B0\u1EE3c: ${e3.message}`, "err");
+    }
+  }
+  async function newProject(kind, brandOverride, name) {
+    const b2 = { ...DEFAULT_BRAND, ...brandOverride || {} };
+    ensureFonts([b2.fontFamily, b2.headingFamily]);
+    await document.fonts.ready;
+    const t3 = makeTemplate(kind, b2);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const p3 = { id: uid("p"), name: name || t3.name, createdAt: now, updatedAt: now, brand: b2, fields: t3.fields, desktop: t3.doc, mobile: null, drafts: {} };
+    history.clear();
+    set({ route: { name: "editor", projectId: p3.id }, project: p3, variant: "desktop", selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [] });
+    await saveProject();
+  }
+  async function deleteProject(id) {
+    try {
+      await db.deleteProject(id);
+      await refreshProjects();
+    } catch (e3) {
+      toast(e3.message, "err");
+    }
+  }
+  async function duplicateProject(id) {
+    const p3 = await db.getProject(id);
+    if (!p3) return;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await db.putProject({ ...p3, id: uid("p"), name: `${p3.name} (b\u1EA3n sao)`, createdAt: now, updatedAt: now, drafts: {} });
+    await refreshProjects();
+  }
+  function renameProject(name) {
+    patchProject({ name: name.trim() || "Email" });
+  }
+  async function goHome() {
+    if (get().dirty) await saveProject();
+    set({ route: { name: "home" }, project: null, selection: [], modal: null });
+    await refreshProjects();
+  }
+  function exportProjectJson() {
+    const p3 = get().project;
+    if (!p3) return;
+    const ids = flat(p3.desktop.nodes).concat(p3.mobile ? flat(p3.mobile.nodes) : []).filter((n2) => n2.type === "image" && n2.assetId).map((n2) => n2.assetId);
+    Promise.all(Array.from(new Set(ids)).map(async (id) => {
+      const a3 = assets.get(id);
+      const b2 = await assets.blob(id);
+      if (!a3 || !b2) return null;
+      return { ...a3, data: await blobToDataUrl(b2) };
+    })).then((list) => {
+      const payload = { phloem: 1, project: p3, assets: list.filter(Boolean) };
+      void downloadBytes(`${p3.name.replace(/[^\w\-]+/g, "-")}.phloem.json`, new TextEncoder().encode(JSON.stringify(payload)), "application/json").catch((e3) => toast(e3.message, "err"));
+    });
+  }
+  async function importProjectJson(file) {
+    const payload = JSON.parse(await file.text());
+    if (!payload || payload.phloem !== 1 || !payload.project) throw new Error("File kh\xF4ng ph\u1EA3i project Phloem.");
+    const idMap = /* @__PURE__ */ new Map();
+    for (const a3 of payload.assets || []) {
+      const blob = await (await fetch(a3.data)).blob();
+      const na = await assets.add(blob, a3.name);
+      idMap.set(a3.id, na.id);
+    }
+    const remap = (d3) => mapNodes(d3, (n2) => n2.type === "image" && n2.assetId && idMap.has(n2.assetId) ? { ...n2, assetId: idMap.get(n2.assetId) } : n2);
+    const p3 = { ...payload.project, id: uid("p"), desktop: remap(payload.project.desktop), mobile: payload.project.mobile ? remap(payload.project.mobile) : null, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), drafts: {} };
+    await db.putProject(p3);
+    await refreshProjects();
+    await openProject(p3.id);
+  }
+  function blobToDataUrl(b2) {
+    return new Promise((res) => {
+      const r3 = new FileReader();
+      r3.onload = () => res(r3.result);
+      r3.readAsDataURL(b2);
+    });
+  }
+
+  // src/shared/html.ts
+  function esc(s3) {
+    return s3.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function hrefFor(link, sliceKey, inp) {
+    if (!inp.utm) return link;
+    return applyUtm(link, inp.utm.template, { ...inp.utm.vars, slice: sliceKey });
+  }
+  function imgTag(src, w3, h3, alt, cls, fluid) {
+    const style = fluid ? `display:block;border:0;outline:none;text-decoration:none;width:100%;max-width:${w3}px;height:auto;` : `display:block;border:0;outline:none;text-decoration:none;`;
+    return `<img src="${esc(src)}" width="${w3}" height="${h3}" alt="${esc(alt)}" class="${cls}" style="${style}" />`;
+  }
+  function renderPlan(plan, images, inp, cls) {
+    const W2 = plan.width;
+    const rows = [];
+    for (const row of plan.rows) {
+      if (row.cells.length === 1) {
+        const s3 = row.cells[0];
+        const src = images[s3.key] ?? "";
+        let inner = imgTag(src, s3.w, s3.h, s3.alt, `${cls}-img`, true);
+        if (s3.link) inner = `<a href="${esc(hrefFor(s3.link, s3.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
+        rows.push(`<tr><td align="left" valign="top" style="padding:0;margin:0;line-height:0;font-size:0;">${inner}</td></tr>`);
+        continue;
+      }
+      const tds = row.cells.map((s3) => {
+        const pct = Math.round(s3.w / W2 * 1e4) / 100;
+        const src = images[s3.key] ?? "";
+        let inner = imgTag(src, s3.w, s3.h, s3.alt, `${cls}-img`, true);
+        if (s3.link) inner = `<a href="${esc(hrefFor(s3.link, s3.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
+        return `<td width="${pct}%" align="left" valign="top" style="padding:0;margin:0;line-height:0;font-size:0;width:${pct}%;">${inner}</td>`;
+      });
+      rows.push(
+        `<tr><td style="padding:0;margin:0;line-height:0;font-size:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;table-layout:fixed;"><tr>${tds.join("")}</tr></table></td></tr>`
+      );
+    }
+    return `<table role="presentation" class="${cls}" width="${W2}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W2}px;border-collapse:collapse;margin:0 auto;">${rows.join("")}</table>`;
+  }
+  function buildEmailHtml(inp) {
+    const { plan } = inp;
+    const W2 = plan.width;
+    const parts = [];
+    if (inp.includePreheader && inp.preheader.trim()) {
+      const pad = "&nbsp;&zwnj;".repeat(40);
+      parts.push(
+        `<div class="ph-preheader" style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;color:transparent;">${esc(inp.preheader.trim())}${pad}</div>`
+      );
+    }
+    const hasMobile = !!(inp.mobile && inp.mobile.plan.slices.length);
+    const desktop = renderPlan(plan, inp.images, inp, hasMobile ? "ph-desktop" : "ph-main");
+    parts.push(desktop);
+    if (hasMobile && inp.mobile) {
+      const mob = renderPlan(inp.mobile.plan, inp.mobile.images, inp, "ph-mobile");
+      parts.push(
+        `<!--[if !mso]><!--><div class="ph-mobile-wrap" style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${mob}</div><!--<![endif]-->`
+      );
+    }
+    if (inp.footerHtml && inp.footerHtml.trim()) {
+      parts.push(
+        `<table role="presentation" width="${W2}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W2}px;border-collapse:collapse;margin:0 auto;"><tr><td style="padding:16px 24px;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#8a8a8a;text-align:center;">${inp.footerHtml}</td></tr></table>`
+      );
+    }
+    const style = `<style type="text/css">
+  .ph-main-img,.ph-desktop-img,.ph-mobile-img{-ms-interpolation-mode:bicubic;}
+  @media only screen and (max-width:${W2}px){
+    .ph-main,.ph-desktop,.ph-mobile{width:100%!important;max-width:100%!important;}
+    ${hasMobile ? `.ph-desktop{display:none!important;max-height:0!important;overflow:hidden!important;}
+    .ph-mobile-wrap,.ph-mobile{display:block!important;max-height:none!important;overflow:visible!important;}` : ""}
+  }
+</style>`;
+    const bg = inp.bgColor || "#ffffff";
+    const body = `<!-- Phloem: generated from Figma frame "${esc(plan.frameName)}" (${W2}\xD7${plan.height}). ${plan.slices.length} slices. Never auto-sent. -->
+${style}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${bg}" style="width:100%;border-collapse:collapse;background-color:${bg};"><tr><td align="center" valign="top" style="padding:0;">
+${parts.join("\n")}
+</td></tr></table>`;
+    if (!inp.fullDocument) return body;
+    return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" lang="${inp.lang || "vi"}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="color-scheme" content="light" />
+<title>${esc(inp.title)}</title>
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<style type="text/css">body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}img{border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}body{margin:0!important;padding:0!important;width:100%!important;}</style>
+</head>
+<body style="margin:0;padding:0;background-color:${bg};">
+${body}
+</body>
+</html>`;
+  }
+  function htmlSizeBytes(html) {
+    return utf8Bytes(html).length;
+  }
+
+  // src/shared/zip.ts
+  var CRC_TABLE = (() => {
+    const t3 = new Uint32Array(256);
+    for (let n2 = 0; n2 < 256; n2++) {
+      let c3 = n2;
+      for (let k3 = 0; k3 < 8; k3++) c3 = c3 & 1 ? 3988292384 ^ c3 >>> 1 : c3 >>> 1;
+      t3[n2] = c3 >>> 0;
+    }
+    return t3;
+  })();
+  function crc32(bytes) {
+    let c3 = 4294967295;
+    for (let i4 = 0; i4 < bytes.length; i4++) c3 = CRC_TABLE[(c3 ^ bytes[i4]) & 255] ^ c3 >>> 8;
+    return (c3 ^ 4294967295) >>> 0;
+  }
+  function dosTime(d3) {
+    const time = d3.getHours() << 11 | d3.getMinutes() << 5 | Math.floor(d3.getSeconds() / 2);
+    const date = d3.getFullYear() - 1980 << 9 | d3.getMonth() + 1 << 5 | d3.getDate();
+    return { time, date };
+  }
+  function makeZip(entries, now = /* @__PURE__ */ new Date()) {
+    const { time, date } = dosTime(now);
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+    for (const e3 of entries) {
+      const name = utf8Bytes(e3.name);
+      const crc = crc32(e3.data);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 67324752, true);
+      lh.setUint16(4, 20, true);
+      lh.setUint16(6, 2048, true);
+      lh.setUint16(8, 0, true);
+      lh.setUint16(10, time, true);
+      lh.setUint16(12, date, true);
+      lh.setUint32(14, crc, true);
+      lh.setUint32(18, e3.data.length, true);
+      lh.setUint32(22, e3.data.length, true);
+      lh.setUint16(26, name.length, true);
+      lh.setUint16(28, 0, true);
+      const local = concat([new Uint8Array(lh.buffer), name, e3.data]);
+      locals.push(local);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 33639248, true);
+      ch.setUint16(4, 20, true);
+      ch.setUint16(6, 20, true);
+      ch.setUint16(8, 2048, true);
+      ch.setUint16(10, 0, true);
+      ch.setUint16(12, time, true);
+      ch.setUint16(14, date, true);
+      ch.setUint32(16, crc, true);
+      ch.setUint32(20, e3.data.length, true);
+      ch.setUint32(24, e3.data.length, true);
+      ch.setUint16(28, name.length, true);
+      ch.setUint16(30, 0, true);
+      ch.setUint16(32, 0, true);
+      ch.setUint16(34, 0, true);
+      ch.setUint16(36, 0, true);
+      ch.setUint32(38, 0, true);
+      ch.setUint32(42, offset, true);
+      centrals.push(concat([new Uint8Array(ch.buffer), name]));
+      offset += local.length;
+    }
+    const cdSize = centrals.reduce((a3, c3) => a3 + c3.length, 0);
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 101010256, true);
+    eocd.setUint16(4, 0, true);
+    eocd.setUint16(6, 0, true);
+    eocd.setUint16(8, entries.length, true);
+    eocd.setUint16(10, entries.length, true);
+    eocd.setUint32(12, cdSize, true);
+    eocd.setUint32(16, offset, true);
+    eocd.setUint16(20, 0, true);
+    return concat([...locals, ...centrals, new Uint8Array(eocd.buffer)]);
+  }
+  function concat(parts) {
+    const n2 = parts.reduce((a3, p3) => a3 + p3.length, 0);
+    const out = new Uint8Array(n2);
+    let o3 = 0;
+    for (const p3 of parts) {
+      out.set(p3, o3);
+      o3 += p3.length;
+    }
+    return out;
+  }
+
+  // src/ui/api/relay.ts
+  var ApiError = class extends Error {
+    constructor(status, message, data) {
+      super(message);
+      this.status = status;
+      this.data = data;
+    }
+    get isPermission() {
+      return this.status === 401 || this.status === 403;
+    }
+  };
+  var KLAVIYO_REVISION = "2025-07-15";
+  function describeError(provider, status, data, text2) {
+    let msg = "";
+    if (data && typeof data === "object") {
+      if (provider === "klaviyo" && Array.isArray(data.errors) && data.errors[0]) msg = data.errors[0].detail || data.errors[0].title || "";
+      else msg = data.detail || data.title || data.error || Array.isArray(data.errors) && data.errors[0] && (data.errors[0].message || data.errors[0].detail) || "";
+      if (Array.isArray(data.errors) && provider === "mailchimp" && data.errors[0]?.field) msg += ` (${data.errors[0].field}: ${data.errors[0].message})`;
+    }
+    if (!msg) msg = text2.slice(0, 200) || `HTTP ${status}`;
+    msg = msg.replace(/\.+$/, "");
+    if (status === 401) return `Kh\xF4ng x\xE1c th\u1EF1c \u0111\u01B0\u1EE3c: ${msg}. Ki\u1EC3m tra API key / \u0111\u0103ng nh\u1EADp l\u1EA1i.`;
+    if (status === 403) return `T\xE0i kho\u1EA3n kh\xF4ng c\xF3 quy\u1EC1n cho thao t\xE1c n\xE0y: ${msg}. Phloem ch\u1EC9 l\xE0m \u0111\u01B0\u1EE3c ph\u1EA7n \u0111\u01B0\u1EE3c c\u1EA5p quy\u1EC1n.`;
+    if (status === 429) return `B\u1ECB gi\u1EDBi h\u1EA1n t\u1ED1c \u0111\u1ED9 (429). Th\u1EED l\u1EA1i sau v\xE0i gi\xE2y.`;
+    return `${msg} (HTTP ${status})`;
+  }
+  function relayHeaders(settings) {
+    const h3 = { "Content-Type": "application/json" };
+    if (settings.relayToken) h3["X-Phloem-Token"] = settings.relayToken;
+    return h3;
+  }
+  function makeCaller(settings, provider, auth) {
+    return async (req) => {
+      let res;
+      if (settings.relayUrl.trim()) {
+        try {
+          res = await fetch(`${settings.relayUrl.replace(/\/$/, "")}/proxy`, {
+            method: "POST",
+            headers: relayHeaders(settings),
+            body: JSON.stringify({ provider, auth, ...req })
+          });
+        } catch (e3) {
+          throw new ApiError(0, `Kh\xF4ng k\u1EBFt n\u1ED1i \u0111\u01B0\u1EE3c relay t\u1EA1i ${settings.relayUrl}. Ch\u1EA1y "npm run relay" (ho\u1EB7c deploy server/) v\xE0 ki\u1EC3m tra URL trong C\xE0i \u0111\u1EB7t.`);
+        }
+      } else {
+        res = await directFetch(provider, auth, req);
+      }
+      const text2 = await res.text();
+      let data = null;
+      try {
+        data = text2 ? JSON.parse(text2) : null;
+      } catch {
+        data = null;
+      }
+      if (!res.ok) throw new ApiError(res.status, describeError(provider, res.status, data, text2), data);
+      return { status: res.status, data, text: text2 };
+    };
+  }
+  async function directFetch(provider, auth, req) {
+    let base2 = "", authHeader = "";
+    const headers = { Accept: "application/json", ...req.headers || {} };
+    if (provider === "mailchimp") {
+      const dc = auth.dc || (auth.type === "apikey" ? auth.apiKey.split("-").pop() : "");
+      base2 = `https://${dc}.api.mailchimp.com/3.0`;
+      authHeader = auth.type === "oauth" ? `OAuth ${auth.accessToken}` : `Basic ${btoa(`phloem:${auth.apiKey}`)}`;
+    } else {
+      base2 = "https://a.klaviyo.com/api";
+      authHeader = auth.type === "oauth" ? `Bearer ${auth.accessToken}` : `Klaviyo-API-Key ${auth.apiKey}`;
+      headers.revision = headers.revision || KLAVIYO_REVISION;
+    }
+    headers.Authorization = authHeader;
+    const url = new URL(base2 + req.path);
+    if (req.query) for (const [k3, v3] of Object.entries(req.query)) url.searchParams.set(k3, String(v3));
+    let body;
+    if (req.multipart) {
+      const fd = new FormData();
+      for (const [k3, v3] of Object.entries(req.multipart.fields)) fd.append(k3, v3);
+      if (req.multipart.file) {
+        const bin = atob(req.multipart.file.base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i4 = 0; i4 < bin.length; i4++) bytes[i4] = bin.charCodeAt(i4);
+        fd.append(req.multipart.file.field, new Blob([bytes], { type: req.multipart.file.type }), req.multipart.file.name);
+      }
+      body = fd;
+    } else if (req.body !== void 0) {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(req.body);
+    }
+    try {
+      return await fetch(url.toString(), { method: req.method, headers, body });
+    } catch {
+      throw new ApiError(0, `Tr\xECnh duy\u1EC7t ch\u1EB7n g\u1ECDi th\u1EB3ng ${provider} (CORS). \u0110i\u1EC1n Relay URL trong C\xE0i \u0111\u1EB7t.`);
+    }
+  }
+  async function relayHealth(settings) {
+    const res = await fetch(settings.relayUrl.replace(/\/$/, "") + "/", { headers: relayHeaders(settings) });
+    if (!res.ok) throw new Error(`Relay tr\u1EA3 ${res.status}`);
+    return res.json();
+  }
+  async function oauthStart(settings, provider) {
+    const res = await fetch(settings.relayUrl.replace(/\/$/, "") + "/oauth/start", { method: "POST", headers: relayHeaders(settings), body: JSON.stringify({ provider }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+  async function oauthPoll(settings, sessionId) {
+    const res = await fetch(`${settings.relayUrl.replace(/\/$/, "")}/oauth/poll/${sessionId}`, { headers: relayHeaders(settings) });
+    return res.json();
+  }
+  async function oauthRefresh(settings, provider, refreshToken) {
+    const res = await fetch(settings.relayUrl.replace(/\/$/, "") + "/oauth/refresh", { method: "POST", headers: relayHeaders(settings), body: JSON.stringify({ provider, refreshToken }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errors?.[0]?.detail || `HTTP ${res.status}`);
+    return data;
+  }
+
+  // src/ui/api/mailchimp.ts
+  var Mailchimp = class {
+    constructor(call, dc) {
+      this.call = call;
+      this.dc = dc;
+    }
+    async account() {
+      const r3 = await this.call({ method: "GET", path: "/", query: { fields: "account_name,email,login_id,account_id" } });
+      return { name: r3.data.account_name, email: r3.data.email, dc: this.dc };
+    }
+    async lists() {
+      const r3 = await this.call({ method: "GET", path: "/lists", query: { count: 200, fields: "lists.id,lists.name" } });
+      return (r3.data.lists || []).map((l3) => ({ id: l3.id, name: l3.name }));
+    }
+    async templates() {
+      const r3 = await this.call({ method: "GET", path: "/templates", query: { count: 200, type: "user", fields: "templates.id,templates.name,templates.type" } });
+      return (r3.data.templates || []).map((t3) => ({ id: t3.id, name: t3.name, type: t3.type }));
+    }
+    async templateSections(id) {
+      const r3 = await this.call({ method: "GET", path: `/templates/${id}/default-content` });
+      return Object.keys(r3.data.sections || {});
+    }
+    /** Probe read permissions. Write permissions only reveal themselves when writing. */
+    async permissions() {
+      const probe = async (path, query) => {
+        try {
+          await this.call({ method: "GET", path, query });
+          return true;
+        } catch (e3) {
+          return !(e3 instanceof ApiError && e3.isPermission);
+        }
+      };
+      const [lists, campaigns, files, templates] = await Promise.all([
+        probe("/lists", { count: 1 }),
+        probe("/campaigns", { count: 1 }),
+        probe("/file-manager/files", { count: 1 }),
+        probe("/templates", { count: 1 })
+      ]);
+      return { "audiences:read": lists, "campaigns:read": campaigns, "files:read": files, "templates:read": templates };
+    }
+    async uploadFile(name, bytes) {
+      const r3 = await this.call({ method: "POST", path: "/file-manager/files", body: { name, file_data: toBase64(bytes) } });
+      return { id: r3.data.id, url: r3.data.full_size_url };
+    }
+    async deleteFile(id) {
+      try {
+        await this.call({ method: "DELETE", path: `/file-manager/files/${id}` });
+      } catch {
+      }
+    }
+    async getCampaign(id) {
+      try {
+        const r3 = await this.call({ method: "GET", path: `/campaigns/${id}`, query: { fields: "id,web_id,status,archive_url" } });
+        return r3.data;
+      } catch (e3) {
+        if (e3 instanceof ApiError && e3.status === 404) return null;
+        throw e3;
+      }
+    }
+    async createCampaign(s3) {
+      const r3 = await this.call({
+        method: "POST",
+        path: "/campaigns",
+        body: {
+          type: "regular",
+          recipients: { list_id: s3.listId },
+          settings: { subject_line: s3.subject, preview_text: s3.previewText, title: s3.title, from_name: s3.fromName, reply_to: s3.replyTo, auto_footer: false, inline_css: false }
+        }
+      });
+      return r3.data;
+    }
+    async updateCampaign(id, s3) {
+      const r3 = await this.call({
+        method: "PATCH",
+        path: `/campaigns/${id}`,
+        body: { recipients: { list_id: s3.listId }, settings: { subject_line: s3.subject, preview_text: s3.previewText, title: s3.title, from_name: s3.fromName, reply_to: s3.replyTo } }
+      });
+      return r3.data;
+    }
+    async setContent(id, content) {
+      const body = "templateId" in content ? { template: { id: content.templateId, sections: { [content.section]: content.html } } } : { html: content.html };
+      await this.call({ method: "PUT", path: `/campaigns/${id}/content`, body });
+    }
+    editUrl(c3) {
+      return `https://${this.dc}.admin.mailchimp.com/campaigns/edit?id=${c3.web_id}`;
+    }
+  };
+
+  // src/ui/api/klaviyo.ts
+  var Klaviyo = class {
+    constructor(call) {
+      this.call = call;
+    }
+    async account() {
+      const r3 = await this.call({ method: "GET", path: "/accounts" });
+      const a3 = r3.data?.data?.[0];
+      return { id: a3?.id || "", name: a3?.attributes?.contact_information?.organization_name || a3?.attributes?.contact_information?.default_sender_name || "Klaviyo", test: !!a3?.attributes?.test_account };
+    }
+    async lists() {
+      const out = [];
+      let path = "/lists";
+      let query = { "fields[list]": "name", "page[size]": 100 };
+      for (let i4 = 0; i4 < 5 && path; i4++) {
+        const r3 = await this.call({ method: "GET", path, query });
+        for (const l3 of r3.data?.data || []) out.push({ id: l3.id, name: l3.attributes?.name || l3.id });
+        const next = r3.data?.links?.next;
+        if (next) {
+          const u4 = new URL(next);
+          path = u4.pathname.replace(/^\/api/, "");
+          query = Object.fromEntries(u4.searchParams.entries());
+        } else path = null;
+      }
+      return out;
+    }
+    async permissions(scopeString) {
+      if (scopeString) {
+        const s3 = new Set(scopeString.split(/[\s,]+/));
+        const want = ["lists:read", "campaigns:read", "campaigns:write", "templates:read", "templates:write", "images:read", "images:write"];
+        return Object.fromEntries(want.map((w3) => [w3, s3.has(w3)]));
+      }
+      const probe = async (path, query) => {
+        try {
+          await this.call({ method: "GET", path, query });
+          return true;
+        } catch (e3) {
+          return !(e3 instanceof ApiError && e3.isPermission);
+        }
+      };
+      const [lists, campaigns, templates, images] = await Promise.all([
+        probe("/lists", { "page[size]": 1 }),
+        probe("/campaigns", { filter: "equals(messages.channel,'email')", "page[size]": 1 }),
+        probe("/templates", { "page[size]": 1 }),
+        probe("/images", { "page[size]": 1 })
+      ]);
+      return { "lists:read": lists, "campaigns:read": campaigns, "templates:read": templates, "images:read": images };
+    }
+    async uploadImage(name, bytes, mime) {
+      const r3 = await this.call({
+        method: "POST",
+        path: "/image-upload",
+        multipart: { fields: { name, hidden: "false" }, file: { field: "file", name: `${name}.${mime === "image/jpeg" ? "jpg" : "png"}`, type: mime, base64: toBase64(bytes) } }
+      });
+      return { id: r3.data?.data?.id, url: r3.data?.data?.attributes?.image_url };
+    }
+    async hideImage(id) {
+      try {
+        await this.call({ method: "PATCH", path: `/images/${id}`, body: { data: { type: "image", id, attributes: { hidden: true } } } });
+      } catch {
+      }
+    }
+    async createTemplate(name, html) {
+      const r3 = await this.call({ method: "POST", path: "/templates", body: { data: { type: "template", attributes: { name, editor_type: "CODE", html, text: "" } } } });
+      return r3.data.data.id;
+    }
+    async updateTemplate(id, name, html) {
+      await this.call({ method: "PATCH", path: `/templates/${id}`, body: { data: { type: "template", id, attributes: { name, html } } } });
+    }
+    async getTemplate(id) {
+      try {
+        await this.call({ method: "GET", path: `/templates/${id}`, query: { "fields[template]": "name" } });
+        return true;
+      } catch (e3) {
+        if (e3 instanceof ApiError && e3.status === 404) return false;
+        throw e3;
+      }
+    }
+    async getCampaign(id) {
+      try {
+        const r3 = await this.call({ method: "GET", path: `/campaigns/${id}`, query: { "fields[campaign]": "status,name", include: "campaign-messages" } });
+        const msg = r3.data?.data?.relationships?.["campaign-messages"]?.data?.[0]?.id ?? r3.data?.included?.find((i4) => i4.type === "campaign-message")?.id ?? null;
+        return { status: r3.data?.data?.attributes?.status || "", messageId: msg };
+      } catch (e3) {
+        if (e3 instanceof ApiError && e3.status === 404) return null;
+        throw e3;
+      }
+    }
+    messageDefinition(s3) {
+      return {
+        channel: "email",
+        label: s3.label,
+        content: { subject: s3.subject, preview_text: s3.previewText, from_email: s3.fromEmail, from_label: s3.fromLabel, reply_to_email: s3.replyTo || s3.fromEmail }
+      };
+    }
+    async createCampaign(s3) {
+      const r3 = await this.call({
+        method: "POST",
+        path: "/campaigns",
+        body: {
+          data: {
+            type: "campaign",
+            attributes: {
+              name: s3.name,
+              audiences: { included: [s3.listId], excluded: [] },
+              send_strategy: { method: "immediate" },
+              "campaign-messages": { data: [{ type: "campaign-message", attributes: { definition: this.messageDefinition({ ...s3, label: s3.name }) } }] }
+            }
+          }
+        }
+      });
+      const id = r3.data.data.id;
+      const messageId = r3.data.data.relationships?.["campaign-messages"]?.data?.[0]?.id || r3.data.included?.find((i4) => i4.type === "campaign-message")?.id;
+      if (!messageId) throw new Error("Klaviyo kh\xF4ng tr\u1EA3 v\u1EC1 campaign-message id.");
+      return { id, messageId };
+    }
+    async updateCampaign(id, name, listId) {
+      await this.call({ method: "PATCH", path: `/campaigns/${id}`, body: { data: { type: "campaign", id, attributes: { name, audiences: { included: [listId], excluded: [] } } } } });
+    }
+    async updateMessage(messageId, s3) {
+      await this.call({ method: "PATCH", path: `/campaign-messages/${messageId}`, body: { data: { type: "campaign-message", id: messageId, attributes: { definition: this.messageDefinition({ ...s3, label: s3.name }) } } } });
+    }
+    async assignTemplate(messageId, templateId) {
+      await this.call({
+        method: "POST",
+        path: "/campaign-message-assign-template",
+        body: { data: { type: "campaign-message", id: messageId, relationships: { template: { data: { type: "template", id: templateId } } } } }
+      });
+    }
+    editUrl(campaignId) {
+      return `https://www.klaviyo.com/campaign/${campaignId}/content`;
+    }
+  };
+
+  // studio/src/render/exportSlices.ts
+  function canvasToBytes(c3) {
+    return new Promise((res, rej) => c3.toBlob((b2) => b2 ? b2.arrayBuffer().then((ab) => res(new Uint8Array(ab))) : rej(new Error("toBlob failed")), "image/png"));
+  }
+  async function prepareDoc(doc2, brand2) {
+    const ids = flat(doc2.nodes).filter((n2) => n2.type === "image" && n2.assetId).map((n2) => n2.assetId);
+    await assets.ensure(ids);
+    const fams = flat(doc2.nodes).filter((n2) => n2.type === "text").map((n2) => {
+      const f4 = n2.fontFamily;
+      return f4 === "brand" ? brand2.fontFamily : f4 === "heading" ? brand2.headingFamily : f4;
+    });
+    ensureFonts(fams);
+    await document.fonts.ready;
+  }
+  async function exportDocSlices(doc2, brand2, plan, scale, onProgress) {
+    await prepareDoc(doc2, brand2);
+    const full = renderToCanvas(doc2, brand2, assets, scale);
+    const out = [];
+    for (let i4 = 0; i4 < plan.slices.length; i4++) {
+      const s3 = plan.slices[i4];
+      const c3 = document.createElement("canvas");
+      c3.width = Math.max(1, Math.round(s3.w * scale));
+      c3.height = Math.max(1, Math.round(s3.h * scale));
+      c3.getContext("2d").drawImage(full, Math.round(s3.x * scale), Math.round(s3.y * scale), c3.width, c3.height, 0, 0, c3.width, c3.height);
+      const bytes = await canvasToBytes(c3);
+      out.push({ key: s3.key, bytes, format: "PNG", hash: fnv1a(bytes), w: s3.w, h: s3.h, scale });
+      onProgress?.(i4 + 1, plan.slices.length);
+      if (i4 % 8 === 7) await new Promise((r3) => setTimeout(r3, 0));
+    }
+    return out;
+  }
+
+  // studio/src/pipeline/exportFlow.ts
+  var providerName = (p3) => p3 === "mailchimp" ? "Mailchimp" : "Klaviyo";
+  var cache2 = { lists: {}, templates: {}, sections: {}, relay: null, relayError: "" };
+  function activeProfile() {
+    const s3 = get();
+    return s3.profiles.find((p3) => p3.id === s3.settings.activeProfileId) ?? null;
+  }
+  async function checkRelay(loud = false) {
+    const s3 = get();
+    if (!s3.settings.relayUrl) {
+      cache2.relay = null;
+      cache2.relayError = "";
+      set({});
+      return;
+    }
+    try {
+      cache2.relay = await relayHealth(s3.settings);
+      cache2.relayError = "";
+      if (loud) toast("Relay ho\u1EA1t \u0111\u1ED9ng.", "ok");
+    } catch (e3) {
+      cache2.relay = null;
+      cache2.relayError = `Kh\xF4ng k\u1EBFt n\u1ED1i \u0111\u01B0\u1EE3c ${s3.settings.relayUrl}: ${e3.message}`;
+      if (loud) toast(cache2.relayError, "err");
+    }
+    set({});
+  }
+  async function freshProfile(p3) {
+    const s3 = get();
+    if (p3.auth.type === "oauth" && p3.provider === "klaviyo" && p3.auth.refreshToken && p3.auth.expiresAt && p3.auth.expiresAt < Date.now() + 6e4) {
+      const t3 = await oauthRefresh(s3.settings, "klaviyo", p3.auth.refreshToken);
+      p3.auth = { ...p3.auth, accessToken: t3.accessToken, refreshToken: t3.refreshToken, expiresAt: t3.expiresAt };
+      saveProfile(p3);
+    }
+    return p3;
+  }
+  function saveProfile(p3) {
+    const s3 = get();
+    const i4 = s3.profiles.findIndex((x2) => x2.id === p3.id);
+    const profiles = s3.profiles.slice();
+    if (i4 >= 0) profiles[i4] = p3;
+    else profiles.push(p3);
+    set({ profiles, settings: !s3.settings.activeProfileId ? { ...s3.settings, activeProfileId: p3.id } : s3.settings });
+  }
+  function removeProfile(id) {
+    const s3 = get();
+    set({ profiles: s3.profiles.filter((p3) => p3.id !== id), settings: s3.settings.activeProfileId === id ? { ...s3.settings, activeProfileId: null } : s3.settings });
+  }
+  function clientFor(p3) {
+    const call = makeCaller(get().settings, p3.provider, p3.auth);
+    return p3.provider === "mailchimp" ? new Mailchimp(call, p3.auth.dc || (p3.auth.type === "apikey" ? p3.auth.apiKey.split("-").pop() || "" : "")) : new Klaviyo(call);
+  }
+  async function testConnection(p3) {
+    await freshProfile(p3);
+    const c3 = clientFor(p3);
+    if (c3 instanceof Mailchimp) {
+      const acc = await c3.account();
+      p3.accountLabel = `${acc.name} (${acc.email})`;
+      p3.permissions = await c3.permissions();
+      try {
+        cache2.lists[p3.id] = await c3.lists();
+      } catch (e3) {
+        toast(`Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c audiences: ${e3.message}`, "err");
+      }
+      try {
+        cache2.templates[p3.id] = await c3.templates();
+        if (p3.templateId) await loadSections(p3);
+      } catch {
+      }
+    } else {
+      const acc = await c3.account();
+      p3.accountLabel = acc.name + (acc.test ? " (test)" : "");
+      p3.permissions = await c3.permissions(p3.auth.type === "oauth" ? p3.auth.scopes : void 0);
+      try {
+        cache2.lists[p3.id] = await c3.lists();
+      } catch (e3) {
+        toast(`Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c lists: ${e3.message}`, "err");
+      }
+    }
+    if (!p3.name.trim()) p3.name = p3.accountLabel.split(" (")[0];
+    return p3;
+  }
+  async function loadSections(p3) {
+    const c3 = clientFor(p3);
+    if (c3 instanceof Mailchimp && p3.templateId) {
+      try {
+        cache2.sections[p3.id] = await c3.templateSections(p3.templateId);
+        if (cache2.sections[p3.id].length && !cache2.sections[p3.id].includes(p3.templateSection)) p3.templateSection = cache2.sections[p3.id][0];
+      } catch {
+        cache2.sections[p3.id] = [];
+      }
+    }
+  }
+  async function connectOAuth(p3, onDone) {
+    const s3 = get();
+    const { sessionId, url } = await oauthStart(s3.settings, p3.provider);
+    window.open(url, "_blank", "noopener");
+    toast(`\u0110\xE3 m\u1EDF tab \u0111\u0103ng nh\u1EADp ${providerName(p3.provider)}. Xong th\xEC quay l\u1EA1i \u0111\xE2y.`, "info");
+    const started = Date.now();
+    while (Date.now() - started < 5 * 6e4) {
+      await new Promise((r4) => setTimeout(r4, 2e3));
+      const r3 = await oauthPoll(s3.settings, sessionId);
+      if (r3.status === "pending") continue;
+      if (r3.status === "done" && r3.auth) {
+        p3.auth = r3.auth;
+        p3.accountLabel = r3.auth.type === "oauth" && r3.auth.accountName || providerName(p3.provider);
+        onDone(await testConnection(p3));
+        return;
+      }
+      throw new Error(r3.error || (r3.status === "expired" ? "Phi\xEAn \u0111\u0103ng nh\u1EADp h\u1EBFt h\u1EA1n." : "\u0110\u0103ng nh\u1EADp th\u1EA5t b\u1EA1i."));
+    }
+    throw new Error("Qu\xE1 5 ph\xFAt ch\u01B0a th\u1EA5y \u0111\u0103ng nh\u1EADp.");
+  }
+  function busy(label, done = 0, total = 0) {
+    set({ busy: { label, done, total } });
+  }
+  async function exportProject(p3, prof) {
+    const format = prof?.imageFormat ?? "PNG", scale = prof?.scale ?? 2, q2 = prof?.jpgQuality ?? 85;
+    const s3 = get().settings;
+    const planFor = (d3) => planSlices(docToNNode(d3, p3.brand), { maxSliceHeight: s3.maxSliceHeight, mergeRows: s3.mergeRows });
+    busy("C\u1EAFt & xu\u1EA5t \u1EA3nh\u2026");
+    const plan = planFor(p3.desktop);
+    const raw = await exportDocSlices(p3.desktop, p3.brand, plan, scale, (d3, t3) => busy("C\u1EAFt & xu\u1EA5t \u1EA3nh\u2026", d3, t3));
+    busy("N\xE9n \u1EA3nh\u2026");
+    const slices = await finalizeSlices(raw, format, q2);
+    let mobile = null;
+    if (p3.mobile) {
+      const mp = planFor(p3.mobile);
+      const mr = await exportDocSlices(p3.mobile, p3.brand, mp, scale, (d3, t3) => busy("Xu\u1EA5t b\u1EA3n mobile\u2026", d3, t3));
+      mobile = { plan: mp, slices: await finalizeSlices(mr, format, q2) };
+    }
+    const bytes = slices.reduce((a3, x2) => a3 + x2.bytes.length, 0) + (mobile ? mobile.slices.reduce((a3, x2) => a3 + x2.bytes.length, 0) : 0);
+    log(`${slices.length}${mobile ? ` + ${mobile.slices.length} mobile` : ""} l\xE1t \xB7 ${(bytes / 1024).toFixed(0)} KB (${format} ${scale}x)`);
+    if (bytes > WEIGHT_ERROR) log(`T\u1ED5ng \u1EA3nh ${(bytes / 1024 / 1024).toFixed(1)} MB \u2014 qu\xE1 n\u1EB7ng. \u0110\u1ED5i sang JPG ho\u1EB7c 1x.`, "er");
+    else if (bytes > WEIGHT_WARN) log(`T\u1ED5ng \u1EA3nh ${(bytes / 1024).toFixed(0)} KB \u2014 n\u1EB7ng, c\xE2n nh\u1EAFc JPG.`);
+    return { plan, slices, mobile };
+  }
+  async function uploadAll(prof, p3, ex, prev) {
+    const c3 = clientFor(prof);
+    const files = {};
+    const images = {}, mobileImages = {};
+    const all = [...ex.slices.map((s3) => ({ key: s3.key, s: s3, target: images })), ...ex.mobile ? ex.mobile.slices.map((s3) => ({ key: `m:${s3.key}`, s: s3, target: mobileImages })) : []];
+    let reused = 0, uploaded = 0;
+    const base2 = slug(p3.fields.campaignName || p3.name);
+    for (let i4 = 0; i4 < all.length; i4++) {
+      const { key, s: s3, target } = all[i4];
+      busy(`Upload \u1EA3nh l\xEAn ${providerName(prof.provider)}\u2026`, i4, all.length);
+      const old = prev?.files[key];
+      if (old && old.hash === s3.hash && old.url) {
+        files[key] = old;
+        target[s3.key] = old.url;
+        reused++;
+        continue;
+      }
+      const name = `${base2}-${key.replace(":", "-")}-${s3.hash.slice(0, 6)}`;
+      const up = c3 instanceof Mailchimp ? await c3.uploadFile(`${name}.${extOf(s3.format)}`, s3.bytes) : await c3.uploadImage(name, s3.bytes, mimeOf(s3.format));
+      if (!up.url) throw new Error(`${providerName(prof.provider)} kh\xF4ng tr\u1EA3 v\u1EC1 URL \u1EA3nh.`);
+      files[key] = { id: up.id != null ? String(up.id) : null, url: up.url, hash: s3.hash };
+      target[s3.key] = up.url;
+      uploaded++;
+      if (old?.id) {
+        if (c3 instanceof Mailchimp) void c3.deleteFile(old.id);
+        else void c3.hideImage(old.id);
+      }
+    }
+    if (prev) {
+      for (const [k3, old] of Object.entries(prev.files)) if (!files[k3] && old.id) {
+        if (c3 instanceof Mailchimp) void c3.deleteFile(old.id);
+        else void c3.hideImage(old.id);
+      }
+    }
+    log(`\u1EA2nh: ${uploaded} upload m\u1EDBi, ${reused} d\xF9ng l\u1EA1i.`, "ok");
+    return { images, mobileImages, files };
+  }
+  function htmlFor(p3, prof, ex, images, mobileImages, mode) {
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    return buildEmailHtml({
+      plan: ex.plan,
+      images,
+      mobile: ex.mobile ? { plan: ex.mobile.plan, images: mobileImages } : null,
+      title: p3.fields.subject || p3.fields.campaignName || p3.name,
+      preheader: p3.fields.preheader,
+      includePreheader: mode === "full",
+      fullDocument: mode === "full",
+      footerHtml: prof?.footerHtml || "",
+      bgColor: resolveColor(p3.desktop.bg, p3.brand),
+      provider: prof?.provider ?? null,
+      utm: prof?.utmTemplate ? { template: prof.utmTemplate, vars: { provider: prof.provider, campaign: p3.fields.campaignName || p3.name, frame: p3.name, date: today } } : null
+    });
+  }
+  function drafts(p3) {
+    return p3.drafts || {};
+  }
+  function requireDraftFields(p3, prof) {
+    const miss = [];
+    if (!p3.fields.subject.trim()) miss.push("Subject");
+    if (!prof.audienceId) miss.push(`Audience (Client \u2192 ${prof.name})`);
+    if (prof.provider === "klaviyo") {
+      if (!prof.fromEmail.trim()) miss.push("From email");
+      if (!prof.fromName.trim()) miss.push("From name");
+    }
+    if (prof.provider === "mailchimp") {
+      if (!prof.fromName.trim()) miss.push("From name");
+      if (!prof.replyTo.trim()) miss.push("Reply-to");
+    }
+    if (miss.length) throw new Error(`Thi\u1EBFu: ${miss.join(", ")}.`);
+  }
+  async function createDraft(p3, prof) {
+    requireDraftFields(p3, prof);
+    await freshProfile(prof);
+    const c3 = clientFor(prof);
+    const prev = drafts(p3)[prof.id] ?? null;
+    let existing = prev;
+    if (existing?.campaignId) {
+      busy("Ki\u1EC3m tra draft c\u0169\u2026");
+      if (c3 instanceof Mailchimp) {
+        const camp = await c3.getCampaign(existing.campaignId);
+        if (!camp || camp.status !== "save") {
+          log(camp ? `Draft c\u0169 \u0111\xE3 ${camp.status} \u2014 t\u1EA1o m\u1EDBi.` : "Draft c\u0169 \u0111\xE3 b\u1ECB xo\xE1 \u2014 t\u1EA1o m\u1EDBi.");
+          existing = { ...existing, campaignId: "" };
+        }
+      } else {
+        const camp = await c3.getCampaign(existing.campaignId);
+        if (!camp || !/draft/i.test(camp.status)) {
+          log(camp ? `Campaign c\u0169 \u1EDF tr\u1EA1ng th\xE1i ${camp.status} \u2014 t\u1EA1o m\u1EDBi.` : "Draft c\u0169 \u0111\xE3 b\u1ECB xo\xE1 \u2014 t\u1EA1o m\u1EDBi.");
+          existing = { ...existing, campaignId: "", messageId: void 0 };
+        } else if (!existing.messageId && camp.messageId) existing = { ...existing, messageId: camp.messageId };
+      }
+    }
+    const ex = await exportProject(p3, prof);
+    const { images, mobileImages, files } = await uploadAll(prof, p3, ex, prev);
+    busy(existing?.campaignId ? "C\u1EADp nh\u1EADt draft\u2026" : "T\u1EA1o draft\u2026");
+    const draft = { provider: prof.provider, profileId: prof.id, campaignId: existing?.campaignId || "", templateId: existing?.templateId, messageId: existing?.messageId, webUrl: existing?.webUrl, files, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    if (c3 instanceof Mailchimp) {
+      const st = { listId: prof.audienceId, subject: p3.fields.subject, previewText: p3.fields.preheader, title: p3.fields.campaignName || p3.name, fromName: prof.fromName, replyTo: prof.replyTo };
+      const camp = draft.campaignId ? await c3.updateCampaign(draft.campaignId, st) : await c3.createCampaign(st);
+      draft.campaignId = camp.id;
+      if (prof.templateId) {
+        await c3.setContent(camp.id, { templateId: Number(prof.templateId), section: prof.templateSection || "body", html: htmlFor(p3, prof, ex, images, mobileImages, "fragment") });
+        log(`Ch\xE8n v\xE0o template ${prof.templateId} / "${prof.templateSection || "body"}" \u2014 header/footer gi\u1EEF nguy\xEAn.`);
+      } else {
+        const html = htmlFor(p3, prof, ex, images, mobileImages, "full");
+        await c3.setContent(camp.id, { html });
+        if (htmlSizeBytes(html) > GMAIL_CLIP_BYTES) log("HTML > 102KB \u2014 Gmail c\xF3 th\u1EC3 c\u1EAFt.", "er");
+      }
+      draft.webUrl = c3.editUrl(camp);
+    } else {
+      const html = htmlFor(p3, prof, ex, images, mobileImages, "full");
+      const tplName = `Phloem \xB7 ${p3.fields.campaignName || p3.name}`;
+      if (draft.templateId && await c3.getTemplate(draft.templateId)) await c3.updateTemplate(draft.templateId, tplName, html);
+      else draft.templateId = await c3.createTemplate(tplName, html);
+      const msg = { name: p3.fields.campaignName || p3.name, listId: prof.audienceId, subject: p3.fields.subject, previewText: p3.fields.preheader, fromEmail: prof.fromEmail, fromLabel: prof.fromName, replyTo: prof.replyTo };
+      if (draft.campaignId && draft.messageId) {
+        await c3.updateCampaign(draft.campaignId, msg.name, prof.audienceId);
+        await c3.updateMessage(draft.messageId, msg);
+      } else {
+        const created = await c3.createCampaign(msg);
+        draft.campaignId = created.id;
+        draft.messageId = created.messageId;
+      }
+      await c3.assignTemplate(draft.messageId, draft.templateId);
+      draft.webUrl = c3.editUrl(draft.campaignId);
+      if (htmlSizeBytes(html) > GMAIL_CLIP_BYTES) log("HTML > 102KB \u2014 Gmail c\xF3 th\u1EC3 c\u1EAFt.", "er");
+    }
+    patchProject({ drafts: { ...drafts(p3), [prof.id]: draft } });
+    log(`${existing?.campaignId ? "\u0110\xE3 c\u1EADp nh\u1EADt" : "\u0110\xE3 t\u1EA1o"} draft trong ${providerName(prof.provider)}.`, "ok");
+    set({ result: { text: `${existing?.campaignId ? "Draft \u0111\xE3 c\u1EADp nh\u1EADt" : "Draft \u0111\xE3 t\u1EA1o"} trong ${providerName(prof.provider)} \u2014 duy\u1EC7t r\u1ED3i g\u1EEDi \u1EDF \u0111\xF3.`, url: draft.webUrl } });
+  }
+  async function copyHtml(p3, prof, mode) {
+    if (!prof) throw new Error("Copy HTML c\u1EA7n m\u1ED9t client \u0111\u1EC3 host \u1EA3nh (ho\u1EB7c d\xF9ng T\u1EA3i .zip).");
+    await freshProfile(prof);
+    const ex = await exportProject(p3, prof);
+    const prev = drafts(p3)[prof.id] ?? null;
+    const { images, mobileImages, files } = await uploadAll(prof, p3, ex, prev);
+    const html = htmlFor(p3, prof, ex, images, mobileImages, mode);
+    const ok = await copyText(html);
+    if (!ok) {
+      downloadBytes(`${slug(p3.fields.campaignName || p3.name)}.html`, utf8Bytes(html), "text/html");
+      throw new Error("Kh\xF4ng ghi \u0111\u01B0\u1EE3c clipboard \u2014 \u0111\xE3 t\u1EA3i file .html thay th\u1EBF.");
+    }
+    patchProject({ drafts: { ...drafts(p3), [prof.id]: { ...prev ?? { provider: prof.provider, profileId: prof.id, campaignId: "" }, files, updatedAt: (/* @__PURE__ */ new Date()).toISOString() } } });
+    const kb = (htmlSizeBytes(html) / 1024).toFixed(1);
+    log(`HTML ${mode === "fragment" ? "n\u1ED9i dung" : "\u0111\u1EA7y \u0111\u1EE7"} ${kb} KB \u0111\xE3 v\xE0o clipboard.`, "ok");
+    set({ result: { text: mode === "fragment" ? `\u0110\xE3 copy HTML n\u1ED9i dung (${kb} KB). D\xE1n v\xE0o kh\u1ED1i Code/HTML c\u1EE7a template c\xF3 brand.` : `\u0110\xE3 copy trang HTML \u0111\u1EA7y \u0111\u1EE7 (${kb} KB).` } });
+  }
+  async function downloadZip(p3, prof) {
+    const ex = await exportProject(p3, prof);
+    const images = {}, mobileImages = {};
+    const entries = [];
+    for (const s3 of ex.slices) {
+      const n2 = `images/${s3.key}.${extOf(s3.format)}`;
+      images[s3.key] = n2;
+      entries.push({ name: n2, data: s3.bytes });
+    }
+    if (ex.mobile) for (const s3 of ex.mobile.slices) {
+      const n2 = `images/mobile-${s3.key}.${extOf(s3.format)}`;
+      mobileImages[s3.key] = n2;
+      entries.push({ name: n2, data: s3.bytes });
+    }
+    const html = htmlFor(p3, prof, ex, images, mobileImages, "full");
+    entries.unshift({ name: "index.html", data: utf8Bytes(html) });
+    entries.push({ name: "README.txt", data: utf8Bytes(`Phloem Studio export \u2014 ${p3.name}
+
+index.html d\xF9ng \u1EA3nh t\u01B0\u01A1ng \u0111\u1ED1i trong images/. Upload images/ l\xEAn host r\u1ED3i thay "images/" b\u1EB1ng URL tuy\u1EC7t \u0111\u1ED1i, ho\u1EB7c d\xF9ng T\u1EA1o draft \u0111\u1EC3 Phloem upload t\u1EF1 \u0111\u1ED9ng.
+Kh\xF4ng bao gi\u1EDD t\u1EF1 g\u1EEDi: b\u1EA1n duy\u1EC7t v\xE0 b\u1EA5m g\u1EEDi.
+`) });
+    const zip = makeZip(entries);
+    downloadBytes(`${slug(p3.fields.campaignName || p3.name)}.zip`, zip, "application/zip");
+    log(`\u0110\xE3 t\u1EA3i ${(zip.length / 1024).toFixed(0)} KB (.zip).`, "ok");
+    set({ result: { text: `\u0110\xE3 t\u1EA3i ${slug(p3.fields.campaignName || p3.name)}.zip \u2014 index.html + ${entries.length - 2} \u1EA3nh.` } });
+  }
+  async function previewHtml(p3) {
+    const ex = await exportProject(p3, activeProfile());
+    const urls = [];
+    const toUrl = (s3) => {
+      const u4 = URL.createObjectURL(new Blob([s3.bytes.buffer.slice(s3.bytes.byteOffset, s3.bytes.byteOffset + s3.bytes.byteLength)], { type: mimeOf(s3.format) }));
+      urls.push(u4);
+      return u4;
+    };
+    const images = Object.fromEntries(ex.slices.map((s3) => [s3.key, toUrl(s3)]));
+    const mobileImages = ex.mobile ? Object.fromEntries(ex.mobile.slices.map((s3) => [s3.key, toUrl(s3)])) : {};
+    set({ busy: null });
+    return { html: htmlFor(p3, activeProfile(), ex, images, mobileImages, "full"), revoke: () => urls.forEach((u4) => URL.revokeObjectURL(u4)) };
+  }
+  async function runExport(kind, mode = "fragment") {
+    const s3 = get();
+    if (s3.busy || !s3.project) return;
+    const p3 = s3.project, prof = activeProfile();
+    set({ log: [], result: null });
+    try {
+      if (kind === "draft") {
+        if (!prof) throw new Error("Ch\u1ECDn client tr\u01B0\u1EDBc (g\xF3c tr\xEAn b\xEAn ph\u1EA3i).");
+        await createDraft(p3, prof);
+      } else if (kind === "html") await copyHtml(p3, prof, mode);
+      else await downloadZip(p3, prof);
+    } catch (e3) {
+      const msg = e3 instanceof ApiError ? e3.message : e3.message || String(e3);
+      log(msg, "er");
+      toast(msg, "err");
+    } finally {
+      set({ busy: null });
+    }
+  }
+
+  // node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js
+  var f3 = 0;
+  var i3 = Array.isArray;
+  function u3(e3, t3, n2, o3, i4, u4) {
+    t3 || (t3 = {});
+    var a3, c3, l3 = t3;
+    "ref" in t3 && (a3 = t3.ref, delete t3.ref);
+    var p3 = { type: e3, props: l3, key: n2, ref: a3, __k: null, __: null, __b: 0, __e: null, __d: void 0, __c: null, constructor: void 0, __v: --f3, __i: -1, __u: 0, __source: i4, __self: u4 };
+    if ("function" == typeof e3 && (a3 = e3.defaultProps)) for (c3 in a3) void 0 === l3[c3] && (l3[c3] = a3[c3]);
+    return l.vnode && l.vnode(p3), p3;
+  }
+
+  // studio/src/ui/icons.tsx
+  var P2 = {
+    select: "M4 3l12 7-5 1.5L9.5 17 4 3z",
+    rect: "M3 4h14v12H3z",
+    text: "M4 5h12M10 5v11M7 16h6",
+    image: "M3 4h14v12H3zM6 13l3-3 2 2 2-3 3 4",
+    hand: "M7 11V5a1.5 1.5 0 013 0v5M10 10V4a1.5 1.5 0 013 0v6M13 10V6a1.5 1.5 0 013 0v6c0 3-2 5-5 5H9.5c-2 0-3.5-1.4-5-3.5L3 11a1.4 1.4 0 012.3-1.6L7 11",
+    group: "M3 3h6v6H3zM11 11h6v6h-6zM9 6h2M6 9v2",
+    eye: "M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5zM10 12a2 2 0 100-4 2 2 0 000 4z",
+    eyeOff: "M3 3l14 14M8.5 8.6A2 2 0 0011.4 11.5M5.6 5.7C3.4 7 2 10 2 10s3 5 8 5c1.5 0 2.8-.4 3.9-1M8.5 5.2A8 8 0 0110 5c5 0 8 5 8 5s-.8 1.3-2.2 2.6",
+    lock: "M5 9V7a5 5 0 0110 0v2M4 9h12v8H4z",
+    unlock: "M5 9V7a5 5 0 019.6-2M4 9h12v8H4z",
+    chevron: "M7 5l5 5-5 5",
+    plus: "M10 4v12M4 10h12",
+    minus: "M4 10h12",
+    close: "M5 5l10 10M15 5L5 15",
+    trash: "M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11M9 9v5M11 9v5",
+    copy: "M7 7h9v9H7zM4 13V4h9",
+    undo: "M7 5L3 9l4 4M3 9h8a5 5 0 010 10",
+    redo: "M13 5l4 4-4 4M17 9H9a5 5 0 000 10",
+    zoomIn: "M9 3a6 6 0 100 12A6 6 0 009 3zM17 17l-4-4M9 6v6M6 9h6",
+    zoomOut: "M9 3a6 6 0 100 12A6 6 0 009 3zM17 17l-4-4M6 9h6",
+    fit: "M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4",
+    desktop: "M2 4h16v10H2zM7 17h6M10 14v3",
+    mobile: "M6 2h8v16H6zM9 15h2",
+    play: "M6 4l10 6-10 6z",
+    send: "M3 10l14-7-4 14-3-5-7-2z",
+    settings: "M10 7a3 3 0 100 6 3 3 0 000-6zM10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4",
+    home: "M3 9l7-6 7 6v8h-5v-5H8v5H3z",
+    layers: "M10 3l7 4-7 4-7-4zM3 11l7 4 7-4M3 14l7 4 7-4",
+    blocks: "M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z",
+    alignL: "M3 3v14M6 6h9v3H6zM6 11h6v3H6z",
+    alignC: "M10 3v14M5 6h10v3H5zM7 11h6v3H7z",
+    alignR: "M17 3v14M5 6h9v3H5zM8 11h6v3H8z",
+    alignT: "M3 3h14M6 6h3v9H6zM11 6h3v6h-3z",
+    alignM: "M3 10h14M6 5h3v10H6zM11 7h3v6h-3z",
+    alignB: "M3 17h14M6 5h3v9H6zM11 8h3v6h-3z",
+    distH: "M3 3v14M17 3v14M8 6h4v8H8z",
+    distV: "M3 3h14M3 17h14M6 8h8v4H6z",
+    up: "M10 16V4M5 9l5-5 5 5",
+    down: "M10 4v12M5 11l5 5 5-5",
+    check: "M4 10l4 4 8-8",
+    warn: "M10 3l8 14H2zM10 8v4M10 15h.01",
+    info: "M10 2a8 8 0 100 16 8 8 0 000-16zM10 9v5M10 6h.01",
+    link: "M8 12a3 3 0 004.2 0l2.4-2.4a3 3 0 10-4.2-4.2L9.6 6.2M12 8a3 3 0 00-4.2 0L5.4 10.4a3 3 0 104.2 4.2l.8-.8",
+    bolt: "M11 2L4 11h5l-1 7 8-10h-5z",
+    grid: "M3 3h14v14H3zM3 8h14M3 13h14M8 3v14M13 3v14",
+    magnet: "M5 3v7a5 5 0 0010 0V3M5 3h3v7a2 2 0 004 0V3h3",
+    figma: "M8 2h4a3 3 0 010 6H8zM8 8h4a3 3 0 010 6H8zM8 8a3 3 0 100 6M8 14a3 3 0 100 6M12 8a3 3 0 110 6 3 3 0 010-6z",
+    upload: "M10 14V4M6 8l4-4 4 4M4 17h12",
+    download: "M10 4v10M6 10l4 4 4-4M4 17h12",
+    sparkle: "M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8zM16 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z",
+    mail: "M2 5h16v11H2zM2 6l8 6 8-6",
+    more: "M5 10h.01M10 10h.01M15 10h.01",
+    bold: "M6 4h5a3 3 0 010 6H6zM6 10h6a3 3 0 010 6H6z",
+    italic: "M8 4h8M4 16h8M12 4l-4 12",
+    underline: "M5 3v6a5 5 0 0010 0V3M4 17h12",
+    reflow: "M4 4h12v3H4zM4 9h12v3H4zM4 14h12v3H4zM17 2v16",
+    palette: "M10 2a8 8 0 100 16c1.5 0 2-1 1.5-2s0-2 1.5-2h1a4 4 0 004-4c0-4.4-3.6-8-8-8zM6 9h.01M8 6h.01M12 6h.01M14 9h.01",
+    keyboard: "M2 5h16v10H2zM5 8h.01M8 8h.01M11 8h.01M14 8h.01M5 11h.01M8 11h6M14 11h.01",
+    external: "M11 3h6v6M17 3l-8 8M14 11v6H3V6h6",
+    leaf: "M10 2.5c4 3.2 6.5 7 6.5 11a6.5 6.5 0 0 1-13 0c0-4 2.5-7.8 6.5-11ZM10 7v10M10 11l-3-2.2M10 14l3-2.2"
+  };
+  function Icon({ name, size = 16, class: cls, style }) {
+    return /* @__PURE__ */ u3("svg", { viewBox: "0 0 20 20", width: size, height: size, class: cls, style, fill: "none", stroke: "currentColor", "stroke-width": "1.6", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", children: /* @__PURE__ */ u3("path", { d: P2[name] || P2.info }) });
+  }
+
+  // studio/src/ui/components.tsx
+  function Btn(p3) {
+    const cls = ["btn", p3.kind, p3.sm && "sm", p3.xs && "xs", p3.block && "block", p3.on && "on", p3.icon && !p3.children && "icon", p3.class].filter(Boolean).join(" ");
+    return /* @__PURE__ */ u3("button", { class: cls, title: p3.title, onClick: p3.onClick, disabled: p3.disabled, type: p3.type || "button", children: [
+      p3.icon && /* @__PURE__ */ u3(Icon, { name: p3.icon }),
+      p3.children
+    ] });
+  }
+  function Field(p3) {
+    return /* @__PURE__ */ u3("div", { class: "field", children: [
+      /* @__PURE__ */ u3("label", { for: p3.for, children: [
+        p3.label,
+        p3.hint && /* @__PURE__ */ u3("span", { class: "hint", children: p3.hint })
+      ] }),
+      p3.children
+    ] });
+  }
+  function Eyebrow(p3) {
+    return /* @__PURE__ */ u3("div", { class: "eyebrow", children: [
+      p3.children,
+      p3.action && /* @__PURE__ */ u3("span", { class: "act", onClick: p3.action.onClick, children: p3.action.label })
+    ] });
+  }
+  function TextInput(p3) {
+    const [v3, setV] = h2(p3.value);
+    y2(() => setV(p3.value), [p3.value]);
+    return /* @__PURE__ */ u3(
+      "input",
+      {
+        id: p3.id,
+        class: `in ${p3.mono ? "mono" : ""}`,
+        type: p3.type || "text",
+        value: v3,
+        placeholder: p3.placeholder,
+        disabled: p3.disabled,
+        onInput: (e3) => {
+          const nv = e3.target.value;
+          setV(nv);
+          p3.onInput?.(nv);
+        },
+        onChange: (e3) => p3.onCommit(e3.target.value),
+        onKeyDown: (e3) => {
+          if (e3.key === "Enter") e3.target.blur();
+          if (e3.key === "Escape") {
+            setV(p3.value);
+            e3.target.blur();
+          }
+          e3.stopPropagation();
+        }
+      }
+    );
+  }
+  function TextArea(p3) {
+    const [v3, setV] = h2(p3.value);
+    y2(() => setV(p3.value), [p3.value]);
+    return /* @__PURE__ */ u3(
+      "textarea",
+      {
+        class: `in ${p3.mono ? "mono" : ""} ${p3.class || ""}`,
+        rows: p3.rows || 3,
+        value: v3,
+        placeholder: p3.placeholder,
+        onInput: (e3) => {
+          const nv = e3.target.value;
+          setV(nv);
+          p3.onInput?.(nv);
+        },
+        onChange: (e3) => p3.onCommit(e3.target.value),
+        onKeyDown: (e3) => e3.stopPropagation()
+      }
+    );
+  }
+  function Num(p3) {
+    const [v3, setV] = h2(String(round(p3.value)));
+    y2(() => setV(String(round(p3.value))), [p3.value]);
+    const clamp2 = (n2) => Math.min(p3.max ?? Infinity, Math.max(p3.min ?? -Infinity, n2));
+    const commit2 = (raw) => {
+      const n2 = parseFloat(raw.replace(",", "."));
+      if (!isNaN(n2)) p3.onChange(clamp2(n2));
+      else setV(String(round(p3.value)));
+    };
+    const scrub = (e3) => {
+      const start = e3.clientX, base2 = p3.value;
+      const el = e3.currentTarget;
+      el.setPointerCapture(e3.pointerId);
+      const move = (ev) => {
+        const d3 = (ev.clientX - start) * (ev.shiftKey ? 10 : 1) * (p3.step || 1);
+        p3.onChange(clamp2(round(base2 + d3)));
+      };
+      const up = () => {
+        el.removeEventListener("pointermove", move);
+        el.removeEventListener("pointerup", up);
+      };
+      el.addEventListener("pointermove", move);
+      el.addEventListener("pointerup", up);
+    };
+    return /* @__PURE__ */ u3("div", { class: "num", title: p3.title, children: [
+      p3.label && /* @__PURE__ */ u3("span", { class: "lb", onPointerDown: scrub, children: p3.label }),
+      /* @__PURE__ */ u3(
+        "input",
+        {
+          value: v3,
+          disabled: p3.disabled,
+          onInput: (e3) => setV(e3.target.value),
+          onChange: (e3) => commit2(e3.target.value),
+          onKeyDown: (e3) => {
+            e3.stopPropagation();
+            if (e3.key === "Enter") e3.target.blur();
+            if (e3.key === "ArrowUp" || e3.key === "ArrowDown") {
+              e3.preventDefault();
+              const d3 = (e3.key === "ArrowUp" ? 1 : -1) * (e3.shiftKey ? 10 : 1) * (p3.step || 1);
+              p3.onChange(clamp2(round(p3.value + d3)));
+            }
+          }
+        }
+      ),
+      p3.suffix && /* @__PURE__ */ u3("span", { class: "sfx", children: p3.suffix })
+    ] });
+  }
+  var round = (n2) => Math.round(n2 * 100) / 100;
+  function Seg(p3) {
+    return /* @__PURE__ */ u3("div", { class: `seg ${p3.block ? "block" : ""}`, children: p3.options.map((o3) => /* @__PURE__ */ u3("button", { class: o3.v === p3.value ? "on" : "", title: o3.title || o3.label, onClick: () => p3.onChange(o3.v), children: [
+      o3.icon && /* @__PURE__ */ u3(Icon, { name: o3.icon }),
+      o3.label
+    ] }, String(o3.v))) });
+  }
+  function Toggle(p3) {
+    return /* @__PURE__ */ u3("div", { class: `toggle ${p3.checked ? "on" : ""}`, onClick: () => p3.onChange(!p3.checked), children: [
+      /* @__PURE__ */ u3("span", { children: [
+        /* @__PURE__ */ u3("div", { children: p3.label }),
+        p3.sub && /* @__PURE__ */ u3("div", { class: "dim small", children: p3.sub })
+      ] }),
+      /* @__PURE__ */ u3("span", { class: "sw" })
+    ] });
+  }
+  function Select(p3) {
+    return /* @__PURE__ */ u3("select", { class: "in", value: p3.value, onChange: (e3) => p3.onChange(e3.target.value), children: [
+      p3.placeholder && /* @__PURE__ */ u3("option", { value: "", children: p3.placeholder }),
+      p3.options.map((o3) => /* @__PURE__ */ u3("option", { value: o3.v, children: o3.label }, o3.v))
+    ] });
+  }
+  var TOKENS = ["primary", "onPrimary", "ink", "muted", "bg", "soft", "line"];
+  function ColorInput(p3) {
+    const [open2, setOpen] = h2(false);
+    const ref = A2(null);
+    const hex2 = resolveColor(p3.value, p3.brand);
+    const isTok = p3.value && typeof p3.value === "object";
+    y2(() => {
+      if (!open2) return;
+      const off = (e3) => {
+        if (!ref.current?.contains(e3.target)) setOpen(false);
+      };
+      setTimeout(() => document.addEventListener("mousedown", off), 0);
+      return () => document.removeEventListener("mousedown", off);
+    }, [open2]);
+    return /* @__PURE__ */ u3("div", { style: { position: "relative" }, ref, children: [
+      /* @__PURE__ */ u3("div", { class: "swatch", onClick: () => setOpen(!open2), title: p3.label, children: [
+        /* @__PURE__ */ u3("span", { class: "sq", children: /* @__PURE__ */ u3("i", { style: { background: hex2 || "transparent" } }) }),
+        /* @__PURE__ */ u3("span", { class: "v", children: hex2 ? hex2.toUpperCase() : "Kh\xF4ng" }),
+        isTok && /* @__PURE__ */ u3("span", { class: "tk", children: p3.value.token })
+      ] }),
+      open2 && /* @__PURE__ */ u3("div", { class: "colorpop", children: [
+        /* @__PURE__ */ u3("div", { class: "eyebrow", children: "Brand" }),
+        /* @__PURE__ */ u3("div", { class: "tokens", children: TOKENS.map((t3) => /* @__PURE__ */ u3("button", { class: isTok && p3.value.token === t3 ? "on" : "", onClick: () => {
+          p3.onChange({ token: t3 });
+        }, children: [
+          /* @__PURE__ */ u3("i", { style: { background: p3.brand[t3] } }),
+          t3
+        ] }, t3)) }),
+        /* @__PURE__ */ u3("div", { class: "eyebrow", children: "Tu\u1EF3 ch\u1EC9nh" }),
+        /* @__PURE__ */ u3("div", { class: "row", children: [
+          /* @__PURE__ */ u3("input", { type: "color", class: "in", style: { width: 40, padding: 2 }, value: hex2 || "#000000", onInput: (e3) => p3.onChange(e3.target.value) }),
+          /* @__PURE__ */ u3("input", { class: "in mono", value: hex2 || "", placeholder: "#RRGGBB", onChange: (e3) => {
+            const v3 = e3.target.value.trim();
+            if (/^#?[0-9a-f]{6}$/i.test(v3)) p3.onChange(v3.startsWith("#") ? v3 : `#${v3}`);
+          }, onKeyDown: (e3) => e3.stopPropagation() }),
+          p3.allowNone && /* @__PURE__ */ u3(Btn, { sm: true, kind: "ghost", onClick: () => {
+            p3.onChange(null);
+            setOpen(false);
+          }, children: "Kh\xF4ng" })
+        ] })
+      ] })
+    ] });
+  }
+  function Modal(p3) {
+    y2(() => {
+      const k3 = (e3) => {
+        if (e3.key === "Escape") {
+          e3.stopPropagation();
+          p3.onClose();
+        }
+      };
+      window.addEventListener("keydown", k3, true);
+      return () => window.removeEventListener("keydown", k3, true);
+    }, []);
+    return /* @__PURE__ */ u3("div", { class: "modal-bg", onMouseDown: (e3) => {
+      if (e3.target === e3.currentTarget) p3.onClose();
+    }, children: /* @__PURE__ */ u3("div", { class: `modal ${p3.wide ? "wide" : ""} ${p3.narrow ? "narrow" : ""}`, onKeyDown: (e3) => e3.stopPropagation(), children: [
+      /* @__PURE__ */ u3("div", { class: "modal-h", children: [
+        p3.icon && /* @__PURE__ */ u3(Icon, { name: p3.icon, size: 18, style: { color: "var(--neon)" } }),
+        /* @__PURE__ */ u3("h2", { children: p3.title }),
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", icon: "close", sm: true, onClick: p3.onClose, title: "\u0110\xF3ng (Esc)" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "modal-b", children: p3.children }),
+      p3.footer && /* @__PURE__ */ u3("div", { class: "modal-f", children: p3.footer })
+    ] }) });
+  }
+  function Toasts() {
+    const s3 = useStore();
+    return /* @__PURE__ */ u3("div", { class: "toasts", children: s3.toasts.map((t3) => /* @__PURE__ */ u3("div", { class: `toast ${t3.kind}`, children: t3.text }, t3.id)) });
+  }
+  function Ring({ score, size = 58 }) {
+    const r3 = size / 2 - 5, c3 = 2 * Math.PI * r3;
+    return /* @__PURE__ */ u3("div", { class: "ring", style: { width: size, height: size }, children: [
+      /* @__PURE__ */ u3("svg", { viewBox: `0 0 ${size} ${size}`, width: size, height: size, children: [
+        /* @__PURE__ */ u3("circle", { cx: size / 2, cy: size / 2, r: r3, fill: "none", stroke: "#1a2a1e", "stroke-width": "5" }),
+        /* @__PURE__ */ u3("circle", { cx: size / 2, cy: size / 2, r: r3, fill: "none", stroke: "#39ff14", "stroke-width": "5", "stroke-linecap": "round", "stroke-dasharray": c3, "stroke-dashoffset": c3 * (1 - score / 100), style: { filter: "drop-shadow(0 0 6px rgba(57,255,20,.6))" } })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "v", children: score })
+    ] });
+  }
+  function Progress({ done, total }) {
+    return /* @__PURE__ */ u3("div", { class: "progress", children: /* @__PURE__ */ u3("i", { class: total ? "" : "indet", style: { width: total ? `${Math.round(done / total * 100)}%` : "30%" } }) });
+  }
+  function Kbd({ k: k3 }) {
+    return /* @__PURE__ */ u3("span", { class: "kbd", children: k3 });
+  }
+  function useLocal(key, init) {
+    const [v3, setV] = h2(() => {
+      try {
+        const r3 = localStorage.getItem(key);
+        return r3 ? JSON.parse(r3) : init;
+      } catch {
+        return init;
+      }
+    });
+    return [v3, (nv) => {
+      setV(nv);
+      try {
+        localStorage.setItem(key, JSON.stringify(nv));
+      } catch {
+      }
+    }];
+  }
+
+  // studio/src/ui/CanvasView.tsx
+  var HANDLE = 7;
+  var CURSORS = ["nw-resize", "n-resize", "ne-resize", "e-resize", "se-resize", "sw-resize", "s-resize", "w-resize", "nwse-resize", "ns-resize", "nesw-resize", "ew-resize"];
+  function handlesOf(r3) {
+    return [
+      { x: r3.x, y: r3.y },
+      { x: r3.x + r3.w / 2, y: r3.y },
+      { x: r3.x + r3.w, y: r3.y },
+      { x: r3.x + r3.w, y: r3.y + r3.h / 2 },
+      { x: r3.x + r3.w, y: r3.y + r3.h },
+      { x: r3.x + r3.w / 2, y: r3.y + r3.h },
+      { x: r3.x, y: r3.y + r3.h },
+      { x: r3.x, y: r3.y + r3.h / 2 }
+    ];
+  }
+  function CanvasView() {
+    const s3 = useStore();
+    const wrap = A2(null);
+    const canvas = A2(null);
+    const mode = A2({ kind: "idle" });
+    const guides = A2({ v: [], h: [] });
+    const space = A2(false);
+    const [dropping, setDropping] = h2(false);
+    const [ctxMenu, setCtxMenu] = h2(null);
+    const fileInput = A2(null);
+    const pendingPoint = A2(null);
+    const taRef = A2(null);
+    y2(() => {
+      const ta = taRef.current;
+      if (s3.editingText && ta) {
+        ta.focus();
+        const l3 = ta.value.length;
+        try {
+          ta.setSelectionRange(l3, l3);
+        } catch {
+        }
+      }
+    }, [s3.editingText]);
+    const docOf = () => doc();
+    const toDoc = (cx, cy) => {
+      const st = get();
+      return { x: (cx - st.pan.x) / st.zoom, y: (cy - st.pan.y) / st.zoom };
+    };
+    const local = (e3) => {
+      const r3 = wrap.current.getBoundingClientRect();
+      return { x: e3.clientX - r3.left, y: e3.clientY - r3.top };
+    };
+    const draw = () => {
+      const c3 = canvas.current, w3 = wrap.current;
+      if (!c3 || !w3) return;
+      const st = get();
+      if (!st.project) return;
+      const dpr = window.devicePixelRatio || 1;
+      const cw = w3.clientWidth, ch = w3.clientHeight;
+      if (c3.width !== Math.round(cw * dpr) || c3.height !== Math.round(ch * dpr)) {
+        c3.width = Math.round(cw * dpr);
+        c3.height = Math.round(ch * dpr);
+      }
+      const ctx = c3.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cw, ch);
+      const doc3 = docOf(), z3 = st.zoom, px = st.pan.x, py = st.pan.y;
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.6)";
+      ctx.shadowBlur = 40;
+      ctx.shadowOffsetY = 12;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(px, py, doc3.width * z3, doc3.height * z3);
+      ctx.restore();
+      renderDoc(ctx, doc3, st.project.brand, assets, { scale: z3, ox: px, oy: py, editor: true, skip: st.editingText ? /* @__PURE__ */ new Set([st.editingText]) : void 0 });
+      ctx.font = "600 11px JetBrains Mono, monospace";
+      ctx.fillStyle = "#5d7265";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(`${st.variant === "mobile" ? "Mobile" : "Desktop"} \xB7 ${doc3.width} \xD7 ${doc3.height}`, px, py - 6);
+      if (st.settings.grid && z3 >= 0.5) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px, py, doc3.width * z3, doc3.height * z3);
+        ctx.clip();
+        ctx.strokeStyle = "rgba(57,255,20,0.09)";
+        ctx.lineWidth = 1;
+        for (let gx = 0; gx <= doc3.width; gx += 24) {
+          ctx.beginPath();
+          ctx.moveTo(px + gx * z3 + 0.5, py);
+          ctx.lineTo(px + gx * z3 + 0.5, py + doc3.height * z3);
+          ctx.stroke();
+        }
+        for (let gy = 0; gy <= doc3.height; gy += 24) {
+          ctx.beginPath();
+          ctx.moveTo(px, py + gy * z3 + 0.5);
+          ctx.lineTo(px + doc3.width * z3, py + gy * z3 + 0.5);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      const rectOf = (r3) => ({ x: px + r3.x * z3, y: py + r3.y * z3, w: r3.w * z3, h: r3.h * z3 });
+      if (st.hover && !st.selection.includes(st.hover)) {
+        const n2 = findNode(doc3, st.hover);
+        if (n2) {
+          const r3 = rectOf(bounds(n2));
+          ctx.strokeStyle = "rgba(57,255,20,0.6)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(r3.x + 0.5, r3.y + 0.5, r3.w, r3.h);
+        }
+      }
+      if (st.enteredGroup) {
+        const g2 = findNode(doc3, st.enteredGroup);
+        if (g2) {
+          const r3 = rectOf(bounds(g2));
+          ctx.setLineDash([4, 3]);
+          ctx.strokeStyle = "rgba(57,255,20,0.45)";
+          ctx.strokeRect(r3.x + 0.5, r3.y + 0.5, r3.w, r3.h);
+          ctx.setLineDash([]);
+        }
+      }
+      const sel = selectionBounds(doc3, st.selection);
+      if (sel && !st.editingText) {
+        for (const id of st.selection) {
+          const n2 = findNode(doc3, id);
+          if (!n2) continue;
+          const r4 = rectOf(bounds(n2));
+          ctx.strokeStyle = "#39ff14";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(r4.x + 0.5, r4.y + 0.5, r4.w, r4.h);
+        }
+        const r3 = rectOf(sel);
+        if (st.selection.length > 1) {
+          ctx.setLineDash([3, 3]);
+          ctx.strokeRect(r3.x + 0.5, r3.y + 0.5, r3.w, r3.h);
+          ctx.setLineDash([]);
+        }
+        for (const hd of handlesOf(r3)) {
+          ctx.fillStyle = "#060908";
+          ctx.strokeStyle = "#39ff14";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.rect(hd.x - HANDLE / 2, hd.y - HANDLE / 2, HANDLE, HANDLE);
+          ctx.fill();
+          ctx.stroke();
+        }
+        const label = `${Math.round(sel.w)} \xD7 ${Math.round(sel.h)}`;
+        ctx.font = "600 10px JetBrains Mono, monospace";
+        const tw = ctx.measureText(label).width + 10;
+        ctx.fillStyle = "#39ff14";
+        ctx.fillRect(r3.x + r3.w / 2 - tw / 2, r3.y + r3.h + 6, tw, 16);
+        ctx.fillStyle = "#04140a";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "center";
+        ctx.fillText(label, r3.x + r3.w / 2, r3.y + r3.h + 14);
+        ctx.textAlign = "left";
+      }
+      ctx.strokeStyle = "#ff4fd8";
+      ctx.lineWidth = 1;
+      for (const gx of guides.current.v) {
+        ctx.beginPath();
+        ctx.moveTo(px + gx * z3 + 0.5, 0);
+        ctx.lineTo(px + gx * z3 + 0.5, ch);
+        ctx.stroke();
+      }
+      for (const gy of guides.current.h) {
+        ctx.beginPath();
+        ctx.moveTo(0, py + gy * z3 + 0.5);
+        ctx.lineTo(cw, py + gy * z3 + 0.5);
+        ctx.stroke();
+      }
+      const m2 = mode.current;
+      if (m2.kind === "marquee" || m2.kind === "draw") {
+        const x1 = Math.min(m2.sx, m2.cur.x), y1 = Math.min(m2.sy, m2.cur.y), x2 = Math.max(m2.sx, m2.cur.x), y22 = Math.max(m2.sy, m2.cur.y);
+        const r3 = rectOf({ x: x1, y: y1, w: x2 - x1, h: y22 - y1 });
+        ctx.fillStyle = "rgba(57,255,20,0.08)";
+        ctx.fillRect(r3.x, r3.y, r3.w, r3.h);
+        ctx.strokeStyle = "#39ff14";
+        ctx.setLineDash(m2.kind === "draw" ? [] : [4, 3]);
+        ctx.strokeRect(r3.x + 0.5, r3.y + 0.5, r3.w, r3.h);
+        ctx.setLineDash([]);
+      }
+    };
+    y2(() => {
+      let raf = 0;
+      const schedule = () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(draw);
+      };
+      const off = subscribe(schedule);
+      const offAssets = assets.onChange(schedule);
+      const ro = new ResizeObserver(schedule);
+      ro.observe(wrap.current);
+      schedule();
+      return () => {
+        off();
+        offAssets();
+        ro.disconnect();
+        cancelAnimationFrame(raf);
+      };
+    }, []);
+    y2(() => {
+      zoomFit();
+    }, [s3.project?.id, s3.variant]);
+    function zoomFit() {
+      const w3 = wrap.current;
+      if (!w3) return;
+      const doc3 = docOf();
+      const cw = w3.clientWidth, ch = w3.clientHeight;
+      const z3 = Math.min(1.5, Math.max(0.1, Math.min((cw - 80) / doc3.width, (ch - 80) / doc3.height)));
+      set({ zoom: Math.round(z3 * 100) / 100, pan: { x: Math.round((cw - doc3.width * z3) / 2), y: Math.round(Math.max(30, (ch - doc3.height * z3) / 2)) } });
+    }
+    y2(() => {
+      const h3 = (e3) => {
+        const d3 = e3.detail;
+        const w3 = wrap.current;
+        if (!w3) return;
+        const cw = w3.clientWidth, ch = w3.clientHeight;
+        const st = get();
+        if (d3.kind === "fit") return zoomFit();
+        const target = d3.kind === "in" ? st.zoom * 1.25 : d3.kind === "out" ? st.zoom / 1.25 : d3.kind === "reset" ? 1 : d3.value;
+        zoomAt(Math.min(8, Math.max(0.1, target)), cw / 2, ch / 2);
+      };
+      window.addEventListener("phloem-zoom", h3);
+      return () => window.removeEventListener("phloem-zoom", h3);
+    }, []);
+    function zoomAt(z3, cx, cy) {
+      const st = get();
+      const dx = (cx - st.pan.x) / st.zoom, dy = (cy - st.pan.y) / st.zoom;
+      set({ zoom: Math.round(z3 * 1e3) / 1e3, pan: { x: cx - dx * z3, y: cy - dy * z3 } });
+    }
+    function handleAt(x2, y3) {
+      const st = get();
+      const sel = selectionBounds(docOf(), st.selection);
+      if (!sel || st.editingText) return -1;
+      const tol = (HANDLE + 4) / 2 / st.zoom;
+      const hs = handlesOf(sel);
+      for (let i4 = 0; i4 < hs.length; i4++) if (Math.abs(hs[i4].x - x2) <= tol && Math.abs(hs[i4].y - y3) <= tol) return i4;
+      return -1;
+    }
+    function hit(x2, y3, deep) {
+      const st = get();
+      const doc3 = docOf();
+      const within = st.enteredGroup ? findNode(doc3, st.enteredGroup) : null;
+      if (within && containsPt(bounds(within), x2, y3)) {
+        const n2 = hitTest(doc3, x2, y3, within, deep);
+        if (n2) return n2;
+      }
+      return hitTest(doc3, x2, y3, null, deep);
+    }
+    function snapDelta(moving, excludeIds) {
+      const st = get();
+      guides.current = { v: [], h: [] };
+      if (!st.settings.snap) return { dx: 0, dy: 0 };
+      const doc3 = docOf();
+      const th = 6 / st.zoom;
+      const xs = [0, doc3.width / 2, doc3.width], ys = [0, doc3.height / 2, doc3.height];
+      for (const n2 of doc3.nodes) {
+        if (excludeIds.includes(n2.id) || !n2.visible) continue;
+        const b2 = bounds(n2);
+        xs.push(b2.x, b2.x + b2.w / 2, b2.x + b2.w);
+        ys.push(b2.y, b2.y + b2.h / 2, b2.y + b2.h);
+      }
+      const mx = [moving.x, moving.x + moving.w / 2, moving.x + moving.w], my = [moving.y, moving.y + moving.h / 2, moving.y + moving.h];
+      let bx = null, by = null;
+      for (const a3 of mx) for (const b2 of xs) {
+        const d3 = b2 - a3;
+        if (Math.abs(d3) <= th && (!bx || Math.abs(d3) < Math.abs(bx.d))) bx = { d: d3, g: b2 };
+      }
+      for (const a3 of my) for (const b2 of ys) {
+        const d3 = b2 - a3;
+        if (Math.abs(d3) <= th && (!by || Math.abs(d3) < Math.abs(by.d))) by = { d: d3, g: b2 };
+      }
+      if (bx) guides.current.v = [bx.g];
+      if (by) guides.current.h = [by.g];
+      return { dx: bx ? bx.d : 0, dy: by ? by.d : 0 };
+    }
+    const onPointerDown = (e3) => {
+      if (e3.button === 2) return;
+      wrap.current.focus();
+      setCtxMenu(null);
+      const st = get();
+      const p3 = local(e3);
+      const d3 = toDoc(p3.x, p3.y);
+      e3.currentTarget.setPointerCapture(e3.pointerId);
+      if (st.editingText) {
+        set({ editingText: null });
+      }
+      if (e3.button === 1 || space.current || st.tool === "hand") {
+        mode.current = { kind: "pan", sx: p3.x, sy: p3.y, px: st.pan.x, py: st.pan.y };
+        wrap.current.classList.add("panning");
+        return;
+      }
+      if (st.tool === "rect") {
+        mode.current = { kind: "draw", sx: d3.x, sy: d3.y, cur: d3 };
+        return;
+      }
+      if (st.tool === "text") {
+        addText(Math.round(d3.x), Math.round(d3.y));
+        return;
+      }
+      if (st.tool === "image") {
+        pendingPoint.current = d3;
+        fileInput.current?.click();
+        set({ tool: "select" });
+        return;
+      }
+      const hIdx = handleAt(d3.x, d3.y);
+      if (hIdx >= 0) {
+        const sel = selectionBounds(docOf(), st.selection);
+        mode.current = { kind: "resize", handle: hIdx, base: docOf(), ids: st.selection.slice(), start: sel, sx: d3.x, sy: d3.y };
+        return;
+      }
+      const n2 = hit(d3.x, d3.y, e3.metaKey || e3.ctrlKey);
+      if (n2) {
+        let ids = st.selection;
+        if (e3.shiftKey) {
+          toggleSelect(n2.id);
+          ids = get().selection;
+        } else if (!st.selection.includes(n2.id)) {
+          select([n2.id]);
+          ids = [n2.id];
+        }
+        mode.current = { kind: "move", sx: d3.x, sy: d3.y, base: docOf(), ids: ids.slice(), moved: false };
+      } else {
+        if (!e3.shiftKey) {
+          clearSelection();
+        }
+        mode.current = { kind: "marquee", sx: d3.x, sy: d3.y, cur: d3, additive: e3.shiftKey };
+      }
+    };
+    const onPointerMove = (e3) => {
+      const st = get();
+      const p3 = local(e3);
+      const d3 = toDoc(p3.x, p3.y);
+      const m2 = mode.current;
+      if (m2.kind === "idle") {
+        if (st.tool === "select") {
+          const hIdx = handleAt(d3.x, d3.y);
+          wrap.current.style.cursor = hIdx >= 0 ? CURSORS[hIdx] : "";
+          const n2 = hit(d3.x, d3.y, e3.metaKey || e3.ctrlKey);
+          const hv = n2 ? n2.id : null;
+          if (hv !== st.hover) set({ hover: hv });
+        }
+        return;
+      }
+      if (m2.kind === "pan") {
+        set({ pan: { x: m2.px + (p3.x - m2.sx), y: m2.py + (p3.y - m2.sy) } });
+        return;
+      }
+      if (m2.kind === "marquee" || m2.kind === "draw") {
+        m2.cur = d3;
+        set({});
+        return;
+      }
+      if (m2.kind === "move") {
+        let dx = d3.x - m2.sx, dy = d3.y - m2.sy;
+        if (!m2.moved && Math.hypot(dx * st.zoom, dy * st.zoom) < 3) return;
+        if (!m2.moved) {
+          m2.moved = true;
+          history.push(m2.base);
+        }
+        if (e3.shiftKey) {
+          if (Math.abs(dx) > Math.abs(dy)) dy = 0;
+          else dx = 0;
+        }
+        const sel = selectionBounds(m2.base, m2.ids);
+        const moving = { x: sel.x + dx, y: sel.y + dy, w: sel.w, h: sel.h };
+        const sn = e3.altKey ? { dx: 0, dy: 0 } : snapDelta(moving, m2.ids);
+        commit(moveBy(m2.base, m2.ids, Math.round(dx + sn.dx), Math.round(dy + sn.dy)), false);
+        return;
+      }
+      if (m2.kind === "resize") {
+        const dx = d3.x - m2.sx, dy = d3.y - m2.sy;
+        const s0 = m2.start;
+        let x2 = s0.x, y3 = s0.y, w3 = s0.w, h3 = s0.h;
+        const hI = m2.handle;
+        if ([0, 6, 7].includes(hI)) {
+          x2 = s0.x + dx;
+          w3 = s0.w - dx;
+        }
+        if ([2, 3, 4].includes(hI)) {
+          w3 = s0.w + dx;
+        }
+        if ([0, 1, 2].includes(hI)) {
+          y3 = s0.y + dy;
+          h3 = s0.h - dy;
+        }
+        if ([4, 5, 6].includes(hI)) {
+          h3 = s0.h + dy;
+        }
+        if (e3.shiftKey && [0, 2, 4, 6].includes(hI)) {
+          const r3 = s0.w / s0.h;
+          if (Math.abs(w3 / s0.w) > Math.abs(h3 / s0.h)) {
+            h3 = w3 / r3;
+            if ([0, 2].includes(hI)) y3 = s0.y + s0.h - h3;
+          } else {
+            w3 = h3 * r3;
+            if ([0, 6].includes(hI)) x2 = s0.x + s0.w - w3;
+          }
+        }
+        if (w3 < 1) {
+          x2 = x2 + w3 - 1;
+          w3 = 1;
+        }
+        if (h3 < 1) {
+          y3 = y3 + h3 - 1;
+          h3 = 1;
+        }
+        const to = { x: Math.round(x2), y: Math.round(y3), w: Math.round(w3), h: Math.round(h3) };
+        if (!m2.pushed) {
+          m2.pushed = true;
+          history.push(m2.base);
+        }
+        let next = m2.base;
+        for (const id of m2.ids) {
+          const n2 = findNode(m2.base, id);
+          if (!n2) continue;
+          const b2 = bounds(n2);
+          const nr = m2.ids.length === 1 ? to : { x: to.x + (b2.x - s0.x) / s0.w * to.w, y: to.y + (b2.y - s0.y) / s0.h * to.h, w: b2.w / s0.w * to.w, h: b2.h / s0.h * to.h };
+          next = resizeTo(next, id, nr, !(n2.type === "text" && n2.autoHeight && m2.ids.length === 1 && [3, 7].includes(hI)));
+        }
+        next = mapNodes(next, fixTextHeight);
+        commit(next, false);
+      }
+    };
+    const onPointerUp = (e3) => {
+      const m2 = mode.current;
+      const p3 = local(e3);
+      const d3 = toDoc(p3.x, p3.y);
+      wrap.current.classList.remove("panning");
+      guides.current = { v: [], h: [] };
+      if (m2.kind === "marquee") {
+        const r3 = { x: Math.min(m2.sx, d3.x), y: Math.min(m2.sy, d3.y), w: Math.abs(d3.x - m2.sx), h: Math.abs(d3.y - m2.sy) };
+        if (r3.w > 2 || r3.h > 2) {
+          const ids = nodesInRect(docOf(), r3);
+          select(ids, m2.additive);
+        }
+      } else if (m2.kind === "draw") {
+        const r3 = { x: Math.min(m2.sx, d3.x), y: Math.min(m2.sy, d3.y), w: Math.abs(d3.x - m2.sx), h: Math.abs(d3.y - m2.sy) };
+        if (r3.w > 2 && r3.h > 2) addRect(r3);
+        else addRect({ x: d3.x - 60, y: d3.y - 40, w: 120, h: 80 });
+      } else if (m2.kind === "move" && m2.moved) {
+        commit(roundAll(docOf()), false);
+      }
+      mode.current = { kind: "idle" };
+      set({});
+    };
+    const onDblClick = (e3) => {
+      const p3 = local(e3);
+      const d3 = toDoc(p3.x, p3.y);
+      const st = get();
+      const n2 = hit(d3.x, d3.y, false);
+      if (n2 && n2.type === "group") {
+        const inner = hitTest(docOf(), d3.x, d3.y, n2, false);
+        set({ enteredGroup: n2.id, selection: inner ? [inner.id] : [n2.id] });
+        return;
+      }
+      if (n2 && n2.type === "text") {
+        if (!st.selection.includes(n2.id)) select([n2.id]);
+        history.push(docOf());
+        set({ editingText: n2.id });
+        return;
+      }
+      if (!n2) set({ enteredGroup: null });
+    };
+    const onWheel = (e3) => {
+      e3.preventDefault();
+      const st = get();
+      const p3 = local(e3);
+      if (e3.ctrlKey || e3.metaKey) {
+        const z3 = Math.min(8, Math.max(0.1, st.zoom * Math.exp(-e3.deltaY * 22e-4)));
+        zoomAt(z3, p3.x, p3.y);
+      } else set({ pan: { x: st.pan.x - e3.deltaX, y: st.pan.y - e3.deltaY } });
+    };
+    y2(() => {
+      const kd = (e3) => {
+        if (e3.code === "Space" && !isTyping(e3)) {
+          space.current = true;
+          wrap.current?.classList.add("tool-hand");
+        }
+      };
+      const ku = (e3) => {
+        if (e3.code === "Space") {
+          space.current = false;
+          if (get().tool !== "hand") wrap.current?.classList.remove("tool-hand");
+        }
+      };
+      window.addEventListener("keydown", kd);
+      window.addEventListener("keyup", ku);
+      return () => {
+        window.removeEventListener("keydown", kd);
+        window.removeEventListener("keyup", ku);
+      };
+    }, []);
+    const onDrop = async (e3) => {
+      e3.preventDefault();
+      setDropping(false);
+      const files = Array.from(e3.dataTransfer?.files || []).filter((f4) => f4.type.startsWith("image/"));
+      if (!files.length) return;
+      const p3 = local(e3);
+      const d3 = toDoc(p3.x, p3.y);
+      const target = hit(d3.x, d3.y, true);
+      for (const f4 of files) await addImageFile(f4, d3, target && target.type === "image" ? target.id : void 0);
+    };
+    const editing = s3.editingText ? findNode(docOf(), s3.editingText) : null;
+    const doc2 = docOf();
+    const brand2 = s3.project.brand;
+    return /* @__PURE__ */ u3(
+      "div",
+      {
+        ref: wrap,
+        tabIndex: 0,
+        class: `canvas-wrap tool-${s3.tool} ${dropping ? "dropping" : ""}`,
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onDblClick,
+        onWheel,
+        onContextMenu: (e3) => {
+          e3.preventDefault();
+          const p3 = local(e3);
+          const d3 = toDoc(p3.x, p3.y);
+          const n2 = hit(d3.x, d3.y, false);
+          if (n2 && !get().selection.includes(n2.id)) select([n2.id]);
+          setCtxMenu({ x: e3.clientX, y: e3.clientY });
+        },
+        onDragOver: (e3) => {
+          e3.preventDefault();
+          if (!dropping) setDropping(true);
+        },
+        onDragLeave: () => setDropping(false),
+        onDrop,
+        onPointerLeave: () => {
+          if (get().hover) set({ hover: null });
+        },
+        children: [
+          /* @__PURE__ */ u3("canvas", { ref: canvas, class: "board" }),
+          editing && /* @__PURE__ */ u3(
+            "textarea",
+            {
+              class: "text-editor",
+              ref: taRef,
+              style: {
+                left: s3.pan.x + editing.x * s3.zoom,
+                top: s3.pan.y + editing.y * s3.zoom,
+                width: editing.w * s3.zoom,
+                height: Math.max(editing.h, editing.fontSize * editing.lineHeight) * s3.zoom,
+                font: fontString(editing, brand2, s3.zoom),
+                lineHeight: `${editing.fontSize * editing.lineHeight * s3.zoom}px`,
+                color: resolveColor(editing.color, brand2) || "#000",
+                textAlign: editing.align,
+                letterSpacing: `${editing.letterSpacing * s3.zoom}px`,
+                textDecoration: editing.underline ? "underline" : "none"
+              },
+              value: editing.text,
+              onInput: (e3) => {
+                const v3 = e3.target.value;
+                patchTextFlow(editing.id, { text: v3 }, false);
+              },
+              onBlur: () => set({ editingText: null }),
+              onKeyDown: (e3) => {
+                e3.stopPropagation();
+                if (e3.key === "Escape" || e3.key === "Enter" && (e3.metaKey || e3.ctrlKey)) {
+                  e3.target.blur();
+                }
+              },
+              onPointerDown: (e3) => e3.stopPropagation()
+            }
+          ),
+          !doc2.nodes.length && !s3.editingText && /* @__PURE__ */ u3("div", { class: "canvas-empty", children: /* @__PURE__ */ u3("div", { children: [
+            /* @__PURE__ */ u3(Icon, { name: "sparkle", size: 28, style: { color: "var(--neon)" } }),
+            /* @__PURE__ */ u3("div", { style: { fontWeight: 700, color: "var(--text)" }, children: "Artboard tr\u1ED1ng" }),
+            /* @__PURE__ */ u3("div", { class: "small", children: [
+              "Ch\xE8n block t\u1EEB panel tr\xE1i, k\xE9o \u1EA3nh v\xE0o, ho\u1EB7c nh\u1EA5n ",
+              /* @__PURE__ */ u3("span", { class: "kbd", children: "T" }),
+              " \u0111\u1EC3 g\xF5 ch\u1EEF."
+            ] }),
+            /* @__PURE__ */ u3("div", { class: "row", children: [
+              /* @__PURE__ */ u3(Btn, { kind: "primary", sm: true, onClick: () => addBlock("hero"), children: "+ Hero" }),
+              /* @__PURE__ */ u3(Btn, { sm: true, onClick: () => set({ leftTab: "blocks" }), children: "Xem block" })
+            ] })
+          ] }) }),
+          /* @__PURE__ */ u3("input", { ref: fileInput, type: "file", accept: "image/*", multiple: true, style: { display: "none" }, onChange: async (e3) => {
+            const files = Array.from(e3.target.files || []);
+            const at = pendingPoint.current || void 0;
+            for (const f4 of files) await addImageFile(f4, at);
+            e3.target.value = "";
+            pendingPoint.current = null;
+          } }),
+          ctxMenu && /* @__PURE__ */ u3(ContextMenu, { x: ctxMenu.x, y: ctxMenu.y, onClose: () => setCtxMenu(null) }),
+          s3.busy && /* @__PURE__ */ u3("div", { class: "busy-overlay", children: /* @__PURE__ */ u3("div", { class: "box", children: [
+            /* @__PURE__ */ u3("div", { class: "row", children: [
+              /* @__PURE__ */ u3(Icon, { name: "bolt", style: { color: "var(--neon)" } }),
+              /* @__PURE__ */ u3("b", { class: "grow", children: s3.busy.label }),
+              /* @__PURE__ */ u3("span", { class: "mono dim small", children: s3.busy.total ? `${s3.busy.done}/${s3.busy.total}` : "" })
+            ] }),
+            /* @__PURE__ */ u3("div", { class: "progress", children: /* @__PURE__ */ u3("i", { class: s3.busy.total ? "" : "indet", style: { width: s3.busy.total ? `${Math.round(s3.busy.done / s3.busy.total * 100)}%` : "30%" } }) })
+          ] }) })
+        ]
+      }
+    );
+  }
+  function isTyping(e3) {
+    const t3 = e3.target;
+    return !!t3 && (t3.tagName === "INPUT" || t3.tagName === "TEXTAREA" || t3.tagName === "SELECT" || t3.isContentEditable);
+  }
+  function ContextMenu({ x: x2, y: y3, onClose }) {
+    const st = useStore();
+    const has = st.selection.length > 0;
+    const one = st.selection.length === 1;
+    const n2 = one ? findNode(doc(), st.selection[0]) : null;
+    y2(() => {
+      const off = () => onClose();
+      window.addEventListener("pointerdown", off, { once: true });
+      return () => window.removeEventListener("pointerdown", off);
+    }, []);
+    const item = (label, k3, fn, dis = false) => /* @__PURE__ */ u3("button", { disabled: dis, onPointerDown: (e3) => e3.stopPropagation(), onClick: () => {
+      fn();
+      onClose();
+    }, children: [
+      label,
+      /* @__PURE__ */ u3("span", { class: "k", children: k3 })
+    ] });
+    return /* @__PURE__ */ u3("div", { class: "ctx", style: { left: Math.min(x2, window.innerWidth - 200), top: Math.min(y3, window.innerHeight - 320) }, children: [
+      item("Copy", "\u2318C", copySelection, !has),
+      item("Paste", "\u2318V", pasteClipboard, !st.clipboard),
+      item("Nh\xE2n b\u1EA3n", "\u2318D", duplicateSelection, !has),
+      item("Xo\xE1", "\u232B", deleteSelection, !has),
+      /* @__PURE__ */ u3("hr", {}),
+      item("Nh\xF3m", "\u2318G", groupSelection, st.selection.length < 2),
+      item("B\u1ECF nh\xF3m", "\u21E7\u2318G", ungroupSelection, !n2 || n2.type !== "group"),
+      /* @__PURE__ */ u3("hr", {}),
+      item("\u0110\u01B0a l\xEAn tr\xEAn", "\u2318]", () => reorderSelection("up"), !has),
+      item("\u0110\u01B0a xu\u1ED1ng d\u01B0\u1EDBi", "\u2318[", () => reorderSelection("down"), !has),
+      item("L\xEAn tr\xEAn c\xF9ng", "\u2325\u2318]", () => reorderSelection("top"), !has),
+      item("Xu\u1ED1ng d\u01B0\u1EDBi c\xF9ng", "\u2325\u2318[", () => reorderSelection("bottom"), !has),
+      /* @__PURE__ */ u3("hr", {}),
+      item(n2 && n2.locked ? "M\u1EDF kho\xE1" : "Kho\xE1", "\u21E7\u2318L", () => st.selection.forEach(toggleLocked), !has),
+      item(n2 && !n2.visible ? "Hi\u1EC7n" : "\u1EA8n", "\u21E7\u2318H", () => st.selection.forEach(toggleVisible), !has)
+    ] });
+  }
+
+  // studio/src/ui/confirm.ts
+  function ask(text2, okLabel = "Xo\xE1", danger = true) {
+    return new Promise((resolve) => {
+      const bg = document.createElement("div");
+      bg.className = "modal-bg";
+      bg.innerHTML = `<div class="modal narrow" role="dialog" aria-modal="true"><div class="modal-b"><div style="font-size:13px;line-height:1.5">${escapeHtml(text2)}</div></div><div class="modal-f"><button class="btn ghost" data-k="no">Hu\u1EF7</button><button class="btn ${danger ? "danger" : "primary"}" data-k="yes">${escapeHtml(okLabel)}</button></div></div>`;
+      const done = (v3) => {
+        bg.remove();
+        window.removeEventListener("keydown", onKey, true);
+        resolve(v3);
+      };
+      const onKey = (e3) => {
+        if (e3.key === "Escape") {
+          e3.stopPropagation();
+          done(false);
+        }
+        if (e3.key === "Enter") {
+          e3.stopPropagation();
+          done(true);
+        }
+      };
+      bg.addEventListener("mousedown", (e3) => {
+        if (e3.target === bg) done(false);
+      });
+      bg.querySelector('[data-k="no"]').addEventListener("click", () => done(false));
+      bg.querySelector('[data-k="yes"]').addEventListener("click", () => done(true));
+      window.addEventListener("keydown", onKey, true);
+      document.body.appendChild(bg);
+      bg.querySelector('[data-k="yes"]').focus();
+    });
+  }
+  function escapeHtml(s3) {
+    return s3.replace(/[&<>"]/g, (c3) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c3]);
+  }
+  function isArtifact() {
+    return typeof window.claude?.use === "function";
+  }
+
+  // studio/src/ui/LeftPanel.tsx
+  var ICON = { rect: "rect", text: "text", image: "image", group: "group" };
+  function LeftPanel() {
+    const s3 = useStore();
+    return /* @__PURE__ */ u3("div", { class: "panel", children: [
+      /* @__PURE__ */ u3("div", { class: "ptabs", children: [
+        /* @__PURE__ */ u3("button", { class: `ptab ${s3.leftTab === "layers" ? "on" : ""}`, onClick: () => set({ leftTab: "layers" }), children: [
+          /* @__PURE__ */ u3(Icon, { name: "layers", size: 13 }),
+          "Layer"
+        ] }),
+        /* @__PURE__ */ u3("button", { class: `ptab ${s3.leftTab === "blocks" ? "on" : ""}`, onClick: () => set({ leftTab: "blocks" }), children: [
+          /* @__PURE__ */ u3(Icon, { name: "blocks", size: 13 }),
+          "Block"
+        ] }),
+        /* @__PURE__ */ u3("button", { class: `ptab ${s3.leftTab === "assets" ? "on" : ""}`, onClick: () => set({ leftTab: "assets" }), children: [
+          /* @__PURE__ */ u3(Icon, { name: "image", size: 13 }),
+          "\u1EA2nh"
+        ] })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "pbody", children: s3.leftTab === "layers" ? /* @__PURE__ */ u3(Layers, {}) : s3.leftTab === "blocks" ? /* @__PURE__ */ u3(Blocks, {}) : /* @__PURE__ */ u3(Assets, {}) })
+    ] });
+  }
+  function Layers() {
+    const s3 = useStore();
+    const doc2 = doc();
+    const [collapsed, setCollapsed] = h2(/* @__PURE__ */ new Set());
+    const [renaming, setRenaming] = h2(null);
+    const dragId = A2(null);
+    const [dropHint, setDropHint] = h2(null);
+    const toggle = (id) => {
+      const n2 = new Set(collapsed);
+      n2.has(id) ? n2.delete(id) : n2.add(id);
+      setCollapsed(n2);
+    };
+    const onDrop = (target, pos) => {
+      const from = dragId.current;
+      dragId.current = null;
+      setDropHint(null);
+      if (!from || from === target.id) return;
+      const d3 = doc();
+      const list = d3.nodes.slice();
+      const fi = list.findIndex((n3) => n3.id === from), ti = list.findIndex((n3) => n3.id === target.id);
+      if (fi < 0 || ti < 0) return;
+      const [n2] = list.splice(fi, 1);
+      let idx = list.findIndex((x2) => x2.id === target.id);
+      idx = pos === "before" ? idx + 1 : idx;
+      list.splice(idx, 0, n2);
+      commit({ ...d3, nodes: list });
+    };
+    const row = (n2, depth) => {
+      const on = s3.selection.includes(n2.id);
+      const isGroup = n2.type === "group";
+      const open2 = isGroup && !collapsed.has(n2.id);
+      return /* @__PURE__ */ u3("div", { children: [
+        /* @__PURE__ */ u3(
+          "div",
+          {
+            class: `layer ${on ? "on" : ""} ${s3.hover === n2.id ? "hov" : ""} ${!n2.visible ? "hidden" : ""} ${dropHint?.id === n2.id ? `drop-${dropHint.pos}` : ""}`,
+            style: { paddingLeft: 4 + depth * 14 },
+            draggable: depth === 0,
+            onDragStart: (e3) => {
+              dragId.current = n2.id;
+              e3.dataTransfer?.setData("text/plain", n2.id);
+            },
+            onDragOver: (e3) => {
+              if (depth !== 0 || !dragId.current) return;
+              e3.preventDefault();
+              const r3 = e3.currentTarget.getBoundingClientRect();
+              setDropHint({ id: n2.id, pos: e3.clientY < r3.top + r3.height / 2 ? "before" : "after" });
+            },
+            onDragLeave: () => setDropHint(null),
+            onDrop: (e3) => {
+              e3.preventDefault();
+              const r3 = e3.currentTarget.getBoundingClientRect();
+              onDrop(n2, e3.clientY < r3.top + r3.height / 2 ? "before" : "after");
+            },
+            onClick: (e3) => {
+              if (e3.shiftKey) toggleSelect(n2.id);
+              else select([n2.id]);
+              if (isGroup) set({ enteredGroup: null });
+            },
+            onDblClick: () => setRenaming(n2.id),
+            onMouseEnter: () => set({ hover: n2.id }),
+            onMouseLeave: () => set({ hover: null }),
+            children: [
+              /* @__PURE__ */ u3("span", { class: `caret ${open2 ? "open" : ""}`, onClick: (e3) => {
+                e3.stopPropagation();
+                if (isGroup) toggle(n2.id);
+              }, children: isGroup && /* @__PURE__ */ u3(Icon, { name: "chevron" }) }),
+              /* @__PURE__ */ u3(Icon, { name: ICON[n2.type], class: "ico" }),
+              /* @__PURE__ */ u3("span", { class: "nm", children: renaming === n2.id ? /* @__PURE__ */ u3("input", { autoFocus: true, value: n2.name, onBlur: (e3) => {
+                updateNode2(n2.id, { name: e3.target.value || n2.name });
+                setRenaming(null);
+              }, onKeyDown: (e3) => {
+                e3.stopPropagation();
+                if (e3.key === "Enter") e3.target.blur();
+                if (e3.key === "Escape") setRenaming(null);
+              }, onClick: (e3) => e3.stopPropagation() }) : n2.name }),
+              n2.link && /* @__PURE__ */ u3(Icon, { name: "link", size: 11, style: { color: "var(--neon-dim)" } }),
+              n2.block && /* @__PURE__ */ u3("span", { class: "tag", children: "block" }),
+              /* @__PURE__ */ u3("span", { class: `acts ${!n2.visible || n2.locked ? "show" : ""}`, children: [
+                /* @__PURE__ */ u3("button", { class: n2.locked ? "on" : "", title: n2.locked ? "M\u1EDF kho\xE1" : "Kho\xE1", onClick: (e3) => {
+                  e3.stopPropagation();
+                  toggleLocked(n2.id);
+                }, children: /* @__PURE__ */ u3(Icon, { name: n2.locked ? "lock" : "unlock" }) }),
+                /* @__PURE__ */ u3("button", { class: !n2.visible ? "on" : "", title: n2.visible ? "\u1EA8n" : "Hi\u1EC7n", onClick: (e3) => {
+                  e3.stopPropagation();
+                  toggleVisible(n2.id);
+                }, children: /* @__PURE__ */ u3(Icon, { name: n2.visible ? "eye" : "eyeOff" }) })
+              ] })
+            ]
+          }
+        ),
+        isGroup && open2 && n2.children.slice().reverse().map((c3) => row(c3, depth + 1))
+      ] }, n2.id);
+    };
+    return /* @__PURE__ */ u3("div", { class: "section", children: [
+      /* @__PURE__ */ u3(Eyebrow, { action: { label: s3.selection.length ? "B\u1ECF ch\u1ECDn" : "Ch\u1ECDn t\u1EA5t c\u1EA3", onClick: () => s3.selection.length ? clearSelection() : selectAll() }, children: [
+        doc2.nodes.length,
+        " layer"
+      ] }),
+      doc2.nodes.length ? /* @__PURE__ */ u3("div", { class: "layers", children: doc2.nodes.slice().reverse().map((n2) => row(n2, 0)) }) : /* @__PURE__ */ u3("div", { class: "empty", children: [
+        /* @__PURE__ */ u3("div", { class: "big", children: "Ch\u01B0a c\xF3 layer" }),
+        /* @__PURE__ */ u3("div", { class: "small", children: "Th\xEAm block ho\u1EB7c k\xE9o \u1EA3nh v\xE0o artboard." }),
+        /* @__PURE__ */ u3(Btn, { sm: true, kind: "primary", onClick: () => set({ leftTab: "blocks" }), children: "Xem block" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "dim small", children: [
+        "K\xE9o th\u1EA3 \u0111\u1EC3 \u0111\u1ED5i th\u1EE9 t\u1EF1. Double-click \u0111\u1EC3 \u0111\u1ED5i t\xEAn. ",
+        /* @__PURE__ */ u3("span", { class: "kbd", children: "\u2318]" }),
+        " / ",
+        /* @__PURE__ */ u3("span", { class: "kbd", children: "\u2318[" }),
+        " l\xEAn/xu\u1ED1ng."
+      ] })
+    ] });
+  }
+  var PREVIEWS = {
+    nav: [{ x: 6, y: 40, w: 22, h: 20 }, { x: 60, y: 42, w: 10, h: 16 }, { x: 74, y: 42, w: 10, h: 16 }, { x: 88, y: 42, w: 8, h: 16 }],
+    hero: [{ x: 0, y: 0, w: 100, h: 50 }, { x: 6, y: 58, w: 60, h: 14 }, { x: 6, y: 78, w: 24, h: 16, g: true }],
+    text: [{ x: 6, y: 18, w: 50, h: 14 }, { x: 6, y: 42, w: 88, h: 8 }, { x: 6, y: 56, w: 80, h: 8 }, { x: 6, y: 70, w: 60, h: 8 }],
+    cta: [{ x: 36, y: 34, w: 28, h: 30, g: true }],
+    "products-2": [{ x: 6, y: 14, w: 41, h: 50 }, { x: 53, y: 14, w: 41, h: 50 }, { x: 6, y: 70, w: 30, h: 8 }, { x: 53, y: 70, w: 30, h: 8 }],
+    "products-3": [{ x: 4, y: 14, w: 28, h: 46 }, { x: 36, y: 14, w: 28, h: 46 }, { x: 68, y: 14, w: 28, h: 46 }, { x: 4, y: 66, w: 20, h: 8 }, { x: 36, y: 66, w: 20, h: 8 }, { x: 68, y: 66, w: 20, h: 8 }],
+    "feature-row": [{ x: 6, y: 16, w: 40, h: 66 }, { x: 52, y: 20, w: 40, h: 12 }, { x: 52, y: 40, w: 42, h: 8 }, { x: 52, y: 54, w: 30, h: 8 }, { x: 52, y: 70, w: 20, h: 8, g: true }],
+    divider: [{ x: 6, y: 48, w: 88, h: 3 }],
+    spacer: [],
+    footer: [{ x: 30, y: 20, w: 40, h: 10 }, { x: 14, y: 40, w: 72, h: 8 }, { x: 28, y: 60, w: 18, h: 8 }, { x: 54, y: 60, w: 18, h: 8 }]
+  };
+  function Blocks() {
+    const s3 = useStore();
+    return /* @__PURE__ */ u3("div", { class: "section", children: [
+      /* @__PURE__ */ u3(Eyebrow, { children: "Ch\xE8n block" }),
+      /* @__PURE__ */ u3("div", { class: "blocks", children: BLOCKS.map((b2) => /* @__PURE__ */ u3("button", { class: "block-tile", onClick: () => addBlock(b2.kind), title: `Ch\xE8n ${b2.name} xu\u1ED1ng cu\u1ED1i email`, children: [
+        /* @__PURE__ */ u3("div", { class: "pv", children: (PREVIEWS[b2.kind] || []).map((r3, i4) => /* @__PURE__ */ u3("i", { class: r3.g ? "g" : "", style: { left: `${r3.x}%`, top: `${r3.y}%`, width: `${r3.w}%`, height: `${r3.h}%` } }, i4)) }),
+        /* @__PURE__ */ u3("div", { class: "nm", children: b2.name }),
+        /* @__PURE__ */ u3("div", { class: "ds", children: b2.desc })
+      ] }, b2.kind)) }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "S\u1EAFp x\u1EBFp" }),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "reflow", onClick: () => reflow(), title: "X\u1EBFp l\u1EA1i c\xE1c block li\u1EC1n nhau theo th\u1EE9 t\u1EF1 d\u1ECDc", children: "X\u1EBFp l\u1EA1i block" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "fit", onClick: () => setDocHeightToContent(), title: "Chi\u1EC1u cao artboard kh\u1EDBp n\u1ED9i dung", children: "Kh\u1EDBp chi\u1EC1u cao" })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "B\u1EAFt \u0111\u1EA7u l\u1EA1i" }),
+      /* @__PURE__ */ u3(Btn, { sm: true, block: true, icon: "sparkle", onClick: () => set({ modal: "templates" }), children: "Ch\u1ECDn template kh\xE1c\u2026" }),
+      /* @__PURE__ */ u3("div", { class: "dim small", children: [
+        "Block l\xE0 group c\xF3 nh\xE3n ",
+        /* @__PURE__ */ u3("span", { class: "tag", style: { fontFamily: "var(--mono)", fontSize: 9, color: "var(--neon-dim)", border: "1px solid var(--line-2)", borderRadius: 3, padding: "0 4px" }, children: "block" }),
+        ". K\xE9o c\u1EA3 block \u0111\u1EC3 di chuy\u1EC3n, double-click \u0111\u1EC3 v\xE0o s\u1EEDa t\u1EEBng ph\u1EA7n."
+      ] }),
+      s3.project?.mobile ? null : /* @__PURE__ */ u3("div", { class: "dim small", children: "M\u1EB9o: t\u1EA1o b\u1EA3n mobile \u1EDF tab Email sau khi xong desktop." })
+    ] });
+  }
+  function Assets() {
+    const s3 = useStore();
+    const [, bump] = h2(0);
+    const list = assets.all();
+    const input = A2(null);
+    const [over, setOver] = h2(false);
+    const upload = async (files) => {
+      for (const f4 of Array.from(files)) {
+        if (!f4.type.startsWith("image/")) continue;
+        try {
+          await assets.add(f4);
+        } catch (e3) {
+          toast(`Kh\xF4ng \u0111\u1ECDc \u0111\u01B0\u1EE3c ${f4.name}`, "err");
+        }
+      }
+      bump((n2) => n2 + 1);
+    };
+    const use = (id) => {
+      const sel = selectedNodes();
+      const img = sel.find((n2) => n2.type === "image");
+      if (img) {
+        setImageAsset(img.id, id);
+        toast("\u0110\xE3 thay \u1EA3nh cho layer \u0111ang ch\u1ECDn.", "ok");
+      } else {
+        const a3 = assets.get(id);
+        const d3 = doc();
+        const w3 = Math.min(d3.width, a3.w);
+        const h3 = Math.round(w3 * (a3.h / a3.w));
+        commit({ ...insertNodes(d3, [{ id: `n_${Date.now().toString(36)}`, type: "image", name: a3.name, x: Math.round((d3.width - w3) / 2), y: contentHeight(d3), w: w3, h: h3, visible: true, locked: false, opacity: 1, link: null, alt: a3.name, assetId: id, fit: "cover", radius: 0, fill: null, overlay: null }]), height: Math.max(d3.height, contentHeight(d3) + h3) });
+      }
+    };
+    return /* @__PURE__ */ u3("div", { class: "section", children: [
+      /* @__PURE__ */ u3("div", { class: `dropzone ${over ? "over" : ""}`, onClick: () => input.current?.click(), onDragOver: (e3) => {
+        e3.preventDefault();
+        setOver(true);
+      }, onDragLeave: () => setOver(false), onDrop: (e3) => {
+        e3.preventDefault();
+        setOver(false);
+        if (e3.dataTransfer?.files) void upload(e3.dataTransfer.files);
+      }, children: [
+        /* @__PURE__ */ u3(Icon, { name: "upload" }),
+        " ",
+        /* @__PURE__ */ u3("div", { children: "Th\u1EA3 \u1EA3nh v\xE0o \u0111\xE2y ho\u1EB7c b\u1EA5m \u0111\u1EC3 ch\u1ECDn" }),
+        /* @__PURE__ */ u3("div", { class: "dim small", children: "PNG, JPG, WebP, GIF \xB7 l\u01B0u trong tr\xECnh duy\u1EC7t" })
+      ] }),
+      /* @__PURE__ */ u3("input", { ref: input, type: "file", accept: "image/*", multiple: true, style: { display: "none" }, onChange: (e3) => {
+        const f4 = e3.target.files;
+        if (f4) void upload(f4);
+        e3.target.value = "";
+      } }),
+      /* @__PURE__ */ u3(Eyebrow, { children: [
+        list.length,
+        " \u1EA3nh"
+      ] }),
+      list.length ? /* @__PURE__ */ u3("div", { class: "asset-grid", children: list.map((a3) => /* @__PURE__ */ u3("div", { class: "asset", title: `${a3.name} \xB7 ${a3.w}\xD7${a3.h} \xB7 ${(a3.bytes / 1024).toFixed(0)} KB
+B\u1EA5m: d\xF9ng cho layer \u1EA3nh \u0111ang ch\u1ECDn (ho\u1EB7c th\xEAm m\u1EDBi)`, onClick: () => use(a3.id), children: [
+        assets.url(a3.id) ? /* @__PURE__ */ u3("img", { src: assets.url(a3.id), alt: "" }) : null,
+        /* @__PURE__ */ u3("button", { class: "del", title: "Xo\xE1 kh\u1ECFi th\u01B0 vi\u1EC7n", onClick: async (e3) => {
+          e3.stopPropagation();
+          if (await ask(`Xo\xE1 "${a3.name}" kh\u1ECFi th\u01B0 vi\u1EC7n?`)) void assets.remove(a3.id).then(() => bump((n2) => n2 + 1));
+        }, children: "\u2715" }),
+        /* @__PURE__ */ u3("div", { class: "nm", children: a3.name })
+      ] }, a3.id)) }) : /* @__PURE__ */ u3("div", { class: "dim small", children: "Ch\u01B0a c\xF3 \u1EA3nh. \u1EA2nh c\u0169ng c\xF3 th\u1EC3 k\xE9o th\u1EB3ng l\xEAn artboard." }),
+      /* @__PURE__ */ u3("div", { class: "dim small", children: s3.selection.length ? "B\u1EA5m \u1EA3nh \u0111\u1EC3 g\xE1n v\xE0o layer \u0111ang ch\u1ECDn." : "Ch\u1ECDn m\u1ED9t layer \u1EA3nh r\u1ED3i b\u1EA5m \u0111\u1EC3 thay, ho\u1EB7c b\u1EA5m \u0111\u1EC3 th\xEAm layer m\u1EDBi." })
+    ] });
+  }
+
+  // studio/src/ui/RightPanel.tsx
+  function RightPanel() {
+    const s3 = useStore();
+    const a3 = analyze();
+    const issues = a3 ? a3.checks.filter((c3) => c3.level !== "info").length : 0;
+    return /* @__PURE__ */ u3("div", { class: "panel right", children: [
+      /* @__PURE__ */ u3("div", { class: "ptabs", children: [
+        /* @__PURE__ */ u3("button", { class: `ptab ${s3.rightTab === "design" ? "on" : ""}`, onClick: () => set({ rightTab: "design" }), children: "Thi\u1EBFt k\u1EBF" }),
+        /* @__PURE__ */ u3("button", { class: `ptab ${s3.rightTab === "email" ? "on" : ""}`, onClick: () => set({ rightTab: "email" }), children: [
+          "Email",
+          issues ? /* @__PURE__ */ u3("span", { class: "n", children: issues }) : null
+        ] }),
+        /* @__PURE__ */ u3("button", { class: `ptab ${s3.rightTab === "export" ? "on" : ""}`, onClick: () => set({ rightTab: "export" }), children: "Xu\u1EA5t" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "pbody", children: s3.rightTab === "design" ? /* @__PURE__ */ u3(DesignTab, {}) : s3.rightTab === "email" ? /* @__PURE__ */ u3(EmailTab, {}) : /* @__PURE__ */ u3(ExportTab, {}) })
+    ] });
+  }
+  function DesignTab() {
+    const nodes = selectedNodes();
+    if (!nodes.length) return /* @__PURE__ */ u3(ArtboardProps, {});
+    if (nodes.length > 1) return /* @__PURE__ */ u3(MultiProps, { nodes });
+    return /* @__PURE__ */ u3(NodeProps, { n: nodes[0] });
+  }
+  function ArtboardProps() {
+    const s3 = useStore();
+    const d3 = doc();
+    const b2 = s3.project.brand;
+    return /* @__PURE__ */ u3("div", { class: "props", children: [
+      /* @__PURE__ */ u3("div", { class: "prop-h", children: [
+        /* @__PURE__ */ u3(Icon, { name: s3.variant === "mobile" ? "mobile" : "desktop", class: "ico" }),
+        /* @__PURE__ */ u3("b", { class: "grow", children: [
+          "Artboard ",
+          s3.variant === "mobile" ? "mobile" : "desktop"
+        ] })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Num, { label: "W", value: d3.width, min: 320, max: 800, onChange: (v3) => commit(setDocWidth(d3, Math.round(v3))), suffix: "px", title: "Chi\u1EC1u r\u1ED9ng (600 chu\u1EA9n email)" }),
+        /* @__PURE__ */ u3(Num, { label: "H", value: d3.height, min: 100, max: 1e4, onChange: (v3) => setDocProps({ height: Math.round(v3) }), suffix: "px" })
+      ] }),
+      /* @__PURE__ */ u3(Field, { label: "N\u1EC1n", children: /* @__PURE__ */ u3(ColorInput, { value: d3.bg, brand: b2, onChange: (c3) => setDocProps({ bg: c3 || "#ffffff" }) }) }),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "fit", onClick: () => setDocHeightToContent(), children: "Kh\u1EDBp n\u1ED9i dung" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "reflow", onClick: () => reflow(), children: "X\u1EBFp l\u1EA1i block" })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { action: { label: "Ch\u1EC9nh", onClick: () => set({ modal: "brand" }) }, children: "Brand kit" }),
+      /* @__PURE__ */ u3("div", { class: "row wrap", children: ["primary", "ink", "muted", "bg", "soft", "line"].map((t3) => /* @__PURE__ */ u3("span", { class: "chip", title: t3, style: { gap: 6 }, children: [
+        /* @__PURE__ */ u3("i", { style: { width: 10, height: 10, borderRadius: 3, background: b2[t3], display: "inline-block", border: "1px solid rgba(255,255,255,.15)" } }),
+        t3
+      ] }, t3)) }),
+      /* @__PURE__ */ u3("div", { class: "small muted", children: [
+        "Font: ",
+        /* @__PURE__ */ u3("b", { children: b2.fontFamily }),
+        b2.headingFamily !== b2.fontFamily ? /* @__PURE__ */ u3(b, { children: [
+          " \xB7 ti\xEAu \u0111\u1EC1 ",
+          /* @__PURE__ */ u3("b", { children: b2.headingFamily })
+        ] }) : null
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "L\u01B0\u1EDBi & b\u1EAFt d\xEDnh" }),
+      /* @__PURE__ */ u3(Toggle, { checked: s3.settings.snap, onChange: (v3) => set({ settings: { ...s3.settings, snap: v3 } }), label: "B\u1EAFt d\xEDnh c\u1EA1nh / t\xE2m", sub: "Gi\u1EEF \u2325 \u0111\u1EC3 t\u1EAFt t\u1EA1m" }),
+      /* @__PURE__ */ u3(Toggle, { checked: s3.settings.grid, onChange: (v3) => set({ settings: { ...s3.settings, grid: v3 } }), label: "Hi\u1EC7n l\u01B0\u1EDBi 24px" }),
+      /* @__PURE__ */ u3("div", { class: "dim small", children: [
+        "Ch\u1ECDn m\u1ED9t layer \u0111\u1EC3 s\u1EEDa thu\u1ED9c t\xEDnh. ",
+        /* @__PURE__ */ u3("span", { class: "kbd", children: "\u2318A" }),
+        " ch\u1ECDn t\u1EA5t c\u1EA3."
+      ] })
+    ] });
+  }
+  function MultiProps({ nodes }) {
+    return /* @__PURE__ */ u3("div", { class: "props", children: [
+      /* @__PURE__ */ u3("div", { class: "prop-h", children: [
+        /* @__PURE__ */ u3(Icon, { name: "group", class: "ico" }),
+        /* @__PURE__ */ u3("b", { class: "grow", children: [
+          nodes.length,
+          " layer"
+        ] })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "C\u0103n ch\u1EC9nh" }),
+      /* @__PURE__ */ u3(AlignRow, {}),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Btn, { sm: true, block: true, icon: "group", onClick: () => groupSelection(), children: "Nh\xF3m (\u2318G)" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, block: true, icon: "copy", onClick: () => duplicateSelection(), children: "Nh\xE2n b\u1EA3n" })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "Chung" }),
+      /* @__PURE__ */ u3(Field, { label: "Link cho t\u1EA5t c\u1EA3", hint: "https://\u2026", children: /* @__PURE__ */ u3(TextInput, { value: commonValue(nodes, (n2) => n2.link || ""), placeholder: "https://\u2026", onCommit: (v3) => updateSelected((n2) => ({ ...n2, link: v3.trim() || null })) }) }),
+      /* @__PURE__ */ u3(Num, { label: "M\u1EDD", value: Math.round(nodes[0].opacity * 100), min: 0, max: 100, suffix: "%", onChange: (v3) => updateSelected((n2) => ({ ...n2, opacity: v3 / 100 })) }),
+      /* @__PURE__ */ u3(Btn, { sm: true, block: true, kind: "danger", icon: "trash", onClick: () => deleteSelection(), children: [
+        "Xo\xE1 ",
+        nodes.length,
+        " layer"
+      ] })
+    ] });
+  }
+  function commonValue(nodes, f4) {
+    const v3 = f4(nodes[0]);
+    return nodes.every((n2) => f4(n2) === v3) ? v3 : "";
+  }
+  function AlignRow() {
+    return /* @__PURE__ */ u3("div", { class: "col", children: [
+      /* @__PURE__ */ u3("div", { class: "aligns", children: [
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "alignL", title: "C\u0103n tr\xE1i", onClick: () => alignSelection("left") }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "alignC", title: "C\u0103n gi\u1EEFa ngang", onClick: () => alignSelection("hcenter") }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "alignR", title: "C\u0103n ph\u1EA3i", onClick: () => alignSelection("right") }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "alignT", title: "C\u0103n tr\xEAn", onClick: () => alignSelection("top") }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "alignM", title: "C\u0103n gi\u1EEFa d\u1ECDc", onClick: () => alignSelection("vcenter") }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "alignB", title: "C\u0103n d\u01B0\u1EDBi", onClick: () => alignSelection("bottom") })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Btn, { sm: true, block: true, icon: "distH", title: "D\xE0n \u0111\u1EC1u ngang", onClick: () => distributeSelection("h"), children: "D\xE0n ngang" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, block: true, icon: "distV", title: "D\xE0n \u0111\u1EC1u d\u1ECDc", onClick: () => distributeSelection("v"), children: "D\xE0n d\u1ECDc" })
+      ] })
+    ] });
+  }
+  function NodeProps({ n: n2 }) {
+    const bb = bounds(n2);
+    const up = (patch) => updateNode2(n2.id, patch);
+    const setRect = (r3) => commit(resizeTo(doc(), n2.id, { ...bb, ...r3 }, false));
+    return /* @__PURE__ */ u3("div", { class: "props", children: [
+      /* @__PURE__ */ u3("div", { class: "prop-h", children: [
+        /* @__PURE__ */ u3(Icon, { name: n2.type === "group" ? "group" : n2.type, class: "ico" }),
+        /* @__PURE__ */ u3(TextInput, { value: n2.name, onCommit: (v3) => up({ name: v3 || n2.name }) })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Num, { label: "X", value: bb.x, onChange: (v3) => commit(moveBy(doc(), [n2.id], Math.round(v3) - bb.x, 0)) }),
+        /* @__PURE__ */ u3(Num, { label: "Y", value: bb.y, onChange: (v3) => commit(moveBy(doc(), [n2.id], 0, Math.round(v3) - bb.y)) }),
+        /* @__PURE__ */ u3(Num, { label: "W", value: bb.w, min: 1, onChange: (v3) => setRect({ w: Math.round(v3) }) }),
+        /* @__PURE__ */ u3(Num, { label: "H", value: bb.h, min: 1, disabled: n2.type === "text" && n2.autoHeight, onChange: (v3) => setRect({ h: Math.round(v3) }), title: n2.type === "text" && n2.autoHeight ? "T\u1EF1 theo n\u1ED9i dung" : "" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Num, { label: "M\u1EDD", value: Math.round(n2.opacity * 100), min: 0, max: 100, suffix: "%", onChange: (v3) => up({ opacity: v3 / 100 }) }),
+        n2.type === "rect" || n2.type === "image" ? /* @__PURE__ */ u3(Num, { label: "Bo", value: n2.radius, min: 0, suffix: "px", onChange: (v3) => up({ radius: Math.round(v3) }) }) : /* @__PURE__ */ u3("div", {})
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "C\u0103n" }),
+      /* @__PURE__ */ u3(AlignRow, {}),
+      n2.type === "text" && /* @__PURE__ */ u3(TextProps, { n: n2 }),
+      n2.type === "rect" && /* @__PURE__ */ u3(RectProps, { n: n2 }),
+      n2.type === "image" && /* @__PURE__ */ u3(ImageProps, { n: n2 }),
+      n2.type === "group" && /* @__PURE__ */ u3("div", { class: "section", children: [
+        /* @__PURE__ */ u3(Eyebrow, { children: "Nh\xF3m" }),
+        /* @__PURE__ */ u3("div", { class: "small muted", children: [
+          n2.children.length,
+          " layer con",
+          n2.block ? ` \xB7 block "${n2.block}"` : "",
+          ". Double-click tr\xEAn artboard \u0111\u1EC3 s\u1EEDa b\xEAn trong."
+        ] }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "group", onClick: () => ungroupSelection(), children: "B\u1ECF nh\xF3m (\u21E7\u2318G)" })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "Email" }),
+      /* @__PURE__ */ u3(Field, { label: "Link", hint: n2.link ? "c\u1EA3 v\xF9ng n\xE0y l\xE0 1 link" : "https:// \xB7 mailto: \xB7 *|UNSUB|*", children: /* @__PURE__ */ u3(TextInput, { value: n2.link || "", mono: true, placeholder: "https://\u2026", onCommit: (v3) => up({ link: v3.trim() || null }) }) }),
+      /* @__PURE__ */ u3(Field, { label: "Alt text", hint: "hi\u1EC7n khi \u1EA3nh b\u1ECB ch\u1EB7n", children: /* @__PURE__ */ u3(TextInput, { value: n2.alt, placeholder: n2.type === "text" ? "m\u1EB7c \u0111\u1ECBnh: n\u1ED9i dung ch\u1EEF" : "m\xF4 t\u1EA3 \u1EA3nh", onCommit: (v3) => up({ alt: v3 }) }) }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "Th\u1EE9 t\u1EF1" }),
+      /* @__PURE__ */ u3("div", { class: "grid4", children: [
+        /* @__PURE__ */ u3(Btn, { xs: true, icon: "up", title: "L\xEAn tr\xEAn (\u2318])", onClick: () => reorderSelection("up") }),
+        /* @__PURE__ */ u3(Btn, { xs: true, icon: "down", title: "Xu\u1ED1ng d\u01B0\u1EDBi (\u2318[)", onClick: () => reorderSelection("down") }),
+        /* @__PURE__ */ u3(Btn, { xs: true, icon: n2.locked ? "lock" : "unlock", on: n2.locked, title: "Kho\xE1", onClick: () => toggleLocked(n2.id) }),
+        /* @__PURE__ */ u3(Btn, { xs: true, icon: n2.visible ? "eye" : "eyeOff", on: !n2.visible, title: "\u1EA8n/hi\u1EC7n", onClick: () => toggleVisible(n2.id) })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Btn, { sm: true, block: true, icon: "copy", onClick: () => duplicateSelection(), children: "Nh\xE2n b\u1EA3n" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, block: true, kind: "danger", icon: "trash", onClick: () => deleteSelection(), children: "Xo\xE1" })
+      ] })
+    ] });
+  }
+  function TextProps({ n: n2 }) {
+    const s3 = useStore();
+    const b2 = s3.project.brand;
+    const up = (patch) => patchTextFlow(n2.id, patch);
+    const fontOpts = [{ v: "brand", label: `Brand (${b2.fontFamily})` }, { v: "heading", label: `Ti\xEAu \u0111\u1EC1 (${b2.headingFamily})` }, ...FONTS.map((f4) => ({ v: f4.family, label: f4.label }))];
+    return /* @__PURE__ */ u3("div", { class: "section", children: [
+      /* @__PURE__ */ u3(Eyebrow, { children: "Ch\u1EEF" }),
+      /* @__PURE__ */ u3(TextArea, { class: "textarea-text", value: n2.text, rows: 3, onCommit: (v3) => up({ text: v3 }), onInput: (v3) => patchTextFlow(n2.id, { text: v3 }, false) }),
+      /* @__PURE__ */ u3(Select, { value: n2.fontFamily, options: fontOpts, onChange: (v3) => {
+        ensureFont(v3);
+        up({ fontFamily: v3 });
+      } }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Num, { label: "C\u1EE1", value: n2.fontSize, min: 6, max: 200, suffix: "px", onChange: (v3) => up({ fontSize: v3 }) }),
+        /* @__PURE__ */ u3(Select, { value: String(n2.fontWeight), options: [["400", "Regular"], ["500", "Medium"], ["600", "Semibold"], ["700", "Bold"], ["800", "Extrabold"]].map(([v3, l3]) => ({ v: v3, label: l3 })), onChange: (v3) => up({ fontWeight: Number(v3) }) })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Num, { label: "LH", value: n2.lineHeight, min: 0.8, max: 3, step: 0.05, onChange: (v3) => up({ lineHeight: v3 }), title: "Line height (x c\u1EE1 ch\u1EEF)" }),
+        /* @__PURE__ */ u3(Num, { label: "LS", value: n2.letterSpacing, min: -5, max: 20, step: 0.1, suffix: "px", onChange: (v3) => up({ letterSpacing: v3 }), title: "Letter spacing" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Seg, { value: n2.align, options: [{ v: "left", icon: "alignL", title: "Tr\xE1i" }, { v: "center", icon: "alignC", title: "Gi\u1EEFa" }, { v: "right", icon: "alignR", title: "Ph\u1EA3i" }], onChange: (v3) => up({ align: v3 }) }),
+        /* @__PURE__ */ u3("div", { class: "seg", children: [
+          /* @__PURE__ */ u3("button", { class: n2.italic ? "on" : "", title: "Nghi\xEAng", onClick: () => up({ italic: !n2.italic }), children: /* @__PURE__ */ u3(Icon, { name: "italic" }) }),
+          /* @__PURE__ */ u3("button", { class: n2.underline ? "on" : "", title: "G\u1EA1ch ch\xE2n", onClick: () => up({ underline: !n2.underline }), children: /* @__PURE__ */ u3(Icon, { name: "underline" }) })
+        ] })
+      ] }),
+      /* @__PURE__ */ u3(Field, { label: "M\xE0u ch\u1EEF", children: /* @__PURE__ */ u3(ColorInput, { value: n2.color, brand: b2, onChange: (c3) => up({ color: c3 || "#000000" }) }) }),
+      /* @__PURE__ */ u3(Toggle, { checked: n2.autoHeight, onChange: (v3) => up({ autoHeight: v3 }), label: "Chi\u1EC1u cao t\u1EF1 theo n\u1ED9i dung" }),
+      !n2.autoHeight && /* @__PURE__ */ u3(Seg, { block: true, value: n2.vAlign, options: [{ v: "top", label: "Tr\xEAn" }, { v: "middle", label: "Gi\u1EEFa" }, { v: "bottom", label: "D\u01B0\u1EDBi" }], onChange: (v3) => up({ vAlign: v3 }) })
+    ] });
+  }
+  function RectProps({ n: n2 }) {
+    const s3 = useStore();
+    const b2 = s3.project.brand;
+    const up = (patch) => updateNode2(n2.id, patch);
+    return /* @__PURE__ */ u3("div", { class: "section", children: [
+      /* @__PURE__ */ u3(Eyebrow, { children: "H\xECnh" }),
+      /* @__PURE__ */ u3(Field, { label: "N\u1EC1n", children: /* @__PURE__ */ u3(ColorInput, { value: n2.fill, brand: b2, allowNone: true, onChange: (c3) => up({ fill: c3 }) }) }),
+      /* @__PURE__ */ u3(Field, { label: "Vi\u1EC1n", children: /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3("div", { class: "grow", children: /* @__PURE__ */ u3(ColorInput, { value: n2.stroke?.color ?? null, brand: b2, allowNone: true, onChange: (c3) => up({ stroke: c3 ? { color: c3, width: n2.stroke?.width || 1 } : null }) }) }),
+        /* @__PURE__ */ u3("div", { style: { width: 80 }, children: /* @__PURE__ */ u3(Num, { label: "W", value: n2.stroke?.width ?? 0, min: 0, max: 40, onChange: (v3) => up({ stroke: v3 > 0 ? { color: n2.stroke?.color ?? { token: "line" }, width: v3 } : null }) }) })
+      ] }) })
+    ] });
+  }
+  function ImageProps({ n: n2 }) {
+    const s3 = useStore();
+    const b2 = s3.project.brand;
+    const up = (patch) => updateNode2(n2.id, patch);
+    const a3 = n2.assetId ? assets.get(n2.assetId) : void 0;
+    const [, bump] = h2(0);
+    y2(() => assets.onChange(() => bump((x2) => x2 + 1)), []);
+    const pick = () => {
+      const i4 = document.createElement("input");
+      i4.type = "file";
+      i4.accept = "image/*";
+      i4.onchange = async () => {
+        const f4 = i4.files?.[0];
+        if (f4) {
+          const na = await assets.add(f4);
+          up({ assetId: na.id, alt: n2.alt || na.name.replace(/\.[a-z0-9]+$/i, "") });
+        }
+      };
+      i4.click();
+    };
+    return /* @__PURE__ */ u3("div", { class: "section", children: [
+      /* @__PURE__ */ u3(Eyebrow, { children: "\u1EA2nh" }),
+      /* @__PURE__ */ u3("div", { class: "row", style: { alignItems: "stretch" }, children: [
+        /* @__PURE__ */ u3("div", { style: { width: 72, height: 72, borderRadius: 6, overflow: "hidden", background: "#070b09", border: "1px solid var(--line-2)", flex: "none", display: "grid", placeItems: "center" }, children: a3 && assets.url(a3.id) ? /* @__PURE__ */ u3("img", { src: assets.url(a3.id), style: { width: "100%", height: "100%", objectFit: "cover" }, alt: "" }) : /* @__PURE__ */ u3(Icon, { name: "image", style: { color: "var(--dim)" } }) }),
+        /* @__PURE__ */ u3("div", { class: "col grow", style: { justifyContent: "center" }, children: [
+          /* @__PURE__ */ u3("div", { class: "small", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: a3 ? `${a3.name}` : "Ch\u01B0a c\xF3 \u1EA3nh" }),
+          a3 && /* @__PURE__ */ u3("div", { class: "dim small mono", children: [
+            a3.w,
+            "\xD7",
+            a3.h,
+            " \xB7 ",
+            (a3.bytes / 1024).toFixed(0),
+            " KB"
+          ] }),
+          /* @__PURE__ */ u3("div", { class: "row", children: [
+            /* @__PURE__ */ u3(Btn, { xs: true, icon: "upload", onClick: pick, children: "T\u1EA3i \u1EA3nh" }),
+            /* @__PURE__ */ u3(Btn, { xs: true, onClick: () => set({ leftTab: "assets" }), children: "Th\u01B0 vi\u1EC7n" }),
+            a3 && /* @__PURE__ */ u3(Btn, { xs: true, kind: "ghost", onClick: () => up({ assetId: null }), children: "B\u1ECF" })
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ u3(Seg, { block: true, value: n2.fit, options: [{ v: "cover", label: "Cover" }, { v: "contain", label: "Contain" }, { v: "fill", label: "K\xE9o gi\xE3n" }], onChange: (v3) => up({ fit: v3 }) }),
+      /* @__PURE__ */ u3(Field, { label: "N\u1EC1n sau \u1EA3nh", children: /* @__PURE__ */ u3(ColorInput, { value: n2.fill, brand: b2, allowNone: true, onChange: (c3) => up({ fill: c3 }) }) }),
+      /* @__PURE__ */ u3(Field, { label: "Ph\u1EE7 m\xE0u", hint: "l\xE0m t\u1ED1i \u1EA3nh \u0111\u1EC3 ch\u1EEF n\u1ED5i", children: /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3("div", { class: "grow", children: /* @__PURE__ */ u3(ColorInput, { value: n2.overlay?.color ?? null, brand: b2, allowNone: true, onChange: (c3) => up({ overlay: c3 ? { color: typeof c3 === "string" ? c3 : b2[c3.token], opacity: n2.overlay?.opacity ?? 0.35 } : null }) }) }),
+        /* @__PURE__ */ u3("div", { style: { width: 80 }, children: /* @__PURE__ */ u3(Num, { label: "%", value: Math.round((n2.overlay?.opacity ?? 0) * 100), min: 0, max: 100, onChange: (v3) => up({ overlay: { color: n2.overlay?.color || "#000000", opacity: v3 / 100 } }) }) })
+      ] }) }),
+      a3 && (a3.w < n2.w * 2 || a3.h < n2.h * 2) && /* @__PURE__ */ u3("div", { class: "check warn", children: [
+        /* @__PURE__ */ u3("span", { class: "lv", children: "CH\xDA \xDD" }),
+        /* @__PURE__ */ u3("span", { class: "m", children: [
+          "\u1EA2nh g\u1ED1c ",
+          a3.w,
+          "\xD7",
+          a3.h,
+          " nh\u1ECF h\u01A1n 2\xD7 khung (",
+          n2.w * 2,
+          "\xD7",
+          n2.h * 2,
+          ") \u2014 c\xF3 th\u1EC3 m\u1EDD tr\xEAn m\xE0n Retina."
+        ] })
+      ] })
+    ] });
+  }
+  function EmailTab() {
+    const s3 = useStore();
+    const p3 = s3.project;
+    const a3 = analyze();
+    const [changes, setChanges] = h2(null);
+    const setField = (k3, v3) => patchProject({ fields: { ...p3.fields, [k3]: v3 } });
+    return /* @__PURE__ */ u3("div", { class: "props", children: [
+      /* @__PURE__ */ u3(Eyebrow, { children: "Th\xF4ng tin email" }),
+      /* @__PURE__ */ u3(Field, { label: "T\xEAn campaign", for: "f-campaignName", children: /* @__PURE__ */ u3(TextInput, { id: "f-campaignName", value: p3.fields.campaignName, onCommit: (v3) => setField("campaignName", v3) }) }),
+      /* @__PURE__ */ u3(Field, { label: "Subject", for: "f-subject", hint: `${p3.fields.subject.length} k\xFD t\u1EF1`, children: /* @__PURE__ */ u3(TextInput, { id: "f-subject", value: p3.fields.subject, placeholder: "30\u201350 k\xFD t\u1EF1, n\xF3i th\u1EB3ng l\u1EE3i \xEDch", onCommit: (v3) => setField("subject", v3) }) }),
+      /* @__PURE__ */ u3(Field, { label: "Preheader", for: "f-preheader", hint: "d\xF2ng xem tr\u01B0\u1EDBc", children: /* @__PURE__ */ u3(TextInput, { id: "f-preheader", value: p3.fields.preheader, placeholder: "N\u1ED1i ti\u1EBFp subject, 40\u201390 k\xFD t\u1EF1", onCommit: (v3) => setField("preheader", v3) }) }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "B\u1EA3n mobile" }),
+      p3.mobile ? /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3("span", { class: "chip on", children: "375px" }),
+        /* @__PURE__ */ u3("span", { class: "grow small muted", children: "\u0110i\u1EC7n tho\u1EA1i nh\u1EADn b\u1EA3n n\xE0y, desktop nh\u1EADn b\u1EA3n 600." }),
+        /* @__PURE__ */ u3(Btn, { xs: true, onClick: () => setVariant(s3.variant === "mobile" ? "desktop" : "mobile"), children: s3.variant === "mobile" ? "V\u1EC1 desktop" : "M\u1EDF" }),
+        /* @__PURE__ */ u3(Btn, { xs: true, kind: "danger", onClick: async () => {
+          if (await ask("Xo\xE1 b\u1EA3n mobile?")) deleteMobileVariant();
+        }, children: "Xo\xE1" })
+      ] }) : /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3("span", { class: "grow small muted", children: "Kh\xF4ng b\u1EAFt bu\u1ED9c \u2014 b\u1EA3n 600 v\u1EABn t\u1EF1 thu nh\u1ECF tr\xEAn \u0111i\u1EC7n tho\u1EA1i." }),
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "mobile", onClick: () => createMobileVariant(), children: "T\u1EA1o" })
+      ] }),
+      a3 && /* @__PURE__ */ u3(b, { children: [
+        /* @__PURE__ */ u3(Eyebrow, { action: { label: "T\u1ED1i \u01B0u", onClick: () => setChanges(optimize()) }, children: [
+          "G\u1EE3i \xFD \xB7 \u0111i\u1EC3m ",
+          a3.score
+        ] }),
+        /* @__PURE__ */ u3("div", { class: "score", children: [
+          /* @__PURE__ */ u3(Ring, { score: a3.score }),
+          /* @__PURE__ */ u3("div", { class: "grow small muted", children: a3.score >= 90 ? "S\u1EB5n s\xE0ng g\u1EEDi. Lu\u1EADt c\u1ED1 \u0111\u1ECBnh, kh\xF4ng AI: c\xF9ng thi\u1EBFt k\u1EBF lu\xF4n c\xF9ng k\u1EBFt qu\u1EA3." : a3.score >= 70 ? "\u1ED4n. V\xE0i \u0111i\u1EC3m n\xEAn ch\u1EC9nh tr\u01B0\u1EDBc khi g\u1EEDi." : "N\xEAn s\u1EEDa c\xE1c m\u1EE5c \u201CS\u1EECA\u201D tr\u01B0\u1EDBc." })
+        ] }),
+        changes && /* @__PURE__ */ u3("div", { class: "check ok", children: [
+          /* @__PURE__ */ u3("span", { class: "lv", children: "\u0110\xC3 S\u1EECA" }),
+          /* @__PURE__ */ u3("span", { class: "m", children: changes.length ? changes.join(" \xB7 ") : "Artboard \u0111\xE3 chu\u1EA9n, kh\xF4ng c\u1EA7n \u0111\u1ED5i g\xEC." })
+        ] }),
+        /* @__PURE__ */ u3("div", { class: "col", style: { gap: 4 }, children: a3.suggestions.map((g2) => /* @__PURE__ */ u3(SuggestionRow, { g: g2 }, g2.id)) }),
+        /* @__PURE__ */ u3(Eyebrow, { children: [
+          "Ki\u1EC3m tra tr\u01B0\u1EDBc khi xu\u1EA5t (",
+          a3.checks.length,
+          ")"
+        ] }),
+        /* @__PURE__ */ u3("div", { class: "checks", children: a3.checks.length ? a3.checks.slice(0, 30).map((c3, i4) => /* @__PURE__ */ u3(CheckRow, { c: c3 }, i4)) : /* @__PURE__ */ u3("div", { class: "check ok", children: [
+          /* @__PURE__ */ u3("span", { class: "lv", children: "OK" }),
+          /* @__PURE__ */ u3("span", { class: "m", children: "\u0110\u1EE7 link, \u0111\u1EE7 alt, k\xEDch th\u01B0\u1EDBc chu\u1EA9n." })
+        ] }) }),
+        /* @__PURE__ */ u3("div", { class: "dim small", children: [
+          a3.plan.slices.length,
+          " l\xE1t \u1EA3nh s\u1EBD \u0111\u01B0\u1EE3c c\u1EAFt. B\u1EA5m v\xE0o m\u1EE5c c\xF3 layer \u0111\u1EC3 ch\u1ECDn layer \u0111\xF3."
+        ] })
+      ] })
+    ] });
+  }
+  function SuggestionRow({ g: g2 }) {
+    const label = g2.action?.kind === "snap-width" ? "S\u1EEDa" : g2.action?.kind === "round-pixels" ? "L\xE0m tr\xF2n" : g2.action?.kind === "insert-block" ? "Ch\xE8n" : g2.action?.kind === "focus" ? "Xem" : g2.action?.kind === "set-field" ? "\u0110i\u1EC1n" : g2.action?.kind === "create-mobile" ? "T\u1EA1o" : "L\xE0m";
+    return /* @__PURE__ */ u3("div", { class: `sug ${g2.level}`, children: [
+      /* @__PURE__ */ u3("span", { class: "lv", children: g2.level === "fix" ? "S\u1EECA" : g2.level === "tip" ? "G\u1EE2I \xDD" : "T\u1ED0T" }),
+      /* @__PURE__ */ u3("div", { class: "grow", children: [
+        /* @__PURE__ */ u3("div", { class: "t", children: g2.title }),
+        /* @__PURE__ */ u3("div", { class: "d", children: g2.detail })
+      ] }),
+      g2.action && g2.level !== "good" && /* @__PURE__ */ u3(Btn, { xs: true, onClick: () => applySuggestion(g2.action), children: label })
+    ] });
+  }
+  function CheckRow({ c: c3 }) {
+    return /* @__PURE__ */ u3("div", { class: `check ${c3.level} ${c3.nodeId ? "click" : ""}`, onClick: c3.nodeId ? () => {
+      select([c3.nodeId]);
+      set({ rightTab: "design" });
+    } : void 0, children: [
+      /* @__PURE__ */ u3("span", { class: "lv", children: c3.level === "error" ? "L\u1ED6I" : c3.level === "warn" ? "CH\xDA \xDD" : "INFO" }),
+      /* @__PURE__ */ u3("span", { class: "m", children: c3.message })
+    ] });
+  }
+  function ExportTab() {
+    const s3 = useStore();
+    const p3 = s3.project;
+    const prof = activeProfile();
+    const [mode, setMode] = h2("fragment");
+    const draft = prof ? p3.drafts[prof.id] : void 0;
+    const busy2 = !!s3.busy;
+    const art = isArtifact();
+    return /* @__PURE__ */ u3("div", { class: "props", children: [
+      art && /* @__PURE__ */ u3("div", { class: "check info", children: [
+        /* @__PURE__ */ u3("span", { class: "lv", children: "ONLINE" }),
+        /* @__PURE__ */ u3("span", { class: "m", children: [
+          "B\u1EA3n ch\u1EA1y tr\xEAn claude.ai kh\xF4ng g\u1ECDi \u0111\u01B0\u1EE3c Mailchimp/Klaviyo (tr\xECnh duy\u1EC7t kho\xE1 m\u1EA1ng ra ngo\xE0i). \u1EDE \u0111\xE2y d\xF9ng ",
+          /* @__PURE__ */ u3("b", { children: "Xem tr\u01B0\u1EDBc" }),
+          " v\xE0 ",
+          /* @__PURE__ */ u3("b", { children: "T\u1EA3i .zip" }),
+          "; \u0111\u1EC3 t\u1EA1o draft, ch\u1EA1y Studio local ho\u1EB7c deploy k\xE8m relay (xem README)."
+        ] })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { action: { label: "Qu\u1EA3n l\xFD", onClick: () => set({ modal: "clients" }) }, children: "Client" }),
+      /* @__PURE__ */ u3("select", { class: "in", value: prof?.id || "", onChange: (e3) => set({ settings: { ...s3.settings, activeProfileId: e3.target.value || null } }), children: [
+        /* @__PURE__ */ u3("option", { value: "", children: "\u2014 ch\u01B0a ch\u1ECDn client \u2014" }),
+        s3.profiles.map((x2) => /* @__PURE__ */ u3("option", { value: x2.id, children: [
+          x2.name,
+          " \xB7 ",
+          providerName(x2.provider)
+        ] }, x2.id))
+      ] }),
+      prof ? /* @__PURE__ */ u3("div", { class: "small muted", children: [
+        prof.accountLabel || "Ch\u01B0a ki\u1EC3m tra k\u1EBFt n\u1ED1i",
+        " \xB7 ",
+        prof.audienceName || "ch\u01B0a ch\u1ECDn audience",
+        " \xB7 ",
+        prof.imageFormat,
+        " ",
+        prof.scale,
+        "x"
+      ] }) : /* @__PURE__ */ u3("div", { class: "small muted", children: "Th\xEAm client \u0111\u1EC3 t\u1EA1o draft ho\u1EB7c host \u1EA3nh cho Copy HTML. T\u1EA3i .zip kh\xF4ng c\u1EA7n client." }),
+      /* @__PURE__ */ u3("div", { class: "card glow", children: [
+        /* @__PURE__ */ u3(Btn, { kind: "primary", block: true, icon: "send", disabled: busy2 || !prof || art, onClick: () => runExport("draft"), children: prof ? draft?.campaignId ? `C\u1EADp nh\u1EADt draft \xB7 ${providerName(prof.provider)}` : `T\u1EA1o draft \xB7 ${providerName(prof.provider)}` : "T\u1EA1o draft (ch\u1ECDn client)" }),
+        /* @__PURE__ */ u3("div", { class: "grid2", children: [
+          /* @__PURE__ */ u3("div", { class: "split", children: [
+            /* @__PURE__ */ u3(Btn, { disabled: busy2 || art, icon: "copy", onClick: () => runExport("html", mode), title: mode === "fragment" ? "Ch\u1EC9 n\u1ED9i dung \u2014 d\xE1n v\xE0o template c\xF3 brand" : "Trang HTML \u0111\u1EA7y \u0111\u1EE7", children: mode === "fragment" ? "Copy HTML" : "HTML \u0111\u1EA7y \u0111\u1EE7" }),
+            /* @__PURE__ */ u3(Btn, { disabled: busy2, onClick: () => setMode(mode === "fragment" ? "full" : "fragment"), title: "\u0110\u1ED5i: n\u1ED9i dung / trang \u0111\u1EA7y \u0111\u1EE7", children: "\u21C5" })
+          ] }),
+          /* @__PURE__ */ u3(Btn, { disabled: busy2, icon: "download", onClick: () => runExport("zip"), children: "T\u1EA3i .zip" })
+        ] }),
+        /* @__PURE__ */ u3(Btn, { sm: true, block: true, icon: "play", disabled: busy2, onClick: () => set({ modal: "preview" }), children: "Xem tr\u01B0\u1EDBc nh\u01B0 trong h\u1ED9p th\u01B0" }),
+        draft?.campaignId && /* @__PURE__ */ u3("div", { class: "row small muted", children: [
+          /* @__PURE__ */ u3("span", { class: "grow", children: [
+            "Draft ",
+            new Date(draft.updatedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }),
+            " \xB7 ",
+            Object.keys(draft.files).length,
+            " \u1EA3nh"
+          ] }),
+          draft.webUrl && /* @__PURE__ */ u3("a", { href: draft.webUrl, target: "_blank", rel: "noopener", children: "M\u1EDF \u2197" }),
+          /* @__PURE__ */ u3(Btn, { xs: true, kind: "ghost", title: "Qu\xEAn draft \u2014 l\u1EA7n sau t\u1EA1o m\u1EDBi", onClick: () => {
+            if (prof) patchProject({ drafts: Object.fromEntries(Object.entries(p3.drafts).filter(([k3]) => k3 !== prof.id)) });
+          }, children: "\u2715" })
+        ] })
+      ] }),
+      (s3.busy || s3.log.length > 0) && /* @__PURE__ */ u3("div", { class: "card", children: [
+        s3.busy && /* @__PURE__ */ u3(b, { children: [
+          /* @__PURE__ */ u3("div", { class: "row small", children: [
+            /* @__PURE__ */ u3("span", { class: "grow", children: s3.busy.label }),
+            /* @__PURE__ */ u3("span", { class: "mono dim", children: s3.busy.total ? `${s3.busy.done}/${s3.busy.total}` : "" })
+          ] }),
+          /* @__PURE__ */ u3(Progress, { done: s3.busy.done, total: s3.busy.total })
+        ] }),
+        s3.log.length > 0 && /* @__PURE__ */ u3("div", { class: "log", children: s3.log.slice(-12).map((l3, i4) => /* @__PURE__ */ u3("div", { class: l3.k || "", children: l3.t }, i4)) })
+      ] }),
+      s3.result && /* @__PURE__ */ u3("div", { class: "result", children: [
+        /* @__PURE__ */ u3("span", { class: "ic", children: "\u2713" }),
+        /* @__PURE__ */ u3("span", { class: "grow", children: s3.result.text }),
+        s3.result.url && /* @__PURE__ */ u3("a", { href: s3.result.url, target: "_blank", rel: "noopener", children: "M\u1EDF \u2197" })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "C\xE1ch ho\u1EA1t \u0111\u1ED9ng" }),
+      /* @__PURE__ */ u3("div", { class: "small muted", children: [
+        "Email \u0111\u01B0\u1EE3c c\u1EAFt th\xE0nh l\xE1t \u1EA3nh theo v\xF9ng link, upload l\xEAn ",
+        prof ? providerName(prof.provider) : "n\u1EC1n t\u1EA3ng",
+        ", r\u1ED3i gh\xE9p th\xE0nh HTML b\u1EA3ng chu\u1EA9n m\u1ECDi h\u1ED9p th\u01B0. B\u1EA5m l\u1EA1i sau khi s\u1EEDa: c\u1EADp nh\u1EADt \u0111\xFAng draft c\u0169, \u1EA3nh kh\xF4ng \u0111\u1ED5i kh\xF4ng upload l\u1EA1i."
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "small muted", style: { display: "flex", gap: 6, alignItems: "center" }, children: [
+        /* @__PURE__ */ u3("span", { style: { width: 6, height: 6, borderRadius: 3, background: "var(--neon)", boxShadow: "0 0 8px var(--neon)", display: "inline-block" } }),
+        "Phloem kh\xF4ng bao gi\u1EDD t\u1EF1 g\u1EEDi. B\u1EA1n duy\u1EC7t v\xE0 b\u1EA5m g\u1EEDi trong ",
+        prof ? providerName(prof.provider) : "Mailchimp / Klaviyo",
+        "."
+      ] })
+    ] });
+  }
+
+  // studio/src/ui/Editor.tsx
+  var zoomEvt = (kind, value) => window.dispatchEvent(new CustomEvent("phloem-zoom", { detail: { kind, value } }));
+  function Editor() {
+    const s3 = useStore();
+    y2(() => {
+      const h3 = (e3) => keys(e3);
+      window.addEventListener("keydown", h3);
+      return () => window.removeEventListener("keydown", h3);
+    }, []);
+    y2(() => {
+      const h3 = (e3) => {
+        if (get().dirty) {
+          e3.preventDefault();
+          e3.returnValue = "";
+        }
+      };
+      window.addEventListener("beforeunload", h3);
+      return () => window.removeEventListener("beforeunload", h3);
+    }, []);
+    y2(() => {
+      if (get().project) remeasureAll();
+    }, [s3.fontsLoaded]);
+    if (!s3.project) return null;
+    const p3 = s3.project;
+    return /* @__PURE__ */ u3("div", { class: "app", children: [
+      /* @__PURE__ */ u3(TopBar, {}),
+      /* @__PURE__ */ u3("div", { class: "workspace", children: [
+        /* @__PURE__ */ u3(LeftPanel, {}),
+        /* @__PURE__ */ u3(CanvasView, {}),
+        /* @__PURE__ */ u3(RightPanel, {})
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "statusbar", children: [
+        /* @__PURE__ */ u3("span", { class: `dot ${s3.dirty ? "dirty" : ""}` }),
+        /* @__PURE__ */ u3("span", { children: s3.dirty ? "\u0111ang s\u1EEDa\u2026" : s3.savedAt ? `\u0111\xE3 l\u01B0u ${new Date(s3.savedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}` : "ch\u01B0a l\u01B0u" }),
+        /* @__PURE__ */ u3("span", { children: [
+          Math.round(s3.zoom * 100),
+          "%"
+        ] }),
+        /* @__PURE__ */ u3("span", { children: s3.selection.length ? `${s3.selection.length} layer \u0111ang ch\u1ECDn` : `${p3.desktop.nodes.length} layer` }),
+        /* @__PURE__ */ u3("span", { class: "grow" }),
+        /* @__PURE__ */ u3("span", { children: [
+          "Phloem kh\xF4ng bao gi\u1EDD t\u1EF1 g\u1EEDi \xB7 b\u1EA1n duy\u1EC7t v\xE0 b\u1EA5m g\u1EEDi trong ",
+          activeProfile() ? providerName(activeProfile().provider) : "Mailchimp / Klaviyo"
+        ] }),
+        /* @__PURE__ */ u3("span", { style: { cursor: "pointer" }, onClick: () => set({ modal: "shortcuts" }), children: "? ph\xEDm t\u1EAFt" })
+      ] })
+    ] });
+  }
+  function TopBar() {
+    const s3 = useStore();
+    const p3 = s3.project;
+    const prof = activeProfile();
+    const tools = [
+      { t: "select", icon: "select", k: "V", title: "Ch\u1ECDn / di chuy\u1EC3n (V)" },
+      { t: "rect", icon: "rect", k: "R", title: "H\xECnh ch\u1EEF nh\u1EADt (R)" },
+      { t: "text", icon: "text", k: "T", title: "Ch\u1EEF (T)" },
+      { t: "image", icon: "image", k: "I", title: "\u1EA2nh (I)" },
+      { t: "hand", icon: "hand", k: "H", title: "K\xE9o canvas (H / gi\u1EEF Space)" }
+    ];
+    return /* @__PURE__ */ u3("div", { class: "topbar", children: [
+      /* @__PURE__ */ u3("div", { class: "l", children: [
+        /* @__PURE__ */ u3("div", { class: "logo", onClick: () => goHome(), title: "V\u1EC1 trang ch\u1EE7", children: [
+          /* @__PURE__ */ u3(Icon, { name: "leaf" }),
+          /* @__PURE__ */ u3("span", { children: "Phloem" }),
+          /* @__PURE__ */ u3("span", { class: "sub", children: "studio" })
+        ] }),
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "home", title: "Project", onClick: () => goHome() }),
+        /* @__PURE__ */ u3("input", { class: "pname grow", value: p3.name, onChange: (e3) => renameProject(e3.target.value), onKeyDown: (e3) => {
+          e3.stopPropagation();
+          if (e3.key === "Enter") e3.target.blur();
+        }, title: "T\xEAn project" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "c", children: [
+        /* @__PURE__ */ u3("div", { class: "tools", children: tools.map((t3) => /* @__PURE__ */ u3("button", { class: `tool ${s3.tool === t3.t ? "on" : ""}`, title: t3.title, onClick: () => set({ tool: t3.t }), children: [
+          /* @__PURE__ */ u3(Icon, { name: t3.icon }),
+          /* @__PURE__ */ u3("span", { class: "k", children: t3.k })
+        ] }, t3.t)) }),
+        /* @__PURE__ */ u3("div", { class: "row", style: { gap: 2 }, children: [
+          /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "undo", title: "Ho\xE0n t\xE1c (\u2318Z)", onClick: () => undo() }),
+          /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "redo", title: "L\xE0m l\u1EA1i (\u21E7\u2318Z)", onClick: () => redo() })
+        ] }),
+        /* @__PURE__ */ u3("div", { class: "zoomc", children: [
+          /* @__PURE__ */ u3("button", { class: "tool", title: "Thu nh\u1ECF (\u2318\u2212)", onClick: () => zoomEvt("out"), children: /* @__PURE__ */ u3(Icon, { name: "zoomOut" }) }),
+          /* @__PURE__ */ u3("span", { class: "z", title: "100% (\u23180)", onClick: () => zoomEvt("reset"), children: [
+            Math.round(s3.zoom * 100),
+            "%"
+          ] }),
+          /* @__PURE__ */ u3("button", { class: "tool", title: "Ph\xF3ng to (\u2318+)", onClick: () => zoomEvt("in"), children: /* @__PURE__ */ u3(Icon, { name: "zoomIn" }) }),
+          /* @__PURE__ */ u3("button", { class: "tool", title: "V\u1EEBa m\xE0n h\xECnh (\u23181)", onClick: () => zoomEvt("fit"), children: /* @__PURE__ */ u3(Icon, { name: "fit" }) })
+        ] }),
+        /* @__PURE__ */ u3("div", { class: "variant", children: [
+          /* @__PURE__ */ u3("button", { class: s3.variant === "desktop" ? "on" : "", onClick: () => setVariant("desktop"), children: [
+            /* @__PURE__ */ u3(Icon, { name: "desktop", size: 13 }),
+            "Desktop",
+            /* @__PURE__ */ u3("span", { class: "k", children: p3.desktop.width })
+          ] }),
+          p3.mobile ? /* @__PURE__ */ u3("button", { class: s3.variant === "mobile" ? "on" : "", onClick: () => setVariant("mobile"), children: [
+            /* @__PURE__ */ u3(Icon, { name: "mobile", size: 13 }),
+            "Mobile",
+            /* @__PURE__ */ u3("span", { class: "k", children: p3.mobile.width })
+          ] }) : /* @__PURE__ */ u3("button", { title: "T\u1EA1o b\u1EA3n mobile 375px", onClick: () => createMobileVariant(), children: [
+            /* @__PURE__ */ u3(Icon, { name: "plus", size: 13 }),
+            "Mobile"
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "r", children: [
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "play", title: "Xem tr\u01B0\u1EDBc", onClick: () => set({ modal: "preview" }), children: "Xem tr\u01B0\u1EDBc" }),
+        /* @__PURE__ */ u3("label", { class: "client-pill", title: "Client \u0111ang d\xF9ng", children: [
+          /* @__PURE__ */ u3("span", { class: `dot ${prof ? "" : "off"}` }),
+          /* @__PURE__ */ u3("span", { class: "t", children: prof ? `${prof.name}` : "Ch\u01B0a ch\u1ECDn client" }),
+          /* @__PURE__ */ u3("select", { value: prof?.id || "", onChange: (e3) => {
+            const v3 = e3.target.value;
+            if (v3 === "__add") set({ modal: "clients" });
+            else set({ settings: { ...s3.settings, activeProfileId: v3 || null } });
+          }, children: [
+            /* @__PURE__ */ u3("option", { value: "", children: "\u2014 ch\u01B0a ch\u1ECDn \u2014" }),
+            s3.profiles.map((x2) => /* @__PURE__ */ u3("option", { value: x2.id, children: [
+              x2.name,
+              " (",
+              providerName(x2.provider),
+              ")"
+            ] }, x2.id)),
+            /* @__PURE__ */ u3("option", { value: "__add", children: "+ Qu\u1EA3n l\xFD client\u2026" })
+          ] })
+        ] }),
+        /* @__PURE__ */ u3(Btn, { kind: "primary", sm: true, icon: "send", onClick: () => set({ rightTab: "export" }), children: "Xu\u1EA5t" }),
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "settings", title: "C\xE0i \u0111\u1EB7t", onClick: () => set({ modal: "settings" }) })
+      ] })
+    ] });
+  }
+  function keys(e3) {
+    const t3 = e3.target;
+    if (t3 && (t3.tagName === "INPUT" || t3.tagName === "TEXTAREA" || t3.tagName === "SELECT" || t3.isContentEditable)) return;
+    const st = get();
+    if (st.modal || !st.project) return;
+    const mod = e3.metaKey || e3.ctrlKey;
+    const k3 = e3.key.toLowerCase();
+    const stop = () => {
+      e3.preventDefault();
+      e3.stopPropagation();
+    };
+    if (mod && k3 === "z") {
+      stop();
+      if (e3.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (mod && k3 === "y") {
+      stop();
+      redo();
+      return;
+    }
+    if (mod && k3 === "s") {
+      stop();
+      void saveProject();
+      return;
+    }
+    if (mod && k3 === "d") {
+      stop();
+      duplicateSelection();
+      return;
+    }
+    if (mod && k3 === "g") {
+      stop();
+      if (e3.shiftKey) ungroupSelection();
+      else groupSelection();
+      return;
+    }
+    if (mod && k3 === "a") {
+      stop();
+      selectAll();
+      return;
+    }
+    if (mod && k3 === "c") {
+      stop();
+      copySelection();
+      return;
+    }
+    if (mod && k3 === "x") {
+      stop();
+      cutSelection();
+      return;
+    }
+    if (mod && k3 === "v") {
+      stop();
+      pasteClipboard();
+      return;
+    }
+    if (mod && k3 === "]") {
+      stop();
+      reorderSelection(e3.altKey ? "top" : "up");
+      return;
+    }
+    if (mod && k3 === "[") {
+      stop();
+      reorderSelection(e3.altKey ? "bottom" : "down");
+      return;
+    }
+    if (mod && e3.shiftKey && k3 === "l") {
+      stop();
+      st.selection.forEach(toggleLocked);
+      return;
+    }
+    if (mod && e3.shiftKey && k3 === "h") {
+      stop();
+      st.selection.forEach(toggleVisible);
+      return;
+    }
+    if (mod && (k3 === "=" || k3 === "+")) {
+      stop();
+      zoomEvt("in");
+      return;
+    }
+    if (mod && k3 === "-") {
+      stop();
+      zoomEvt("out");
+      return;
+    }
+    if (mod && k3 === "0") {
+      stop();
+      zoomEvt("reset");
+      return;
+    }
+    if (mod && k3 === "1") {
+      stop();
+      zoomEvt("fit");
+      return;
+    }
+    if (mod && k3 === "enter") {
+      stop();
+      set({ rightTab: "export" });
+      return;
+    }
+    if (mod) return;
+    if (k3 === "delete" || k3 === "backspace") {
+      stop();
+      deleteSelection();
+      return;
+    }
+    if (k3 === "escape") {
+      stop();
+      if (st.editingText) set({ editingText: null });
+      else if (st.selection.length) clearSelection();
+      else if (st.enteredGroup) set({ enteredGroup: null });
+      else set({ tool: "select" });
+      return;
+    }
+    if (k3.startsWith("arrow")) {
+      stop();
+      const d3 = e3.shiftKey ? 10 : 1;
+      nudge(k3 === "arrowleft" ? -d3 : k3 === "arrowright" ? d3 : 0, k3 === "arrowup" ? -d3 : k3 === "arrowdown" ? d3 : 0);
+      return;
+    }
+    if (k3 === "v") set({ tool: "select" });
+    else if (k3 === "r") set({ tool: "rect" });
+    else if (k3 === "t") set({ tool: "text" });
+    else if (k3 === "i") set({ tool: "image" });
+    else if (k3 === "h") set({ tool: "hand" });
+    else if (k3 === "?") set({ modal: "shortcuts" });
+    else if (k3 === "enter" && st.selection.length === 1) {
+      const n2 = selectedNodes()[0];
+      if (n2?.type === "text") {
+        stop();
+        set({ editingText: n2.id });
+      } else if (n2?.type === "group" && n2.children.length) {
+        stop();
+        set({ enteredGroup: n2.id, selection: [n2.children[n2.children.length - 1].id] });
+      }
+    }
+  }
+
+  // studio/src/ui/Home.tsx
+  function Home() {
+    const s3 = useStore();
+    const file = A2(null);
+    y2(() => {
+      void refreshProjects();
+    }, []);
+    return /* @__PURE__ */ u3("div", { class: "home", children: [
+      /* @__PURE__ */ u3("div", { class: "home-top", children: [
+        /* @__PURE__ */ u3("div", { class: "logo", children: [
+          /* @__PURE__ */ u3(Icon, { name: "leaf" }),
+          /* @__PURE__ */ u3("span", { children: "Phloem" }),
+          /* @__PURE__ */ u3("span", { class: "sub", children: "studio" })
+        ] }),
+        /* @__PURE__ */ u3("span", { class: "grow" }),
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "figma", onClick: () => set({ modal: "figma" }), children: "Import t\u1EEB Figma" }),
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "upload", onClick: () => file.current?.click(), children: "M\u1EDF file .phloem.json" }),
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "mail", onClick: () => set({ modal: "clients" }), children: "Client" }),
+        /* @__PURE__ */ u3(Btn, { kind: "ghost", sm: true, icon: "settings", onClick: () => set({ modal: "settings" }), title: "C\xE0i \u0111\u1EB7t" }),
+        /* @__PURE__ */ u3("input", { ref: file, type: "file", accept: ".json,application/json", style: { display: "none" }, onChange: async (e3) => {
+          const f4 = e3.target.files?.[0];
+          if (f4) {
+            try {
+              await importProjectJson(f4);
+            } catch (err) {
+              toast(err.message, "err");
+            }
+          }
+          e3.target.value = "";
+        } })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "home-body", children: [
+        /* @__PURE__ */ u3("div", { class: "hero", children: [
+          /* @__PURE__ */ u3("div", { children: [
+            /* @__PURE__ */ u3("h1", { children: [
+              "Thi\u1EBFt k\u1EBF email. B\u1EA5m m\u1ED9t n\xFAt.",
+              /* @__PURE__ */ u3("br", {}),
+              "C\xF3 draft trong ",
+              /* @__PURE__ */ u3("em", { children: "Mailchimp" }),
+              " ho\u1EB7c ",
+              /* @__PURE__ */ u3("em", { children: "Klaviyo" }),
+              "."
+            ] }),
+            /* @__PURE__ */ u3("p", { children: "Phloem l\xE0 m\u1EA1ch d\u1EABn c\u1EE7a c\xE2y: mang \u0111\xFAng th\u1EE9 l\xE1 t\u1EA1o ra t\u1EDBi n\u01A1i c\u1EA7n, kh\xF4ng bi\u1EBFn \u0111\u1ED5i. Email b\u1EA1n v\u1EBD ra sao, h\u1ED9p th\u01B0 nh\u1EADn y v\u1EADy. Kh\xF4ng AI, kh\xF4ng d\u1EF1ng l\u1EA1i, kh\xF4ng bao gi\u1EDD t\u1EF1 g\u1EEDi." })
+          ] }),
+          /* @__PURE__ */ u3("div", { class: "row", children: /* @__PURE__ */ u3(Btn, { kind: "primary", icon: "plus", onClick: () => set({ modal: "templates" }), children: "Email m\u1EDBi" }) })
+        ] }),
+        /* @__PURE__ */ u3("div", { children: [
+          /* @__PURE__ */ u3("div", { class: "eyebrow", style: { marginBottom: 12 }, children: [
+            "Project c\u1EE7a b\u1EA1n \xB7 ",
+            s3.projects.length
+          ] }),
+          /* @__PURE__ */ u3("div", { class: "proj-grid", children: [
+            /* @__PURE__ */ u3("div", { class: "proj new", onClick: () => set({ modal: "templates" }), children: [
+              /* @__PURE__ */ u3(Icon, { name: "plus" }),
+              /* @__PURE__ */ u3("b", { children: "Email m\u1EDBi" }),
+              /* @__PURE__ */ u3("span", { class: "small", children: "t\u1EEB template ho\u1EB7c tr\u1ED1ng" })
+            ] }),
+            s3.projects.map((p3) => /* @__PURE__ */ u3("div", { class: "proj", onClick: () => openProject(p3.id), children: [
+              /* @__PURE__ */ u3("div", { class: "pv", children: p3.thumb ? /* @__PURE__ */ u3("img", { src: p3.thumb, alt: "" }) : /* @__PURE__ */ u3("div", { class: "blank", children: /* @__PURE__ */ u3(Icon, { name: "mail", size: 28 }) }) }),
+              /* @__PURE__ */ u3("div", { class: "meta", children: [
+                /* @__PURE__ */ u3("span", { class: "nm", children: p3.name }),
+                /* @__PURE__ */ u3("span", { class: "dt", children: new Date(p3.updatedAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }) }),
+                /* @__PURE__ */ u3(Btn, { xs: true, kind: "ghost", icon: "copy", title: "Nh\xE2n b\u1EA3n", onClick: (e3) => {
+                  e3.stopPropagation();
+                  void duplicateProject(p3.id);
+                } }),
+                /* @__PURE__ */ u3(Btn, { xs: true, kind: "ghost", icon: "trash", title: "Xo\xE1", onClick: async (e3) => {
+                  e3.stopPropagation();
+                  if (await ask(`Xo\xE1 "${p3.name}"? Kh\xF4ng ho\xE0n t\xE1c \u0111\u01B0\u1EE3c.`)) void deleteProject(p3.id);
+                } })
+              ] })
+            ] }, p3.id))
+          ] })
+        ] }),
+        /* @__PURE__ */ u3("div", { class: "feature-row", children: [
+          /* @__PURE__ */ u3("div", { class: "feature", children: [
+            /* @__PURE__ */ u3("div", { class: "t", children: [
+              /* @__PURE__ */ u3(Icon, { name: "sparkle" }),
+              "Thi\u1EBFt k\u1EBF \u0111\xFAng chu\u1EA9n email"
+            ] }),
+            /* @__PURE__ */ u3("div", { class: "d", children: "Template 600px, block ch\xE8n nhanh, brand kit, g\u1EE3i \xFD theo lu\u1EADt: CTA tr\xEAn fold, ch\u1EEF \u0111\u1EE7 to, t\u01B0\u01A1ng ph\u1EA3n, preheader." })
+          ] }),
+          /* @__PURE__ */ u3("div", { class: "feature", children: [
+            /* @__PURE__ */ u3("div", { class: "t", children: [
+              /* @__PURE__ */ u3(Icon, { name: "bolt" }),
+              "C\u1EAFt l\xE1t th\xF4ng minh"
+            ] }),
+            /* @__PURE__ */ u3("div", { class: "d", children: "M\u1ED7i v\xF9ng link th\xE0nh m\u1ED9t l\xE1t \u1EA3nh. L\u01B0\u1EDBi s\u1EA3n ph\u1EA9m d\xE0y, ch\u1EEF \u0111\xE8 \u1EA3nh, n\u1EC1n \u1EA3nh: \u0111\u1EC1u ra \u0111\xFAng nh\u01B0 v\u1EBD, \u1EDF m\u1ECDi h\u1ED9p th\u01B0." })
+          ] }),
+          /* @__PURE__ */ u3("div", { class: "feature", children: [
+            /* @__PURE__ */ u3("div", { class: "t", children: [
+              /* @__PURE__ */ u3(Icon, { name: "send" }),
+              "Draft ch\u1EE9 kh\xF4ng g\u1EEDi"
+            ] }),
+            /* @__PURE__ */ u3("div", { class: "d", children: "T\u1EA1o ho\u1EB7c c\u1EADp nh\u1EADt \u0111\xFAng b\u1EA3n nh\xE1p trong Mailchimp / Klaviyo, ho\u1EB7c copy HTML d\xE1n v\xE0o template c\xF3 brand. B\u1EA1n duy\u1EC7t v\xE0 b\u1EA5m g\u1EEDi." })
+          ] })
+        ] })
+      ] })
+    ] });
+  }
+
+  // studio/src/io/figmaImport.ts
+  function parseFigmaUrl(url) {
+    const m2 = /figma\.com\/(?:file|design|board)\/([A-Za-z0-9]+)/.exec(url);
+    if (!m2) return null;
+    const nid = /node-id=([^&]+)/.exec(url)?.[1];
+    return { fileKey: m2[1], nodeId: nid ? decodeURIComponent(nid).replace("-", ":") : null };
+  }
+  async function figmaGet(path, token) {
+    const res = await fetch(`https://api.figma.com/v1${path}`, { headers: { "X-Figma-Token": token } });
+    if (!res.ok) {
+      const t3 = await res.text();
+      throw new Error(`Figma ${res.status}: ${t3.slice(0, 160)}`);
+    }
+    return res.json();
+  }
+  async function fetchImage(url) {
+    try {
+      const r4 = await fetch(url);
+      if (r4.ok) return r4.blob();
+    } catch {
+    }
+    const s3 = get().settings;
+    if (!s3.relayUrl) throw new Error("Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c \u1EA3nh t\u1EEB Figma (CORS). B\u1EADt relay trong C\xE0i \u0111\u1EB7t.");
+    const r3 = await fetch(`${s3.relayUrl.replace(/\/$/, "")}/fetch?url=${encodeURIComponent(url)}`, { headers: s3.relayToken ? { "X-Phloem-Token": s3.relayToken } : {} });
+    if (!r3.ok) throw new Error(`Relay kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c \u1EA3nh (${r3.status})`);
+    return r3.blob();
+  }
+  function hex(c3) {
+    const h3 = (v3) => Math.round(v3 * 255).toString(16).padStart(2, "0");
+    return `#${h3(c3.r)}${h3(c3.g)}${h3(c3.b)}`;
+  }
+  function solid(fills) {
+    const f4 = (fills || []).find((x2) => x2.type === "SOLID" && x2.visible !== false);
+    return f4 ? hex(f4.color) : null;
+  }
+  var hasImageFill = (fills) => (fills || []).some((x2) => x2.type === "IMAGE" && x2.visible !== false);
+  var RASTER = /* @__PURE__ */ new Set(["VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "REGULAR_POLYGON", "ELLIPSE"]);
+  async function importFromFigma(url, token, onProgress = () => void 0) {
+    const parsed = parseFigmaUrl(url);
+    if (!parsed) throw new Error("Link Figma kh\xF4ng h\u1EE3p l\u1EC7. D\xF9ng link c\xF3 node-id c\u1EE7a frame email.");
+    onProgress("\u0110ang l\u1EA5y c\u1EA5u tr\xFAc frame\u2026");
+    let rootNode;
+    if (parsed.nodeId) {
+      const r3 = await figmaGet(`/files/${parsed.fileKey}/nodes?ids=${encodeURIComponent(parsed.nodeId)}&geometry=paths`, token);
+      rootNode = Object.values(r3.nodes)[0] && Object.values(r3.nodes)[0].document;
+    } else {
+      const r3 = await figmaGet(`/files/${parsed.fileKey}?depth=2`, token);
+      rootNode = r3.document.children[0]?.children?.find((c3) => c3.type === "FRAME");
+      if (rootNode) {
+        const rr2 = await figmaGet(`/files/${parsed.fileKey}/nodes?ids=${encodeURIComponent(rootNode.id)}`, token);
+        rootNode = Object.values(rr2.nodes)[0].document;
+      }
+    }
+    if (!rootNode || !rootNode.absoluteBoundingBox) throw new Error("Kh\xF4ng t\xECm th\u1EA5y frame. Ch\u1ECDn frame trong Figma r\u1ED3i copy link (c\xF3 node-id).");
+    const ox = rootNode.absoluteBoundingBox.x, oy = rootNode.absoluteBoundingBox.y;
+    const W2 = Math.round(rootNode.absoluteBoundingBox.width), H = Math.round(rootNode.absoluteBoundingBox.height);
+    const rasterIds = [];
+    const brand2 = { ...DEFAULT_BRAND };
+    const conv = (n2) => {
+      if (n2.visible === false || !n2.absoluteBoundingBox) return null;
+      const b2 = n2.absoluteBoundingBox;
+      const x2 = Math.round(b2.x - ox), y3 = Math.round(b2.y - oy), w3 = Math.max(1, Math.round(b2.width)), h3 = Math.max(1, Math.round(b2.height));
+      const link = /#link=(\S+)/i.exec(n2.name)?.[1] || n2.style?.hyperlink?.url || (n2.interactions || []).flatMap((i4) => i4.actions || []).find((a3) => a3.type === "URL")?.url || null;
+      const alt = /#alt=(.+?)(?=\s+#\w+=|$)/i.exec(n2.name)?.[1]?.trim() || "";
+      const common = { x: x2, y: y3, w: w3, h: h3, name: n2.name, link, alt, opacity: n2.opacity ?? 1 };
+      if (n2.type === "TEXT") {
+        const st = n2.style || {};
+        const t3 = text(brand2, n2.characters || "", {
+          ...common,
+          fontFamily: st.fontFamily || "Inter",
+          fontSize: st.fontSize || 14,
+          fontWeight: st.fontWeight || 400,
+          italic: !!st.italic,
+          color: solid(n2.fills) || "#111111",
+          align: (st.textAlignHorizontal || "LEFT").toLowerCase(),
+          lineHeight: st.lineHeightPx && st.fontSize ? st.lineHeightPx / st.fontSize : 1.4,
+          letterSpacing: st.letterSpacing || 0,
+          autoHeight: false,
+          vAlign: "top",
+          h: h3
+        });
+        t3.underline = st.textDecoration === "UNDERLINE";
+        return t3;
+      }
+      if (hasImageFill(n2.fills) || RASTER.has(n2.type) || n2.exportSettings && n2.exportSettings.length) {
+        const img = image({ ...common, radius: n2.cornerRadius || 0, fit: "fill", alt: alt || n2.name });
+        rasterIds.push({ id: n2.id, node: img });
+        return img;
+      }
+      if (n2.type === "RECTANGLE") return rect({ ...common, fill: solid(n2.fills), radius: n2.cornerRadius || 0, stroke: n2.strokes?.length && solid(n2.strokes) ? { color: solid(n2.strokes), width: n2.strokeWeight || 1 } : null });
+      if (n2.children && n2.children.length) {
+        const kids = n2.children.map(conv).filter((k3) => !!k3);
+        const fill2 = solid(n2.fills);
+        if (fill2) kids.unshift(rect({ x: x2, y: y3, w: w3, h: h3, fill: fill2, radius: n2.cornerRadius || 0, name: `${n2.name} bg` }));
+        if (!kids.length) return null;
+        return group2(n2.name, kids, { link, alt });
+      }
+      const fill = solid(n2.fills);
+      if (fill) return rect({ ...common, fill, radius: n2.cornerRadius || 0 });
+      return null;
+    };
+    const nodes = (rootNode.children || []).map(conv).filter((n2) => !!n2);
+    if (rasterIds.length) {
+      onProgress(`\u0110ang render ${rasterIds.length} layer \u1EA3nh/vector\u2026`);
+      for (let i4 = 0; i4 < rasterIds.length; i4 += 40) {
+        const chunk = rasterIds.slice(i4, i4 + 40);
+        const r3 = await figmaGet(`/images/${parsed.fileKey}?ids=${encodeURIComponent(chunk.map((c3) => c3.id).join(","))}&format=png&scale=2`, token);
+        for (const c3 of chunk) {
+          const u4 = r3.images?.[c3.id];
+          if (!u4) continue;
+          try {
+            const blob = await fetchImage(u4);
+            const a3 = await assets.add(blob, `${c3.node.name}.png`);
+            c3.node.assetId = a3.id;
+          } catch (e3) {
+            onProgress(`B\u1ECF qua "${c3.node.name}": ${e3.message}`);
+          }
+        }
+      }
+    }
+    const doc2 = { width: W2, height: H, bg: solid(rootNode.fills) || "#ffffff", nodes: nodes.map((n2) => n2.type === "group" ? syncGroup(n2) : n2) };
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return { id: uid("p"), name: rootNode.name || "Figma import", createdAt: now, updatedAt: now, brand: brand2, fields: { campaignName: rootNode.name || "Email", subject: "", preheader: "" }, desktop: doc2, mobile: null, drafts: {} };
+  }
+
+  // studio/src/ui/modals.tsx
+  function Modals() {
+    const s3 = useStore();
+    const close = () => set({ modal: null });
+    switch (s3.modal) {
+      case "templates":
+        return /* @__PURE__ */ u3(TemplatesModal, { onClose: close });
+      case "brand":
+        return /* @__PURE__ */ u3(BrandModal, { onClose: close });
+      case "preview":
+        return /* @__PURE__ */ u3(PreviewModal, { onClose: close });
+      case "clients":
+        return /* @__PURE__ */ u3(ClientsModal, { onClose: close });
+      case "settings":
+        return /* @__PURE__ */ u3(SettingsModal, { onClose: close });
+      case "shortcuts":
+        return /* @__PURE__ */ u3(ShortcutsModal, { onClose: close });
+      case "figma":
+        return /* @__PURE__ */ u3(FigmaModal, { onClose: close });
+      default:
+        return null;
+    }
+  }
+  function TemplatesModal({ onClose }) {
+    const [kind, setKind] = h2("newsletter");
+    const [preset, setPreset] = h2(0);
+    const [name, setName] = h2("");
+    const brand2 = T2(() => ({ ...DEFAULT_BRAND, ...BRAND_PRESETS[preset].brand }), [preset]);
+    const [thumbs, setThumbs] = h2({});
+    y2(() => {
+      let alive = true;
+      (async () => {
+        await document.fonts.ready;
+        const out = {};
+        for (const t3 of TEMPLATES) {
+          if (!t3.blocks.length) continue;
+          try {
+            const m2 = makeTemplate(t3.kind, brand2);
+            out[t3.kind] = thumbnail(m2.doc, brand2, assets, 300);
+          } catch {
+          }
+        }
+        if (alive) setThumbs(out);
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [brand2]);
+    const create = async () => {
+      onClose();
+      await newProject(kind, brand2, name.trim() || void 0);
+    };
+    return /* @__PURE__ */ u3(Modal, { title: "Email m\u1EDBi", icon: "sparkle", onClose, wide: true, footer: /* @__PURE__ */ u3(b, { children: [
+      /* @__PURE__ */ u3("span", { class: "grow small muted", children: "Template ch\u1EC9 l\xE0 \u0111i\u1EC3m b\u1EAFt \u0111\u1EA7u: m\u1ECDi block, ch\u1EEF, \u1EA3nh \u0111\u1EC1u s\u1EEDa \u0111\u01B0\u1EE3c." }),
+      /* @__PURE__ */ u3(Btn, { kind: "ghost", onClick: onClose, children: "Hu\u1EF7" }),
+      /* @__PURE__ */ u3(Btn, { kind: "primary", icon: "plus", onClick: create, children: "T\u1EA1o email" })
+    ] }), children: [
+      /* @__PURE__ */ u3("div", { class: "row", children: /* @__PURE__ */ u3("div", { class: "grow", children: /* @__PURE__ */ u3(Field, { label: "T\xEAn project", hint: "tu\u1EF3 ch\u1ECDn", children: /* @__PURE__ */ u3(TextInput, { value: name, onCommit: setName, onInput: setName, placeholder: TEMPLATES.find((t3) => t3.kind === kind)?.name }) }) }) }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "B\u1EA3ng m\xE0u" }),
+      /* @__PURE__ */ u3("div", { class: "presets", children: BRAND_PRESETS.map((p3, i4) => /* @__PURE__ */ u3("button", { class: `preset ${i4 === preset ? "on" : ""}`, onClick: () => setPreset(i4), children: [
+        /* @__PURE__ */ u3("i", { style: { background: p3.brand.primary, borderColor: p3.brand.bg } }),
+        p3.name
+      ] }, p3.name)) }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "Template" }),
+      /* @__PURE__ */ u3("div", { class: "tpl-grid", children: TEMPLATES.map((t3) => /* @__PURE__ */ u3("div", { class: `tpl ${kind === t3.kind ? "on" : ""}`, onClick: () => setKind(t3.kind), onDblClick: create, children: [
+        /* @__PURE__ */ u3("div", { class: `pv ${t3.blocks.length ? "" : "blank"}`, children: t3.blocks.length ? thumbs[t3.kind] ? /* @__PURE__ */ u3("img", { src: thumbs[t3.kind], alt: "" }) : null : "600 \xD7 tr\u1ED1ng" }),
+        /* @__PURE__ */ u3("div", { class: "meta", children: [
+          /* @__PURE__ */ u3("div", { class: "nm", children: t3.name }),
+          /* @__PURE__ */ u3("div", { class: "ds", children: t3.desc })
+        ] })
+      ] }, t3.kind)) })
+    ] });
+  }
+  function BrandModal({ onClose }) {
+    const s3 = useStore();
+    const b2 = s3.project.brand;
+    const up = (patch) => applyBrand(patch);
+    const fontOpts = FONTS.map((f4) => ({ v: f4.family, label: f4.label }));
+    const tokens = [
+      { k: "primary", label: "Primary", hint: "n\xFAt, link n\u1ED5i b\u1EADt" },
+      { k: "onPrimary", label: "Ch\u1EEF tr\xEAn primary", hint: "ch\u1EEF trong n\xFAt" },
+      { k: "ink", label: "Ch\u1EEF ch\xEDnh", hint: "ti\xEAu \u0111\u1EC1, \u0111o\u1EA1n" },
+      { k: "muted", label: "Ch\u1EEF ph\u1EE5", hint: "m\xF4 t\u1EA3, footer" },
+      { k: "bg", label: "N\u1EC1n", hint: "n\u1EC1n email" },
+      { k: "soft", label: "N\u1EC1n ph\u1EE5", hint: "footer, kh\u1ED1i nh\u1EA5n" },
+      { k: "line", label: "\u0110\u01B0\u1EDDng k\u1EBB", hint: "divider, vi\u1EC1n" }
+    ];
+    return /* @__PURE__ */ u3(Modal, { title: "Brand kit", icon: "palette", onClose, footer: /* @__PURE__ */ u3(Btn, { kind: "primary", onClick: onClose, children: "Xong" }), children: [
+      /* @__PURE__ */ u3("div", { class: "small muted", children: "M\u1ECDi layer d\xF9ng token s\u1EBD \u0111\u1ED5i theo ngay. Layer \u0111\u1EB7t m\xE0u tay gi\u1EEF nguy\xEAn." }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "Preset" }),
+      /* @__PURE__ */ u3("div", { class: "presets", children: BRAND_PRESETS.map((p3) => /* @__PURE__ */ u3("button", { class: "preset", onClick: () => up(p3.brand), children: [
+        /* @__PURE__ */ u3("i", { style: { background: p3.brand.primary, borderColor: p3.brand.bg } }),
+        p3.name
+      ] }, p3.name)) }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "M\xE0u" }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: tokens.map((t3) => /* @__PURE__ */ u3(Field, { label: t3.label, hint: t3.hint, children: /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3("input", { type: "color", class: "in", style: { width: 40, padding: 2 }, value: b2[t3.k], onInput: (e3) => up({ [t3.k]: e3.target.value }) }),
+        /* @__PURE__ */ u3("input", { class: "in mono", value: b2[t3.k].toUpperCase(), onChange: (e3) => {
+          const v3 = e3.target.value.trim();
+          if (/^#?[0-9a-f]{6}$/i.test(v3)) up({ [t3.k]: v3.startsWith("#") ? v3 : `#${v3}` });
+        } })
+      ] }) }, t3.k)) }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "Ch\u1EEF" }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Field, { label: "Font n\u1ED9i dung", children: /* @__PURE__ */ u3(Select, { value: b2.fontFamily, options: fontOpts, onChange: (v3) => {
+          ensureFonts([v3]);
+          up({ fontFamily: v3 });
+        } }) }),
+        /* @__PURE__ */ u3(Field, { label: "Font ti\xEAu \u0111\u1EC1", children: /* @__PURE__ */ u3(Select, { value: b2.headingFamily, options: fontOpts, onChange: (v3) => {
+          ensureFonts([v3]);
+          up({ headingFamily: v3 });
+        } }) })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "dim small", children: "Ch\u1EEF trong email l\xE0 \u1EA3nh, n\xEAn d\xF9ng font n\xE0o c\u0169ng hi\u1EC3n th\u1ECB \u0111\xFAng \u1EDF m\u1ECDi h\u1ED9p th\u01B0. Font Google t\u1EA3i t\u1EF1 \u0111\u1ED9ng." })
+    ] });
+  }
+  function PreviewModal({ onClose }) {
+    const s3 = useStore();
+    const [html, setHtml] = h2(null);
+    const [err, setErr] = h2("");
+    const [device, setDevice] = h2("desktop");
+    const [imagesOff, setImagesOff] = h2(false);
+    const [dark, setDark] = h2(false);
+    const revoke = A2(() => void 0);
+    y2(() => {
+      let alive = true;
+      previewHtml(s3.project).then((r3) => {
+        if (!alive) {
+          r3.revoke();
+          return;
+        }
+        revoke.current = r3.revoke;
+        setHtml(r3.html);
+      }).catch((e3) => setErr(e3.message));
+      return () => {
+        alive = false;
+        revoke.current();
+      };
+    }, []);
+    const shown = T2(() => {
+      if (!html) return "";
+      let h3 = html;
+      if (imagesOff) h3 = h3.replace(/<img ([^>]*?)src="[^"]*"/g, '<img $1 style="display:block;border:1px dashed #bbb;background:#f4f4f4;color:#333;font:12px/1.4 Arial;padding:6px;box-sizing:border-box"');
+      return h3;
+    }, [html, imagesOff]);
+    return /* @__PURE__ */ u3(Modal, { title: "Xem tr\u01B0\u1EDBc nh\u01B0 trong h\u1ED9p th\u01B0", icon: "play", onClose, wide: true, footer: /* @__PURE__ */ u3(b, { children: [
+      /* @__PURE__ */ u3("span", { class: "grow small muted", children: "\u0110\xE2y l\xE0 HTML th\u1EADt s\u1EBD g\u1EEDi \u0111i, \u1EA3nh render t\u1EA1i ch\u1ED7. Mailchimp/Klaviyo ch\u1EC9 th\xEAm header/footer template (n\u1EBFu c\xF3)." }),
+      /* @__PURE__ */ u3(Btn, { kind: "ghost", onClick: onClose, children: "\u0110\xF3ng" }),
+      /* @__PURE__ */ u3(Btn, { kind: "primary", icon: "send", onClick: () => {
+        onClose();
+        set({ rightTab: "export" });
+      }, children: "T\u1EDBi b\u01B0\u1EDBc xu\u1EA5t" })
+    ] }), children: [
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Seg, { value: device, options: [{ v: "desktop", icon: "desktop", label: "Desktop" }, { v: "mobile", icon: "mobile", label: "iPhone" }], onChange: setDevice }),
+        /* @__PURE__ */ u3(Toggle, { checked: imagesOff, onChange: setImagesOff, label: "Ch\u1EB7n \u1EA3nh (ch\u1EC9 alt)" }),
+        /* @__PURE__ */ u3(Toggle, { checked: dark, onChange: setDark, label: "N\u1EC1n t\u1ED1i" }),
+        /* @__PURE__ */ u3("span", { class: "grow" }),
+        html && /* @__PURE__ */ u3("span", { class: "chip", children: [
+          (new Blob([html]).size / 1024).toFixed(1),
+          " KB HTML"
+        ] })
+      ] }),
+      err && /* @__PURE__ */ u3("div", { class: "check error", children: [
+        /* @__PURE__ */ u3("span", { class: "lv", children: "L\u1ED6I" }),
+        /* @__PURE__ */ u3("span", { class: "m", children: err })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: `preview-frame ${dark ? "dark" : ""}`, children: html ? /* @__PURE__ */ u3("iframe", { title: "preview", srcDoc: shown, style: { width: device === "mobile" ? 390 : 700, height: 640 }, sandbox: "allow-same-origin" }) : /* @__PURE__ */ u3("div", { class: "row", style: { padding: 40 }, children: [
+        /* @__PURE__ */ u3(Icon, { name: "bolt", style: { color: "var(--neon)" } }),
+        /* @__PURE__ */ u3("span", { children: "\u0110ang render l\xE1t \u1EA3nh\u2026" })
+      ] }) })
+    ] });
+  }
+  function ClientsModal({ onClose }) {
+    const s3 = useStore();
+    const [editing, setEditing] = h2(null);
+    const [isNew, setIsNew] = h2(false);
+    y2(() => {
+      void checkRelay();
+    }, []);
+    const start = (p3, n2) => {
+      setEditing(JSON.parse(JSON.stringify(p3)));
+      setIsNew(n2);
+    };
+    if (editing) return /* @__PURE__ */ u3(ProfileForm, { p: editing, isNew, onBack: () => setEditing(null), onClose, onChange: (p3) => setEditing({ ...p3 }) });
+    return /* @__PURE__ */ u3(Modal, { title: "Client / t\xE0i kho\u1EA3n", icon: "mail", onClose, footer: /* @__PURE__ */ u3(b, { children: [
+      /* @__PURE__ */ u3("span", { class: "grow small muted", children: "M\u1ED9t client = m\u1ED9t t\xE0i kho\u1EA3n Mailchimp ho\u1EB7c Klaviyo k\xE8m audience, UTM, footer m\u1EB7c \u0111\u1ECBnh." }),
+      /* @__PURE__ */ u3(Btn, { kind: "primary", icon: "plus", onClick: () => start(newProfile("klaviyo", ""), true), children: "Th\xEAm client" })
+    ] }), children: s3.profiles.length ? s3.profiles.map((p3) => /* @__PURE__ */ u3("div", { class: `profile ${s3.settings.activeProfileId === p3.id ? "on" : ""}`, children: [
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3("span", { class: `badge ${p3.provider}`, children: providerName(p3.provider) }),
+        /* @__PURE__ */ u3("b", { class: "grow", children: p3.name }),
+        /* @__PURE__ */ u3("span", { class: "mono dim small", children: p3.auth.type === "oauth" ? "OAuth" : "API key" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "small muted", children: [p3.accountLabel, p3.audienceName ? `Audience: ${p3.audienceName}` : "Ch\u01B0a ch\u1ECDn audience", p3.imageFormat === "JPG" ? `JPG ${p3.jpgQuality}` : "PNG", `${p3.scale}x`].filter(Boolean).join(" \xB7 ") }),
+      Object.keys(p3.permissions).length ? /* @__PURE__ */ u3("div", { class: "perm", children: Object.entries(p3.permissions).map(([k3, v3]) => /* @__PURE__ */ u3("span", { class: `chip ${v3 ? "on" : "err"}`, children: [
+        v3 ? "\u2713" : "\u2715",
+        " ",
+        k3
+      ] }, k3)) }) : null,
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        s3.settings.activeProfileId !== p3.id ? /* @__PURE__ */ u3(Btn, { sm: true, onClick: () => set({ settings: { ...s3.settings, activeProfileId: p3.id } }), children: "D\xF9ng client n\xE0y" }) : /* @__PURE__ */ u3("span", { class: "chip on", children: "\u0111ang d\xF9ng" }),
+        /* @__PURE__ */ u3("span", { class: "grow" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, kind: "ghost", onClick: () => start(p3, false), children: "S\u1EEDa" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, kind: "ghost", class: "danger", onClick: async () => {
+          if (await ask(`Xo\xE1 client "${p3.name}"? Draft \u0111\xE3 t\u1EA1o v\u1EABn c\xF2n trong ${providerName(p3.provider)}.`)) removeProfile(p3.id);
+        }, children: "Xo\xE1" })
+      ] })
+    ] }, p3.id)) : /* @__PURE__ */ u3("div", { class: "empty", children: [
+      /* @__PURE__ */ u3("div", { class: "big", children: "Ch\u01B0a c\xF3 client n\xE0o" }),
+      /* @__PURE__ */ u3("div", { children: "Freelancer nhi\u1EC1u client th\xEC th\xEAm nhi\u1EC1u. API key ch\u1EC9 l\u01B0u trong tr\xECnh duy\u1EC7t n\xE0y." }),
+      /* @__PURE__ */ u3(Btn, { kind: "primary", onClick: () => start(newProfile("klaviyo", ""), true), children: "Th\xEAm client \u0111\u1EA7u ti\xEAn" })
+    ] }) });
+  }
+  function ProfileForm({ p: p3, isNew, onBack, onClose, onChange }) {
+    const s3 = useStore();
+    const [busy2, setBusy] = h2(false);
+    const connected = !!p3.accountLabel;
+    const lists = cache2.lists[p3.id] || [];
+    const tpls = cache2.templates[p3.id] || [];
+    const canOauth = !!cache2.relay?.oauth?.[p3.provider];
+    const mut = (fn) => {
+      fn(p3);
+      onChange(p3);
+    };
+    const setKey = (v3) => mut((x2) => {
+      x2.auth = { type: "apikey", apiKey: v3.trim(), dc: x2.provider === "mailchimp" ? v3.trim().split("-").pop() : void 0 };
+      x2.accountLabel = "";
+      x2.permissions = {};
+    });
+    const test = async () => {
+      setBusy(true);
+      try {
+        await testConnection(p3);
+        onChange(p3);
+        toast(`K\u1EBFt n\u1ED1i OK: ${p3.accountLabel}`, "ok");
+      } catch (e3) {
+        p3.accountLabel = "";
+        onChange(p3);
+        toast(e3.message, "err");
+      } finally {
+        setBusy(false);
+      }
+    };
+    const oauth = async () => {
+      setBusy(true);
+      try {
+        await connectOAuth(p3, (np) => {
+          onChange(np);
+          toast(`\u0110\xE3 \u0111\u0103ng nh\u1EADp: ${np.accountLabel}`, "ok");
+        });
+      } catch (e3) {
+        toast(e3.message, "err");
+      } finally {
+        setBusy(false);
+      }
+    };
+    const save = () => {
+      if (!p3.name.trim()) p3.name = p3.accountLabel || providerName(p3.provider);
+      saveProfile(p3);
+      toast(`\u0110\xE3 l\u01B0u client "${p3.name}".`, "ok");
+      onBack();
+    };
+    return /* @__PURE__ */ u3(Modal, { title: isNew ? "Th\xEAm client" : `S\u1EEDa \u201C${p3.name}\u201D`, icon: "mail", onClose, footer: /* @__PURE__ */ u3(b, { children: [
+      /* @__PURE__ */ u3(Btn, { kind: "ghost", onClick: onBack, children: "\u2190 Danh s\xE1ch" }),
+      /* @__PURE__ */ u3("span", { class: "grow" }),
+      /* @__PURE__ */ u3(Btn, { kind: "primary", onClick: save, children: isNew ? "L\u01B0u client" : "L\u01B0u thay \u0111\u1ED5i" })
+    ] }), children: [
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Field, { label: "T\xEAn client", hint: "\u0111\u1EC3 b\u1EA1n nh\u1EADn ra", children: /* @__PURE__ */ u3(TextInput, { value: p3.name, onCommit: (v3) => mut((x2) => {
+          x2.name = v3;
+        }) }) }),
+        /* @__PURE__ */ u3(Field, { label: "N\u1EC1n t\u1EA3ng", children: /* @__PURE__ */ u3(Seg, { block: true, value: p3.provider, options: [{ v: "klaviyo", label: "Klaviyo" }, { v: "mailchimp", label: "Mailchimp" }], onChange: (v3) => mut((x2) => {
+          x2.provider = v3;
+          x2.auth = { type: "apikey", apiKey: "" };
+          x2.accountLabel = "";
+          x2.permissions = {};
+          x2.audienceId = "";
+          x2.audienceName = "";
+        }) }) })
+      ] }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "K\u1EBFt n\u1ED1i" }),
+      p3.auth.type === "oauth" ? /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3("span", { class: "chip on grow", children: [
+          "OAuth \xB7 ",
+          p3.auth.accountName || p3.accountLabel || "\u0111\xE3 \u0111\u0103ng nh\u1EADp"
+        ] }),
+        /* @__PURE__ */ u3(Btn, { sm: true, kind: "ghost", onClick: () => mut((x2) => {
+          x2.auth = { type: "apikey", apiKey: "" };
+          x2.accountLabel = "";
+        }), children: "Ng\u1EAFt" })
+      ] }) : /* @__PURE__ */ u3(b, { children: [
+        /* @__PURE__ */ u3(Field, { label: p3.provider === "mailchimp" ? "API key Mailchimp" : "Private API key Klaviyo", hint: p3.provider === "mailchimp" ? "Account \u2192 Extras \u2192 API keys \xB7 d\u1EA1ng xxxx-us21" : "Settings \u2192 API keys \u2192 Create private key \xB7 pk_\u2026", children: /* @__PURE__ */ u3("div", { class: "row", children: [
+          /* @__PURE__ */ u3(TextInput, { type: "password", mono: true, value: p3.auth.apiKey, onInput: setKey, onCommit: setKey, placeholder: p3.provider === "mailchimp" ? "xxxxxxxx-us21" : "pk_xxxxxxxx" }),
+          /* @__PURE__ */ u3(Btn, { disabled: busy2 || !p3.auth.apiKey, onClick: test, children: busy2 ? "\u2026" : "Ki\u1EC3m tra" })
+        ] }) }),
+        /* @__PURE__ */ u3("div", { class: "row small muted", children: [
+          /* @__PURE__ */ u3("span", { class: "grow", children: canOauth ? "Ho\u1EB7c \u0111\u0103ng nh\u1EADp \u0111\u1EC3 d\xF9ng \u0111\xFAng quy\u1EC1n \u0111\xE3 \u0111\u01B0\u1EE3c c\u1EA5p. Nhi\u1EC1u t\xE0i kho\u1EA3n: m\u1ED7i l\u1EA7n \u0111\u0103ng nh\u1EADp ch\u1ECDn m\u1ED9t." : `\u0110\u0103ng nh\u1EADp ${providerName(p3.provider)} (OAuth) c\u1EA7n relay c\xF3 CLIENT_ID. Xem server/.env.example.` }),
+          /* @__PURE__ */ u3(Btn, { sm: true, disabled: !canOauth || busy2, onClick: oauth, children: [
+            "\u0110\u0103ng nh\u1EADp ",
+            providerName(p3.provider)
+          ] })
+        ] })
+      ] }),
+      connected && /* @__PURE__ */ u3("div", { class: "check ok", children: [
+        /* @__PURE__ */ u3("span", { class: "lv", children: "OK" }),
+        /* @__PURE__ */ u3("span", { class: "m", children: [
+          "\u0110\xE3 k\u1EBFt n\u1ED1i: ",
+          p3.accountLabel
+        ] })
+      ] }),
+      Object.keys(p3.permissions).length ? /* @__PURE__ */ u3("div", { class: "perm", children: Object.entries(p3.permissions).map(([k3, v3]) => /* @__PURE__ */ u3("span", { class: `chip ${v3 ? "on" : "err"}`, title: v3 ? "\u0110\u01B0\u1EE3c ph\xE9p" : "T\xE0i kho\u1EA3n kh\xF4ng c\xF3 quy\u1EC1n n\xE0y", children: [
+        v3 ? "\u2713" : "\u2715",
+        " ",
+        k3
+      ] }, k3)) }) : null,
+      /* @__PURE__ */ u3(Eyebrow, { children: "M\u1EB7c \u0111\u1ECBnh cho client n\xE0y" }),
+      /* @__PURE__ */ u3(Field, { label: "Audience / List", hint: "draft g\u1EEDi t\u1EDBi", children: lists.length ? /* @__PURE__ */ u3("select", { class: "in", value: p3.audienceId, onChange: (e3) => {
+        const id = e3.target.value;
+        mut((x2) => {
+          x2.audienceId = id;
+          x2.audienceName = lists.find((l3) => l3.id === id)?.name || "";
+        });
+      }, children: [
+        /* @__PURE__ */ u3("option", { value: "", children: "\u2014 ch\u1ECDn \u2014" }),
+        lists.map((l3) => /* @__PURE__ */ u3("option", { value: l3.id, children: l3.name }, l3.id))
+      ] }) : /* @__PURE__ */ u3(TextInput, { value: p3.audienceId, mono: true, placeholder: connected ? "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c list \u2014 nh\u1EADp ID" : "Ki\u1EC3m tra k\u1EBFt n\u1ED1i \u0111\u1EC3 t\u1EA3i danh s\xE1ch", onCommit: (v3) => mut((x2) => {
+        x2.audienceId = v3.trim();
+      }) }) }),
+      /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Field, { label: "From name", children: /* @__PURE__ */ u3(TextInput, { value: p3.fromName, onCommit: (v3) => mut((x2) => {
+          x2.fromName = v3;
+        }) }) }),
+        p3.provider === "klaviyo" ? /* @__PURE__ */ u3(Field, { label: "From email", hint: "sender \u0111\xE3 x\xE1c minh", children: /* @__PURE__ */ u3(TextInput, { value: p3.fromEmail, onCommit: (v3) => mut((x2) => {
+          x2.fromEmail = v3;
+        }) }) }) : /* @__PURE__ */ u3(Field, { label: "Reply-to", hint: "b\u1EAFt bu\u1ED9c", children: /* @__PURE__ */ u3(TextInput, { value: p3.replyTo, onCommit: (v3) => mut((x2) => {
+          x2.replyTo = v3;
+        }) }) })
+      ] }),
+      p3.provider === "mailchimp" && /* @__PURE__ */ u3("div", { class: "grid2", children: [
+        /* @__PURE__ */ u3(Field, { label: "Template c\xF3 brand", hint: "tu\u1EF3 ch\u1ECDn", children: tpls.length ? /* @__PURE__ */ u3("select", { class: "in", value: p3.templateId, onChange: async (e3) => {
+          mut((x2) => {
+            x2.templateId = e3.target.value;
+          });
+          if (p3.templateId) {
+            await loadSections(p3);
+            onChange(p3);
+          }
+        }, children: [
+          /* @__PURE__ */ u3("option", { value: "", children: "\u2014 kh\xF4ng, d\xF9ng HTML \u0111\u1EA7y \u0111\u1EE7 \u2014" }),
+          tpls.map((t3) => /* @__PURE__ */ u3("option", { value: String(t3.id), children: t3.name }, t3.id))
+        ] }) : /* @__PURE__ */ u3(TextInput, { value: p3.templateId, mono: true, placeholder: "Template ID (ho\u1EB7c \u0111\u1EC3 tr\u1ED1ng)", onCommit: (v3) => mut((x2) => {
+          x2.templateId = v3.trim();
+        }) }) }),
+        /* @__PURE__ */ u3(Field, { label: "Section mc:edit", hint: "n\u01A1i ch\xE8n n\u1ED9i dung", children: (cache2.sections[p3.id] || []).length ? /* @__PURE__ */ u3("select", { class: "in", value: p3.templateSection, onChange: (e3) => mut((x2) => {
+          x2.templateSection = e3.target.value;
+        }), children: cache2.sections[p3.id].map((sec) => /* @__PURE__ */ u3("option", { value: sec, children: sec }, sec)) }) : /* @__PURE__ */ u3(TextInput, { value: p3.templateSection, mono: true, placeholder: "body", onCommit: (v3) => mut((x2) => {
+          x2.templateSection = v3.trim() || "body";
+        }) }) })
+      ] }),
+      /* @__PURE__ */ u3(Field, { label: "M\u1EABu UTM", hint: "{provider} {campaign} {frame} {slice} {date} {host}", children: /* @__PURE__ */ u3(TextInput, { value: p3.utmTemplate, mono: true, placeholder: DEFAULT_UTM, onCommit: (v3) => mut((x2) => {
+        x2.utmTemplate = v3.trim();
+      }) }) }),
+      /* @__PURE__ */ u3(Field, { label: "Footer HTML ri\xEAng", hint: "th\xEAm d\u01B0\u1EDBi email; \u0111\u1EC3 tr\u1ED1ng n\u1EBFu template \u0111\xE3 c\xF3", children: /* @__PURE__ */ u3(TextArea, { mono: true, value: p3.footerHtml, placeholder: '<p>C\xF4ng ty ABC \xB7 123 L\xEA L\u1EE3i \xB7 <a href="*|UNSUB|*">Hu\u1EF7 \u0111\u0103ng k\xFD</a></p>', onCommit: (v3) => mut((x2) => {
+        x2.footerHtml = v3;
+      }) }) }),
+      /* @__PURE__ */ u3("div", { class: "grid3", children: [
+        /* @__PURE__ */ u3(Field, { label: "\u0110\u1ECBnh d\u1EA1ng \u1EA3nh", children: /* @__PURE__ */ u3(Seg, { block: true, value: p3.imageFormat, options: [{ v: "PNG", label: "PNG" }, { v: "JPG", label: "JPG" }], onChange: (v3) => mut((x2) => {
+          x2.imageFormat = v3;
+        }) }) }),
+        /* @__PURE__ */ u3(Field, { label: "\u0110\u1ED9 ph\xE2n gi\u1EA3i", children: /* @__PURE__ */ u3(Seg, { block: true, value: p3.scale, options: [{ v: 1, label: "1x" }, { v: 2, label: "2x" }], onChange: (v3) => mut((x2) => {
+          x2.scale = v3;
+        }) }) }),
+        /* @__PURE__ */ u3(Field, { label: "JPG quality", children: /* @__PURE__ */ u3(Num, { value: p3.jpgQuality, min: 40, max: 100, onChange: (v3) => mut((x2) => {
+          x2.jpgQuality = Math.round(v3);
+        }) }) })
+      ] }),
+      !s3.settings.relayUrl && /* @__PURE__ */ u3("div", { class: "check warn", children: [
+        /* @__PURE__ */ u3("span", { class: "lv", children: "CH\xDA \xDD" }),
+        /* @__PURE__ */ u3("span", { class: "m", children: "Ch\u01B0a c\xF3 Relay URL trong C\xE0i \u0111\u1EB7t. Tr\xECnh duy\u1EC7t s\u1EBD ch\u1EB7n g\u1ECDi th\u1EB3ng Mailchimp/Klaviyo (CORS)." })
+      ] })
+    ] });
+  }
+  function SettingsModal({ onClose }) {
+    const s3 = useStore();
+    const st = s3.settings;
+    const up = (patch) => set({ settings: { ...get().settings, ...patch } });
+    y2(() => {
+      void checkRelay();
+    }, []);
+    const [, bump] = h2(0);
+    return /* @__PURE__ */ u3(Modal, { title: "C\xE0i \u0111\u1EB7t", icon: "settings", onClose, footer: /* @__PURE__ */ u3(Btn, { kind: "primary", onClick: onClose, children: "Xong" }), children: [
+      /* @__PURE__ */ u3(Eyebrow, { children: "Relay" }),
+      /* @__PURE__ */ u3("div", { class: "small muted", children: [
+        "Mailchimp v\xE0 Klaviyo kh\xF4ng cho tr\xECnh duy\u1EC7t g\u1ECDi th\u1EB3ng (CORS), n\xEAn Studio \u0111i qua m\u1ED9t relay nh\u1ECF c\u1EE7a b\u1EA1n: ",
+        /* @__PURE__ */ u3(Kbd, { k: "npm run relay" }),
+        " ho\u1EB7c deploy th\u01B0 m\u1EE5c ",
+        /* @__PURE__ */ u3(Kbd, { k: "server/" }),
+        ". Relay kh\xF4ng l\u01B0u key."
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(TextInput, { value: st.relayUrl, mono: true, placeholder: "http://localhost:8787", onCommit: (v3) => {
+          up({ relayUrl: v3.trim() });
+          void checkRelay();
+        } }),
+        /* @__PURE__ */ u3(Btn, { onClick: () => checkRelay(true), children: "Ki\u1EC3m tra" })
+      ] }),
+      /* @__PURE__ */ u3(Field, { label: "Relay token", hint: "n\u1EBFu relay \u0111\u1EB7t RELAY_TOKEN", children: /* @__PURE__ */ u3(TextInput, { type: "password", mono: true, value: st.relayToken, onCommit: (v3) => up({ relayToken: v3 }) }) }),
+      cache2.relay ? /* @__PURE__ */ u3("div", { class: "row wrap", children: [
+        /* @__PURE__ */ u3("span", { class: "chip on", children: "\u2713 relay ok" }),
+        /* @__PURE__ */ u3("span", { class: `chip ${cache2.relay.oauth.mailchimp ? "on" : ""}`, children: [
+          "OAuth Mailchimp ",
+          cache2.relay.oauth.mailchimp ? "b\u1EADt" : "t\u1EAFt"
+        ] }),
+        /* @__PURE__ */ u3("span", { class: `chip ${cache2.relay.oauth.klaviyo ? "on" : ""}`, children: [
+          "OAuth Klaviyo ",
+          cache2.relay.oauth.klaviyo ? "b\u1EADt" : "t\u1EAFt"
+        ] }),
+        cache2.relay.klaviyoRevision && /* @__PURE__ */ u3("span", { class: "chip", children: [
+          "rev ",
+          cache2.relay.klaviyoRevision
+        ] })
+      ] }) : cache2.relayError ? /* @__PURE__ */ u3("div", { class: "check error", children: [
+        /* @__PURE__ */ u3("span", { class: "lv", children: "L\u1ED6I" }),
+        /* @__PURE__ */ u3("span", { class: "m", children: cache2.relayError })
+      ] }) : null,
+      /* @__PURE__ */ u3(Eyebrow, { children: "C\u1EAFt l\xE1t" }),
+      /* @__PURE__ */ u3(Field, { label: "Chi\u1EC1u cao l\xE1t t\u1ED1i \u0111a (px)", hint: "Outlook c\u1EAFt \u1EA3nh >1728", children: /* @__PURE__ */ u3(Num, { value: st.maxSliceHeight, min: 300, max: 1728, onChange: (v3) => up({ maxSliceHeight: Math.round(v3) }) }) }),
+      /* @__PURE__ */ u3(Toggle, { checked: st.mergeRows, onChange: (v3) => up({ mergeRows: v3 }), label: "G\u1ED9p c\xE1c h\xE0ng kh\xF4ng link th\xE0nh m\u1ED9t l\xE1t", sub: "\xCDt \u1EA3nh h\u01A1n, email nh\u1EB9 h\u01A1n" }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "Tr\xECnh so\u1EA1n" }),
+      /* @__PURE__ */ u3(Toggle, { checked: st.autosave, onChange: (v3) => up({ autosave: v3 }), label: "T\u1EF1 l\u01B0u", sub: "L\u01B0u v\xE0o tr\xECnh duy\u1EC7t sau m\u1ED7i thay \u0111\u1ED5i (\u2318S \u0111\u1EC3 l\u01B0u tay)" }),
+      /* @__PURE__ */ u3(Toggle, { checked: st.snap, onChange: (v3) => up({ snap: v3 }), label: "B\u1EAFt d\xEDnh c\u1EA1nh / t\xE2m" }),
+      /* @__PURE__ */ u3(Toggle, { checked: st.grid, onChange: (v3) => up({ grid: v3 }), label: "Hi\u1EC7n l\u01B0\u1EDBi 24px" }),
+      /* @__PURE__ */ u3(Eyebrow, { children: "D\u1EEF li\u1EC7u" }),
+      /* @__PURE__ */ u3("div", { class: "row", children: [
+        /* @__PURE__ */ u3(Btn, { sm: true, icon: "download", disabled: !s3.project, onClick: () => exportProjectJson(), children: "T\u1EA3i project (.phloem.json)" }),
+        /* @__PURE__ */ u3(Btn, { sm: true, kind: "ghost", class: "danger", onClick: async () => {
+          if (!await ask("Xo\xE1 to\xE0n b\u1ED9 \u1EA3nh trong th\u01B0 vi\u1EC7n kh\xF4ng c\xF2n d\xF9ng? Project gi\u1EEF nguy\xEAn.", "D\u1ECDn")) return;
+          const used = /* @__PURE__ */ new Set();
+          for (const m2 of get().projects) {
+            const p3 = await db.getProject(m2.id);
+            if (!p3) continue;
+            for (const d3 of [p3.desktop, p3.mobile]) if (d3) JSON.stringify(d3).replace(/"assetId":"([^"]+)"/g, (_m, id) => {
+              used.add(id);
+              return "";
+            });
+          }
+          let n2 = 0;
+          for (const a3 of assets.all()) if (!used.has(a3.id)) {
+            await assets.remove(a3.id);
+            n2++;
+          }
+          toast(`\u0110\xE3 xo\xE1 ${n2} \u1EA3nh kh\xF4ng d\xF9ng.`, "ok");
+          bump((x2) => x2 + 1);
+        }, children: "D\u1ECDn \u1EA3nh kh\xF4ng d\xF9ng" })
+      ] }),
+      /* @__PURE__ */ u3("div", { class: "dim small mono", children: "Phloem Studio \xB7 phloem = m\u1EA1ch d\u1EABn c\u1EE7a c\xE2y: mang \u0111\xFAng th\u1EE9 l\xE1 t\u1EA1o ra t\u1EDBi n\u01A1i c\u1EA7n, kh\xF4ng bi\u1EBFn \u0111\u1ED5i." })
+    ] });
+  }
+  function ShortcutsModal({ onClose }) {
+    const rows = [
+      ["Ch\u1ECDn / H\xECnh / Ch\u1EEF / \u1EA2nh / Tay", ["V", "R", "T", "I", "H"]],
+      ["K\xE9o canvas", ["Space", "drag"]],
+      ["Zoom", ["\u2318", "scroll"]],
+      ["V\u1EEBa m\xE0n h\xECnh \xB7 100%", ["\u23181", "\u23180"]],
+      ["Ho\xE0n t\xE1c \xB7 L\xE0m l\u1EA1i", ["\u2318Z", "\u21E7\u2318Z"]],
+      ["L\u01B0u", ["\u2318S"]],
+      ["Nh\xE2n b\u1EA3n", ["\u2318D"]],
+      ["Copy \xB7 Cut \xB7 Paste", ["\u2318C", "\u2318X", "\u2318V"]],
+      ["Nh\xF3m \xB7 B\u1ECF nh\xF3m", ["\u2318G", "\u21E7\u2318G"]],
+      ["L\xEAn \xB7 Xu\u1ED1ng m\u1ED9t l\u1EDBp", ["\u2318]", "\u2318["]],
+      ["L\xEAn tr\xEAn c\xF9ng \xB7 d\u01B0\u1EDBi c\xF9ng", ["\u2325\u2318]", "\u2325\u2318["]],
+      ["Kho\xE1 \xB7 \u1EA8n", ["\u21E7\u2318L", "\u21E7\u2318H"]],
+      ["D\u1ECBch 1px \xB7 10px", ["\u2190\u2191\u2192\u2193", "\u21E7+"]],
+      ["Ch\u1ECDn t\u1EA5t c\u1EA3", ["\u2318A"]],
+      ["Xo\xE1", ["\u232B"]],
+      ["V\xE0o nh\xF3m \xB7 s\u1EEDa ch\u1EEF", ["dbl-click", "Enter"]],
+      ["Ch\u1ECDn xuy\xEAn nh\xF3m", ["\u2318", "click"]],
+      ["Th\xEAm v\xE0o v\xF9ng ch\u1ECDn", ["\u21E7", "click"]],
+      ["Gi\u1EEF t\u1EC9 l\u1EC7 khi resize", ["\u21E7", "drag"]],
+      ["T\u1EAFt b\u1EAFt d\xEDnh t\u1EA1m", ["\u2325", "drag"]],
+      ["Tho\xE1t / b\u1ECF ch\u1ECDn", ["Esc"]],
+      ["T\u1EDBi b\u01B0\u1EDBc xu\u1EA5t", ["\u2318\u21B5"]],
+      ["B\u1EA3ng n\xE0y", ["?"]]
+    ];
+    return /* @__PURE__ */ u3(Modal, { title: "Ph\xEDm t\u1EAFt", icon: "keyboard", onClose, children: /* @__PURE__ */ u3("div", { class: "shortcuts", children: rows.map(([l3, ks]) => /* @__PURE__ */ u3("div", { children: [
+      /* @__PURE__ */ u3("span", { children: l3 }),
+      /* @__PURE__ */ u3("span", { class: "ks", children: ks.map((k3) => /* @__PURE__ */ u3(Kbd, { k: k3 }, k3)) })
+    ] }, l3)) }) });
+  }
+  function FigmaModal({ onClose }) {
+    const [token, setToken] = useLocal("phloem.figma.token", "");
+    const [url, setUrl] = h2("");
+    const [busy2, setBusy] = h2(false);
+    const [logs, setLogs] = h2([]);
+    const run = async () => {
+      setBusy(true);
+      setLogs([]);
+      try {
+        const p3 = await importFromFigma(url, token, (m2) => setLogs((l3) => [...l3, m2]));
+        await db.putProject(p3);
+        await refreshProjects();
+        onClose();
+        await openProject(p3.id);
+        toast(`\u0110\xE3 import "${p3.name}" (${p3.desktop.nodes.length} layer). Ki\u1EC3m tra l\u1EA1i link/alt.`, "ok");
+      } catch (e3) {
+        setLogs((l3) => [...l3, `L\u1ED7i: ${e3.message}`]);
+      } finally {
+        setBusy(false);
+      }
+    };
+    return /* @__PURE__ */ u3(Modal, { title: "Import t\u1EEB Figma", icon: "figma", onClose, footer: /* @__PURE__ */ u3(b, { children: [
+      /* @__PURE__ */ u3("span", { class: "grow small muted", children: "Ch\u1EEF, h\xECnh ch\u1EEF nh\u1EADt, frame m\xE0u ph\u1EB3ng th\xE0nh layer s\u1EEDa \u0111\u01B0\u1EE3c. \u1EA2nh, vector, hi\u1EC7u \u1EE9ng \u0111\u01B0\u1EE3c render th\xE0nh \u1EA3nh." }),
+      /* @__PURE__ */ u3(Btn, { kind: "primary", disabled: busy2 || !token || !url, onClick: run, children: busy2 ? "\u0110ang import\u2026" : "Import" })
+    ] }), children: [
+      /* @__PURE__ */ u3(Field, { label: "Personal access token", hint: "Figma \u2192 Settings \u2192 Security \u2192 Personal access tokens (ch\u1EC9 c\u1EA7n quy\u1EC1n \u0111\u1ECDc file)", children: /* @__PURE__ */ u3(TextInput, { type: "password", mono: true, value: token, onCommit: setToken, onInput: setToken, placeholder: "figd_\u2026" }) }),
+      /* @__PURE__ */ u3(Field, { label: "Link frame", hint: "ch\u1ECDn frame email trong Figma \u2192 Copy link (c\xF3 node-id)", children: /* @__PURE__ */ u3(TextInput, { mono: true, value: url, onCommit: setUrl, onInput: setUrl, placeholder: "https://www.figma.com/design/XXXX/Email?node-id=12-34" }) }),
+      /* @__PURE__ */ u3("div", { class: "small muted", children: "Token ch\u1EC9 l\u01B0u trong tr\xECnh duy\u1EC7t n\xE0y v\xE0 g\u1EEDi th\u1EB3ng t\u1EDBi api.figma.com. \u1EA2nh render c\u1EE7a Figma n\u1EB1m tr\xEAn S3 kh\xF4ng c\xF3 CORS, n\xEAn c\u1EA7n Relay URL trong C\xE0i \u0111\u1EB7t \u0111\u1EC3 t\u1EA3i v\u1EC1." }),
+      logs.length > 0 && /* @__PURE__ */ u3("div", { class: "log", children: logs.map((l3, i4) => /* @__PURE__ */ u3("div", { class: l3.startsWith("L\u1ED7i") ? "er" : "", children: l3 }, i4)) })
+    ] });
+  }
+
+  // studio/src/ui/App.tsx
+  function App() {
+    const s3 = useStore();
+    return /* @__PURE__ */ u3(b, { children: [
+      s3.route.name === "editor" && s3.project ? /* @__PURE__ */ u3(Editor, {}) : /* @__PURE__ */ u3(Home, {}),
+      /* @__PURE__ */ u3(Modals, {}),
+      /* @__PURE__ */ u3(Toasts, {})
+    ] });
+  }
+
+  // studio/src/main.tsx
+  ensureFonts(["Inter"]);
+  void assets.ready.then(() => refreshProjects());
+  B(/* @__PURE__ */ u3(App, {}), document.getElementById("root"));
+})();
