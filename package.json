@@ -1,0 +1,26 @@
+{
+  "name": "phloem",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Figma plugin: design an email, press one button, get a draft in Mailchimp or Klaviyo (or clean HTML) exactly as drawn.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "studio": "node build.mjs --studio",
+    "studio:watch": "node build.mjs --studio --watch",
+    "typecheck:studio": "tsc --noEmit -p tsconfig.studio.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node build.mjs --shared && node --test test/*.test.mjs",
+    "relay": "node server/src/index.mjs",
+    "preview": "node dev/serve.mjs"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "preact": "^10.24.3"
+  }
+}

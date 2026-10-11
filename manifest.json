@@ -1,0 +1,23 @@
+{
+  "name": "Phloem — Figma to Email",
+  "id": "1400000000000000001",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": [
+      "https://*.api.mailchimp.com",
+      "https://login.mailchimp.com",
+      "https://a.klaviyo.com",
+      "https://www.klaviyo.com"
+    ],
+    "devAllowedDomains": ["http://localhost:8787"],
+    "reasoning": "Uploads sliced images and creates email drafts in the user's Mailchimp or Klaviyo account, directly or through the user's own relay server. Never sends email."
+  },
+  "permissions": [],
+  "relaunchButtons": [
+    { "command": "open", "name": "Open in Phloem" }
+  ]
+}

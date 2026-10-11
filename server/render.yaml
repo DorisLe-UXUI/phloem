@@ -1,0 +1,20 @@
+# Render.com blueprint: connect the repo, point Render at server/, set env vars in the dashboard.
+services:
+  - type: web
+    name: phloem-relay
+    runtime: docker
+    rootDir: server
+    plan: free
+    envVars:
+      - key: PUBLIC_URL
+        sync: false
+      - key: RELAY_TOKEN
+        generateValue: true
+      - key: MAILCHIMP_CLIENT_ID
+        sync: false
+      - key: MAILCHIMP_CLIENT_SECRET
+        sync: false
+      - key: KLAVIYO_CLIENT_ID
+        sync: false
+      - key: KLAVIYO_CLIENT_SECRET
+        sync: false

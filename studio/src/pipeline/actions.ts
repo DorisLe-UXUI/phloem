@@ -1,0 +1,301 @@
+// Editor actions: every mutation of the project goes through here (history, dirty flag, autosave).
+import type { BlockKind, Check, NNode, SlicePlan, Suggestion, SuggestionAction, TemplateKind } from '../../../src/shared/types';
+import { planSlices } from '../../../src/shared/slicer';
+import { runChecks } from '../../../src/shared/checks';
+import { suggest } from '../../../src/shared/suggestions';
+import type { Brand, Doc, Node, Project, TextNode } from '../model/types';
+import { DEFAULT_BRAND, uid } from '../model/types';
+import * as ops from '../model/ops';
+import { makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
+import { docToNNode } from '../model/toNNode';
+import { textHeight } from '../render/textLayout';
+import { thumbnail } from '../render/renderer';
+import { ensureFonts } from '../render/fonts';
+import { db } from '../storage/idb';
+import { assets } from '../storage/assets';
+import { get, history, set, toast, type Variant } from '../store';
+import { downloadBytes } from '../../../src/ui/clipboard';
+
+// ---------- document access ----------
+export function doc(): Doc {
+  const s = get();
+  const p = s.project!;
+  return s.variant === 'mobile' && p.mobile ? p.mobile : p.desktop;
+}
+
+export function brand(): Brand { return get().project?.brand ?? DEFAULT_BRAND; }
+
+let saveTimer: number | null = null;
+
+export function commit(next: Doc, pushHistory = true) {
+  const s = get();
+  if (!s.project) return;
+  const cur = doc();
+  if (next === cur) return;
+  if (pushHistory) history.push(cur);
+  const project: Project = s.variant === 'mobile' && s.project.mobile ? { ...s.project, mobile: next } : { ...s.project, desktop: next };
+  set({ project, dirty: true });
+  scheduleSave();
+}
+
+export function patchProject(p: Partial<Project>) {
+  const s = get();
+  if (!s.project) return;
+  set({ project: { ...s.project, ...p }, dirty: true });
+  scheduleSave();
+}
+
+function scheduleSave() {
+  if (!get().settings.autosave) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => { void saveProject(); }, 900);
+}
+
+export async function saveProject(): Promise<void> {
+  const s = get();
+  if (!s.project) return;
+  const p: Project = { ...s.project, updatedAt: new Date().toISOString() };
+  let thumb: string | undefined;
+  try { thumb = thumbnail(p.desktop, p.brand, assets, 320); } catch { /* fonts/images not ready */ }
+  try {
+    await db.putProject({ ...p, thumb });
+    set({ project: p, dirty: false, savedAt: p.updatedAt });
+    void refreshProjects();
+  } catch (e) { toast(`Không lưu được: ${(e as Error).message}`, 'err'); }
+}
+
+export async function refreshProjects() {
+  try { set({ projects: await db.listProjects() }); } catch { /* ignore */ }
+}
+
+export function undo() { const prev = history.undo(doc()); if (prev) { commit(prev, false); set({ selection: get().selection.filter((id) => ops.findNode(prev, id)) }); } }
+export function redo() { const next = history.redo(doc()); if (next) commit(next, false); }
+
+// ---------- selection ----------
+export function select(ids: string[], additive = false) {
+  const s = get();
+  const next = additive ? Array.from(new Set([...s.selection, ...ids])) : ids;
+  set({ selection: next, editingText: null });
+}
+export function toggleSelect(id: string) {
+  const s = get();
+  set({ selection: s.selection.includes(id) ? s.selection.filter((x) => x !== id) : [...s.selection, id] });
+}
+export function clearSelection() { set({ selection: [], editingText: null, enteredGroup: null }); }
+export function selectAll() { set({ selection: doc().nodes.filter((n) => n.visible && !n.locked).map((n) => n.id) }); }
+
+export function selectedNodes(): Node[] { const d = doc(); return get().selection.map((id) => ops.findNode(d, id)).filter((n): n is Node => !!n); }
+
+// ---------- edits ----------
+export function updateSelected(fn: (n: Node) => Node) { const s = get(); if (!s.selection.length) return; commit(ops.updateNodes(doc(), s.selection, fn)); }
+export function updateNode(id: string, patch: Partial<Node> | ((n: Node) => Node)) { commit(ops.updateNode(doc(), id, patch)); }
+
+/** Re-measure auto-height texts (after font load or text edits). */
+export function fixTextHeight(n: Node): Node {
+  if (n.type !== 'text' || !n.autoHeight) return n;
+  const h = textHeight(n as TextNode, brand());
+  return h === n.h ? n : { ...n, h };
+}
+/** Apply a text patch and flow the layout if the auto height changes. */
+export function patchTextFlow(id: string, patch: Partial<TextNode>, pushHistory = true) {
+  const d = doc();
+  const n = ops.findNode(d, id);
+  if (!n || n.type !== 'text') return;
+  const next = { ...n, ...patch } as TextNode;
+  const h = next.autoHeight ? textHeight(next, brand()) : next.h;
+  let out = ops.updateNode(d, id, { ...patch, h: n.h } as Partial<Node>);
+  out = ops.setHeightFlow(out, id, h);
+  commit(out, pushHistory);
+}
+
+export function remeasureAll() {
+  const d = doc();
+  const next = ops.mapNodes(d, fixTextHeight);
+  if (next !== d) commit(next, false);
+}
+
+export function deleteSelection() { const s = get(); if (!s.selection.length) return; commit(ops.removeNodes(doc(), s.selection)); set({ selection: [] }); }
+export function duplicateSelection() { const s = get(); if (!s.selection.length) return; const r = ops.duplicate(doc(), topLevelIds(s.selection)); commit(r.doc); set({ selection: r.ids }); }
+export function groupSelection() { const ids = topLevelIds(get().selection); if (ids.length < 2) return; const r = ops.group(doc(), ids); commit(r.doc); set({ selection: [r.id] }); }
+export function ungroupSelection() {
+  let d = doc(); let ids: string[] = [];
+  for (const id of get().selection) { const n = ops.findNode(d, id); if (n?.type === 'group') { const r = ops.ungroup(d, id); d = r.doc; ids = ids.concat(r.ids); } else ids.push(id); }
+  commit(d); set({ selection: ids });
+}
+export function reorderSelection(dir: 'up' | 'down' | 'top' | 'bottom') { let d = doc(); for (const id of get().selection) d = ops.reorder(d, id, dir); commit(d); }
+export function alignSelection(how: ops.AlignHow) { commit(ops.align(doc(), get().selection, how)); }
+export function distributeSelection(axis: 'h' | 'v') { commit(ops.distribute(doc(), get().selection, axis)); }
+export function nudge(dx: number, dy: number) { const s = get(); if (!s.selection.length) return; commit(ops.moveBy(doc(), s.selection, dx, dy)); }
+export function toggleVisible(id: string) { updateNode(id, (n) => ({ ...n, visible: !n.visible })); }
+export function toggleLocked(id: string) { updateNode(id, (n) => ({ ...n, locked: !n.locked })); }
+
+/** Only top-level ancestors of the given ids (grouping/duplicating operate at top level). */
+function topLevelIds(ids: string[]): string[] {
+  const d = doc();
+  return Array.from(new Set(ids.map((id) => ops.topLevelOf(d, id)?.id).filter((x): x is string => !!x)));
+}
+
+export function copySelection() { const d = doc(); const nodes = topLevelIds(get().selection).map((id) => ops.findNode(d, id)).filter(Boolean); set({ clipboard: JSON.parse(JSON.stringify(nodes)) }); toast(`Đã copy ${nodes.length} layer`, 'ok'); }
+export function cutSelection() { copySelection(); deleteSelection(); }
+export function pasteClipboard() {
+  const s = get();
+  const cb = s.clipboard as Node[] | null;
+  if (!cb || !cb.length) return;
+  const clones = cb.map((n) => ops.cloneNode(n)).map((n) => ({ ...n }));
+  let d = ops.insertNodes(doc(), clones);
+  d = ops.moveBy(d, clones.map((c) => c.id), 16, 16);
+  commit(d); set({ selection: clones.map((c) => c.id) });
+}
+
+// ---------- creation ----------
+export function addBlock(kind: BlockKind, at?: number) {
+  const d = doc();
+  const y = at ?? ops.contentHeight(d);
+  const g = makeBlock(kind, brand(), y);
+  if (d.width !== 600) { const s = d.width / 600; Object.assign(g, ops.fitTo(g, { x: 0, y: y, w: d.width, h: g.h * s })); }
+  const next = { ...ops.insertNodes(d, [g]), height: Math.max(d.height, y + g.h) };
+  commit(next); set({ selection: [g.id] });
+  return g.id;
+}
+
+export function addText(x: number, y: number) {
+  const n = mkText(brand(), 'Nhập chữ', { x, y, w: 240, fontSize: 18, name: 'Text' });
+  n.locked = false;
+  commit(ops.insertNodes(doc(), [n])); set({ selection: [n.id], editingText: n.id, tool: 'select' });
+  return n.id;
+}
+
+export function addRect(r: ops.Rect) {
+  const n = mkRect({ x: Math.round(r.x), y: Math.round(r.y), w: Math.max(2, Math.round(r.w)), h: Math.max(2, Math.round(r.h)), fill: { token: 'primary' }, name: 'Rectangle' });
+  commit(ops.insertNodes(doc(), [n])); set({ selection: [n.id], tool: 'select' });
+  return n.id;
+}
+
+export async function addImageFile(file: File, at?: { x: number; y: number }, into?: string) {
+  const a = await assets.add(file);
+  const d = doc();
+  if (into) { // drop onto an existing image node: replace its asset
+    commit(ops.updateNode(d, into, (n) => (n.type === 'image' ? { ...n, assetId: a.id, name: n.name === 'Image' ? a.name : n.name } : n)));
+    return into;
+  }
+  const w = Math.min(d.width, a.w), h = Math.round(w * (a.h / a.w));
+  const n = mkImage({ x: Math.round(at ? at.x - w / 2 : (d.width - w) / 2), y: Math.round(at ? at.y - h / 2 : ops.contentHeight(d)), w, h, assetId: a.id, name: a.name, alt: a.name.replace(/\.[a-z0-9]+$/i, '') });
+  commit({ ...ops.insertNodes(d, [n]), height: Math.max(d.height, n.y + n.h) }); set({ selection: [n.id], tool: 'select' });
+  return n.id;
+}
+
+export function setImageAsset(id: string, assetId: string | null) { updateNode(id, (n) => (n.type === 'image' ? { ...n, assetId } : n)); }
+
+export function setDocHeightToContent() { const d = doc(); commit({ ...d, height: Math.max(ops.contentHeight(d), 100) }); }
+export function setDocProps(p: Partial<Doc>) { commit({ ...doc(), ...p }); }
+export function reflow() { commit(ops.reflowBlocks(doc())); }
+export function optimize(): string[] {
+  const d = doc();
+  const changes: string[] = [];
+  let next = d;
+  if (get().variant === 'desktop' && d.width !== 600 && d.width >= 560 && d.width <= 700) { next = ops.setDocWidth(next, 600); changes.push(`Đưa chiều rộng ${d.width} → 600px`); }
+  const rounded = ops.roundAll(next); if (rounded !== next) { next = rounded; changes.push('Làm tròn toạ độ lẻ pixel'); }
+  const h = Math.max(ops.contentHeight(next), 100); if (h !== next.height) { next = { ...next, height: h }; changes.push(`Chiều cao artboard khớp nội dung (${h}px)`); }
+  if (next !== d) commit(next);
+  return changes;
+}
+
+// ---------- variants ----------
+export function setVariant(v: Variant) { const p = get().project; if (!p) return; if (v === 'mobile' && !p.mobile) return; history.clear(); set({ variant: v, selection: [], editingText: null, enteredGroup: null }); }
+export function createMobileVariant() { const p = get().project; if (!p) return; const m = ops.mapNodes(ops.makeMobile(p.desktop), fixTextHeight); patchProject({ mobile: m }); setVariant('mobile'); toast('Đã tạo bản mobile 375px từ bản desktop. Chỉnh chữ/ảnh cho gọn.', 'ok'); }
+export function deleteMobileVariant() { patchProject({ mobile: null }); setVariant('desktop'); }
+
+// ---------- brand ----------
+export function applyBrand(b: Partial<Brand>) { const p = get().project; if (!p) return; const nb = { ...p.brand, ...b }; ensureFonts([nb.fontFamily, nb.headingFamily]); patchProject({ brand: nb }); remeasureAll(); }
+
+// ---------- analysis (shared engine) ----------
+export interface Analysis { root: NNode; plan: SlicePlan; checks: Check[]; suggestions: Suggestion[]; score: number }
+let cache: { doc: Doc; brand: Brand; fields: string; mobile: boolean; a: Analysis } | null = null;
+export function analyze(): Analysis | null {
+  const s = get();
+  if (!s.project) return null;
+  const d = doc(), b = s.project.brand, f = JSON.stringify(s.project.fields), hasMobile = !!s.project.mobile;
+  if (cache && cache.doc === d && cache.brand === b && cache.fields === f && cache.mobile === hasMobile) return cache.a;
+  const root = docToNNode(d, b);
+  const plan = planSlices(root, { maxSliceHeight: s.settings.maxSliceHeight, mergeRows: s.settings.mergeRows });
+  const checks = runChecks({ root, plan, fields: { ...s.project.fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile });
+  // Studio-only: image layers still showing the placeholder would export as a hatched box.
+  const placeholders = ops.flat(d.nodes).filter((n) => n.type === 'image' && !n.assetId && n.visible);
+  if (placeholders.length) checks.unshift({ level: 'warn', code: 'placeholder', message: `${placeholders.length} ảnh placeholder chưa thay (${placeholders.slice(0, 3).map((n) => n.name).join(', ')}${placeholders.length > 3 ? '…' : ''}). Kéo ảnh thật vào trước khi gửi.`, nodeId: placeholders[0].id });
+  const sg = suggest({ root, plan, fields: { ...s.project.fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile });
+  const a = { root, plan, checks, suggestions: sg.suggestions, score: sg.score };
+  cache = { doc: d, brand: b, fields: f, mobile: hasMobile, a };
+  return a;
+}
+
+export function applySuggestion(a: SuggestionAction) {
+  switch (a.kind) {
+    case 'snap-width': commit(ops.setDocWidth(doc(), a.width)); break;
+    case 'round-pixels': commit(ops.roundAll(doc())); break;
+    case 'insert-block': addBlock(a.block); break;
+    case 'focus': select([a.nodeId]); set({ rightTab: 'design' }); break;
+    case 'set-field': set({ rightTab: 'email' }); setTimeout(() => (document.getElementById(`f-${a.field}`) as HTMLInputElement | null)?.focus(), 50); break;
+    case 'create-mobile': createMobileVariant(); break;
+  }
+}
+
+// ---------- projects ----------
+export async function openProject(id: string) {
+  try {
+    const p = await db.getProject(id);
+    if (!p) { toast('Không tìm thấy project.', 'err'); return; }
+    history.clear();
+    const { thumb: _t, ...project } = p;
+    ensureFonts([project.brand.fontFamily, project.brand.headingFamily]);
+    set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [] });
+  } catch (e) { toast(`Không mở được: ${(e as Error).message}`, 'err'); }
+}
+
+export async function newProject(kind: TemplateKind, brandOverride?: Partial<Brand>, name?: string) {
+  const b = { ...DEFAULT_BRAND, ...(brandOverride || {}) };
+  ensureFonts([b.fontFamily, b.headingFamily]);
+  await document.fonts.ready;
+  const t = makeTemplate(kind, b);
+  const now = new Date().toISOString();
+  const p: Project = { id: uid('p'), name: name || t.name, createdAt: now, updatedAt: now, brand: b, fields: t.fields, desktop: t.doc, mobile: null, drafts: {} };
+  history.clear();
+  set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [] });
+  await saveProject();
+}
+
+export async function deleteProject(id: string) { try { await db.deleteProject(id); await refreshProjects(); } catch (e) { toast((e as Error).message, 'err'); } }
+export async function duplicateProject(id: string) {
+  const p = await db.getProject(id); if (!p) return;
+  const now = new Date().toISOString();
+  await db.putProject({ ...p, id: uid('p'), name: `${p.name} (bản sao)`, createdAt: now, updatedAt: now, drafts: {} });
+  await refreshProjects();
+}
+export function renameProject(name: string) { patchProject({ name: name.trim() || 'Email' }); }
+export async function goHome() { if (get().dirty) await saveProject(); set({ route: { name: 'home' }, project: null, selection: [], modal: null }); await refreshProjects(); }
+
+export function exportProjectJson() {
+  const p = get().project; if (!p) return;
+  const ids = ops.flat(p.desktop.nodes).concat(p.mobile ? ops.flat(p.mobile.nodes) : []).filter((n) => n.type === 'image' && n.assetId).map((n) => (n as { assetId: string }).assetId);
+  Promise.all(Array.from(new Set(ids)).map(async (id) => { const a = assets.get(id); const b = await assets.blob(id); if (!a || !b) return null; return { ...a, data: await blobToDataUrl(b) }; })).then((list) => {
+    const payload = { phloem: 1, project: p, assets: list.filter(Boolean) };
+    void downloadBytes(`${p.name.replace(/[^\w\-]+/g, '-')}.phloem.json`, new TextEncoder().encode(JSON.stringify(payload)), 'application/json').catch((e) => toast((e as Error).message, 'err'));
+  });
+}
+
+export async function importProjectJson(file: File) {
+  const payload = JSON.parse(await file.text());
+  if (!payload || payload.phloem !== 1 || !payload.project) throw new Error('File không phải project Phloem.');
+  const idMap = new Map<string, string>();
+  for (const a of payload.assets || []) {
+    const blob = await (await fetch(a.data)).blob();
+    const na = await assets.add(blob, a.name);
+    idMap.set(a.id, na.id);
+  }
+  const remap = (d: Doc): Doc => ops.mapNodes(d, (n) => (n.type === 'image' && n.assetId && idMap.has(n.assetId) ? { ...n, assetId: idMap.get(n.assetId)! } : n));
+  const p: Project = { ...payload.project, id: uid('p'), desktop: remap(payload.project.desktop), mobile: payload.project.mobile ? remap(payload.project.mobile) : null, updatedAt: new Date().toISOString(), drafts: {} };
+  await db.putProject(p);
+  await refreshProjects();
+  await openProject(p.id);
+}
+
+function blobToDataUrl(b: Blob): Promise<string> { return new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(b); }); }

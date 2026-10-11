@@ -1,0 +1,109 @@
+// Tiny observable store for Preact. Subscribers are notified once per animation frame.
+import { useEffect, useState } from 'preact/hooks';
+import type { Profile, Settings } from '../../src/shared/types';
+import { DEFAULT_SETTINGS } from '../../src/shared/types';
+import type { Project } from './model/types';
+import { History } from './model/history';
+import type { ProjectMeta } from './storage/idb';
+
+export type Tool = 'select' | 'rect' | 'text' | 'image' | 'hand';
+export type Variant = 'desktop' | 'mobile';
+export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename';
+export type RightTab = 'design' | 'email' | 'export';
+export type LeftTab = 'layers' | 'blocks' | 'assets';
+
+export interface Toast { id: number; text: string; kind: 'ok' | 'err' | 'info' }
+
+export interface StudioSettings extends Settings { snap: boolean; grid: boolean; autosave: boolean }
+
+export interface State {
+  route: { name: 'home' } | { name: 'editor'; projectId: string };
+  projects: ProjectMeta[];
+  project: Project | null;
+  variant: Variant;
+  selection: string[];
+  hover: string | null;
+  tool: Tool;
+  zoom: number;
+  pan: { x: number; y: number };
+  editingText: string | null;
+  /** Group the user has "entered" by double-clicking. */
+  enteredGroup: string | null;
+  modal: Modal;
+  rightTab: RightTab;
+  leftTab: LeftTab;
+  profiles: Profile[];
+  settings: StudioSettings;
+  toasts: Toast[];
+  dirty: boolean;
+  savedAt: string | null;
+  busy: { label: string; done: number; total: number } | null;
+  log: { t: string; k?: 'ok' | 'er' }[];
+  result: { text: string; url?: string } | null;
+  clipboard: unknown[] | null;
+  fontsLoaded: number;
+}
+
+const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings';
+
+function loadLS<T>(k: string, fb: T): T { try { const v = localStorage.getItem(k); return v ? { ...fb, ...JSON.parse(v) } : fb; } catch { return fb; } }
+
+export const initialState: State = {
+  route: { name: 'home' },
+  projects: [],
+  project: null,
+  variant: 'desktop',
+  selection: [],
+  hover: null,
+  tool: 'select',
+  zoom: 1,
+  pan: { x: 0, y: 0 },
+  editingText: null,
+  enteredGroup: null,
+  modal: null,
+  rightTab: 'design',
+  leftTab: 'layers',
+  profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),
+  settings: loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, snap: true, grid: false, autosave: true }),
+  toasts: [],
+  dirty: false,
+  savedAt: null,
+  busy: null,
+  log: [],
+  result: null,
+  clipboard: null,
+  fontsLoaded: 0,
+};
+
+let state: State = initialState;
+const subs = new Set<() => void>();
+let scheduled = false;
+
+export const history = new History();
+
+export function get(): State { return state; }
+
+export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
+  const p = typeof patch === 'function' ? patch(state) : patch;
+  state = { ...state, ...p };
+  if ('profiles' in p) { try { localStorage.setItem(LS_PROFILES, JSON.stringify(state.profiles)); } catch { /* ignore */ } }
+  if ('settings' in p) { try { localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings)); } catch { /* ignore */ } }
+  if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; for (const s of subs) s(); }); }
+}
+
+export function subscribe(fn: () => void): () => void { subs.add(fn); return () => subs.delete(fn); }
+
+export function useStore(): State {
+  const [, force] = useState(0);
+  useEffect(() => subscribe(() => force((n) => n + 1)), []);
+  return state;
+}
+
+let toastId = 0;
+export function toast(text: string, kind: Toast['kind'] = 'info') {
+  const id = ++toastId;
+  set((s) => ({ toasts: [...s.toasts, { id, text, kind }] }));
+  setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'err' ? 7000 : 3500);
+}
+
+export function log(t: string, k?: 'ok' | 'er') { set((s) => ({ log: [...s.log.slice(-40), { t, k }] })); }

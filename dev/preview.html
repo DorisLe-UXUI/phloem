@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Phloem — UI preview (mock Figma)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1e1e1e; font: 12px Inter, system-ui, sans-serif; color: #ccc; }
+  .wrap { display: flex; gap: 24px; padding: 24px; align-items: flex-start; }
+  .win { width: 440px; height: 680px; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 60px -20px #000; border: 1px solid #333; background: #000; }
+  iframe { border: 0; width: 100%; height: 100%; }
+  .side { max-width: 320px; line-height: 1.6; }
+  .side button { margin: 2px; padding: 6px 10px; background: #2b2b2b; color: #ddd; border: 1px solid #444; border-radius: 6px; cursor: pointer; }
+  code { color: #39ff14; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="win"><iframe id="ui"></iframe></div>
+  <div class="side">
+    <h3>Mock Figma sandbox</h3>
+    <p>The iframe is <code>dist/ui.html</code>, exactly what Figma loads. This page answers its messages with fake data.</p>
+    <button onclick="setSelection(0)">Select: nothing</button>
+    <button onclick="setSelection(1)">Select: 1 frame</button>
+    <button onclick="setSelection(2)">Select: 2 frames</button>
+    <p id="log" style="font-family:monospace;font-size:11px;white-space:pre-wrap;max-height:400px;overflow:auto"></p>
+  </div>
+</div>
+<script type="module">
+  import { planSlices, runChecks, suggest } from '/dist/shared.mjs';
+  const ui = document.getElementById('ui');
+  const log = document.getElementById('log');
+  const send = (m) => ui.contentWindow.postMessage({ pluginMessage: m }, '*');
+  const say = (s) => { log.textContent = (s + '\n' + log.textContent).slice(0, 4000); };
+
+  const frames = [
+    { id: 'F1', name: 'Promo tháng 10', width: 600, height: 1000, fields: { campaignName: 'Promo tháng 10', subject: 'Giảm 30% đến hết Chủ nhật', preheader: '', mobileFrameId: null }, drafts: {} },
+    { id: 'F2', name: 'Welcome series #1', width: 640, height: 820, fields: { campaignName: 'Welcome #1', subject: '', preheader: '', mobileFrameId: null }, drafts: {} },
+  ];
+  const pageFrames = [...frames.map((f) => ({ id: f.id, name: f.name, width: f.width })), { id: 'F3', name: 'Promo tháng 10 / mobile', width: 375 }];
+  const profiles = [
+    { id: 'p1', name: 'Fitly Studio', provider: 'klaviyo', auth: { type: 'apikey', apiKey: 'pk_demo' }, audienceId: 'LIST1', audienceName: 'Newsletter', fromName: 'Fitly', fromEmail: 'hello@fitly.vn', replyTo: '', templateId: '', templateSection: 'body', utmTemplate: 'utm_source={provider}&utm_medium=email&utm_campaign={campaign}&utm_content={slice}', footerHtml: '', imageFormat: 'PNG', scale: 2, jpgQuality: 85, permissions: { 'lists:read': true, 'campaigns:write': true, 'templates:write': true, 'images:write': false }, accountLabel: 'Fitly Studio' },
+    { id: 'p2', name: 'Bánh Mì 24', provider: 'mailchimp', auth: { type: 'apikey', apiKey: 'abc-us21', dc: 'us21' }, audienceId: '', audienceName: '', fromName: '', fromEmail: '', replyTo: '', templateId: '', templateSection: 'body', utmTemplate: '', footerHtml: '', imageFormat: 'JPG', scale: 2, jpgQuality: 82, permissions: {}, accountLabel: 'banhmi24' },
+  ];
+  const settings = { relayUrl: 'http://localhost:8787', relayToken: '', activeProfileId: 'p1', maxSliceHeight: 1500, mergeRows: true, altFromLayerName: true, uiHeight: 680, language: 'vi' };
+
+  function tree() {
+    const n = (p) => ({ id: p.id || Math.random().toString(36).slice(2), name: p.name || 'Layer', type: p.type || 'RECTANGLE', x: p.x ?? 0, y: p.y ?? 0, w: p.w ?? 600, h: p.h ?? 100, visible: true, link: p.link ?? null, linkSource: p.link ? 'field' : null, alt: p.alt ?? null, altSource: p.alt ? 'field' : null, hasImage: !!p.img, isText: !!p.text, text: p.text ?? null, fontSize: p.fs ?? null, fill: p.fill ?? null, children: p.children || [] });
+    return n({ id: 'F1', name: 'Promo tháng 10', type: 'FRAME', w: 600, h: 1000, fill: '#ffffff', children: [
+      n({ name: 'Nav', h: 72, children: [n({ name: 'Logo', text: 'FITLY', x: 24, y: 24, w: 80, h: 24, fs: 18, fill: '#111111', link: 'https://fitly.vn' })] }),
+      n({ id: 'hero', name: 'Hero', y: 72, h: 340, img: true, alt: 'Bộ sưu tập thu 2026', link: 'https://fitly.vn/thu-2026' }),
+      n({ name: 'Headline', text: 'Giảm 30% đến hết Chủ nhật', x: 24, y: 436, w: 552, h: 40, fs: 28, fill: '#111111' }),
+      n({ name: 'Button #link=https://fitly.vn/sale', x: 24, y: 500, w: 180, h: 48, link: 'https://fitly.vn/sale', alt: 'Mua ngay', children: [n({ text: 'Mua ngay', x: 60, y: 512, w: 100, h: 24, fs: 15, fill: '#ffffff' })] }),
+      n({ name: 'Product 1', x: 24, y: 580, w: 264, h: 300, link: 'https://fitly.vn/p/1', children: [n({ name: 'img', x: 24, y: 580, w: 264, h: 264, img: true })] }),
+      n({ name: 'Product 2', x: 312, y: 580, w: 264, h: 300, link: 'https://fitly.vn/p/2', alt: 'Áo khoác gió', children: [n({ name: 'img', x: 312, y: 580, w: 264, h: 264, img: true })] }),
+      n({ name: 'Footer', y: 900, h: 100, fill: '#f3f5f3', children: [n({ text: 'Huỷ đăng ký', x: 230, y: 940, w: 70, h: 18, fs: 11, fill: '#6e756f', link: 'https://fitly.vn/unsub' }), n({ text: 'Địa chỉ: 123 Lê Lợi, Q1', x: 180, y: 915, w: 240, h: 18, fs: 11, fill: '#6e756f' })] }),
+    ] });
+  }
+
+  function thumb(w, h) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    const s = w / 600;
+    g.fillStyle = '#e4e8e5'; g.fillRect(0, 72 * s, w, 340 * s);
+    g.fillStyle = '#121512'; g.font = `bold ${28 * s}px Inter`; g.fillText('Giảm 30% đến hết Chủ nhật', 24 * s, 466 * s);
+    g.fillStyle = '#0f3d2e'; g.fillRect(24 * s, 500 * s, 180 * s, 48 * s);
+    g.fillStyle = '#dde3df'; g.fillRect(24 * s, 580 * s, 264 * s, 264 * s); g.fillRect(312 * s, 580 * s, 264 * s, 264 * s);
+    g.fillStyle = '#f3f5f3'; g.fillRect(0, 900 * s, w, 100 * s);
+    return new Promise((r) => c.toBlob((b) => b.arrayBuffer().then((ab) => r(new Uint8Array(ab))), 'image/png'));
+  }
+
+  let selected = [frames[0]];
+  window.setSelection = (n) => { selected = frames.slice(0, n); send({ type: 'selection', frames: selected, pageFrames }); };
+
+  // listener first, then load the UI (avoids missing its first 'ready')
+  window.addEventListener('message', async (e) => {
+    const m = e.data?.pluginMessage; if (!m) return;
+    say('→ ' + m.type + (m.frameId ? ' ' + m.frameId : ''));
+    const root = tree();
+    switch (m.type) {
+      case 'ready': send({ type: 'init', frames: selected, pageFrames, profiles, settings, version: 'dev' }); break;
+      case 'get-plan': {
+        const plan = planSlices(root);
+        const checks = runChecks({ root, plan, fields: frames[0].fields, hasMobile: false });
+        send({ type: 'plan', frameId: m.frameId, plan, checks });
+        send({ type: 'thumb', frameId: m.frameId, key: '__frame__', bytes: await thumb(320, 533) });
+        break;
+      }
+      case 'get-suggestions': { const plan = planSlices(root); const r = suggest({ root, plan, fields: frames[0].fields, hasMobile: false }); send({ type: 'suggestions', frameId: m.frameId, ...r }); break; }
+      case 'export': {
+        const plan = planSlices(root);
+        const slices = [];
+        for (let i = 0; i < plan.slices.length; i++) { const s = plan.slices[i]; slices.push({ key: s.key, bytes: await thumb(Math.max(2, s.w), Math.max(2, s.h)), format: 'PNG', hash: 'h' + i, w: s.w, h: s.h, scale: 1 }); send({ type: 'export-progress', frameId: m.frameIds[0], done: i + 1, total: plan.slices.length }); await new Promise((r) => setTimeout(r, 60)); }
+        send({ type: 'export-done', frameId: m.frameIds[0], plan, slices, mobile: null });
+        break;
+      }
+      case 'set-frame-fields': { const f = frames.find((x) => x.id === m.frameId); Object.assign(f.fields, m.fields); send({ type: 'frame', frame: f }); break; }
+      case 'save-profiles': send({ type: 'profiles', profiles: m.profiles }); break;
+      case 'save-settings': send({ type: 'settings', settings: m.settings }); break;
+      case 'save-draft': { const f = frames.find((x) => x.id === m.frameId); if (m.draft) f.drafts[m.profileId] = m.draft; else delete f.drafts[m.profileId]; send({ type: 'frame', frame: f }); break; }
+      case 'optimize-frame': send({ type: 'optimize-done', frameId: m.frameId, changes: ['Làm tròn 3 toạ độ lẻ pixel'], checks: [] }); break;
+      case 'insert-template': case 'insert-block': case 'create-mobile-frame': send({ type: 'toast', kind: 'ok', text: `(mock) ${m.type} ${m.kind || m.block || ''}` }); break;
+      case 'notify': say('notify: ' + m.text); break;
+      case 'open-url': say('open: ' + m.url); break;
+    }
+  });
+  ui.src = '/dist/ui.html';
+</script>
+</body>
+</html>

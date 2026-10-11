@@ -1,0 +1,134 @@
+// Table-based email HTML builder. Deterministic: same plan + same URLs -> same HTML.
+import type { Provider, SlicePlan } from './types';
+import { applyUtm, type UtmVars } from './utm';
+import { utf8Bytes } from './hash';
+
+export interface HtmlInput {
+  plan: SlicePlan;
+  /** slice key -> hosted image URL (or relative path for the zip export). */
+  images: Record<string, string>;
+  mobile?: { plan: SlicePlan; images: Record<string, string> } | null;
+  title: string;
+  preheader: string;
+  /** Include the hidden preheader div. Off when pasting into a brand template that already has one. */
+  includePreheader: boolean;
+  /** Full document (doctype/head) vs. fragment to paste into a template. */
+  fullDocument: boolean;
+  footerHtml?: string;
+  bgColor?: string | null;
+  utm?: { template: string; vars: Omit<UtmVars, 'slice' | 'host'> } | null;
+  provider?: Provider | null;
+  lang?: string;
+}
+
+export function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function hrefFor(link: string, sliceKey: string, inp: HtmlInput): string {
+  if (!inp.utm) return link;
+  return applyUtm(link, inp.utm.template, { ...inp.utm.vars, slice: sliceKey });
+}
+
+function imgTag(src: string, w: number, h: number, alt: string, cls: string, fluid: boolean): string {
+  const style = fluid
+    ? `display:block;border:0;outline:none;text-decoration:none;width:100%;max-width:${w}px;height:auto;`
+    : `display:block;border:0;outline:none;text-decoration:none;`;
+  return `<img src="${esc(src)}" width="${w}" height="${h}" alt="${esc(alt)}" class="${cls}" style="${style}" />`;
+}
+
+function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlInput, cls: string): string {
+  const W = plan.width;
+  const rows: string[] = [];
+  for (const row of plan.rows) {
+    if (row.cells.length === 1) {
+      const s = row.cells[0];
+      const src = images[s.key] ?? '';
+      let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
+      if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
+      rows.push(`<tr><td align="left" valign="top" style="padding:0;margin:0;line-height:0;font-size:0;">${inner}</td></tr>`);
+      continue;
+    }
+    // multi-column row: nested table, proportional widths so columns stay aligned when fluid
+    const tds = row.cells.map((s) => {
+      const pct = Math.round((s.w / W) * 10000) / 100;
+      const src = images[s.key] ?? '';
+      let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
+      if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
+      return `<td width="${pct}%" align="left" valign="top" style="padding:0;margin:0;line-height:0;font-size:0;width:${pct}%;">${inner}</td>`;
+    });
+    rows.push(
+      `<tr><td style="padding:0;margin:0;line-height:0;font-size:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;table-layout:fixed;"><tr>${tds.join('')}</tr></table></td></tr>`,
+    );
+  }
+  return `<table role="presentation" class="${cls}" width="${W}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W}px;border-collapse:collapse;margin:0 auto;">${rows.join('')}</table>`;
+}
+
+export function buildEmailHtml(inp: HtmlInput): string {
+  const { plan } = inp;
+  const W = plan.width;
+  const parts: string[] = [];
+
+  if (inp.includePreheader && inp.preheader.trim()) {
+    const pad = '&nbsp;&zwnj;'.repeat(40);
+    parts.push(
+      `<div class="ph-preheader" style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;color:transparent;">${esc(inp.preheader.trim())}${pad}</div>`,
+    );
+  }
+
+  const hasMobile = !!(inp.mobile && inp.mobile.plan.slices.length);
+  const desktop = renderPlan(plan, inp.images, inp, hasMobile ? 'ph-desktop' : 'ph-main');
+  parts.push(desktop);
+
+  if (hasMobile && inp.mobile) {
+    const mob = renderPlan(inp.mobile.plan, inp.mobile.images, inp, 'ph-mobile');
+    parts.push(
+      `<!--[if !mso]><!--><div class="ph-mobile-wrap" style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${mob}</div><!--<![endif]-->`,
+    );
+  }
+
+  if (inp.footerHtml && inp.footerHtml.trim()) {
+    parts.push(
+      `<table role="presentation" width="${W}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W}px;border-collapse:collapse;margin:0 auto;"><tr><td style="padding:16px 24px;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#8a8a8a;text-align:center;">${inp.footerHtml}</td></tr></table>`,
+    );
+  }
+
+  const style = `<style type="text/css">
+  .ph-main-img,.ph-desktop-img,.ph-mobile-img{-ms-interpolation-mode:bicubic;}
+  @media only screen and (max-width:${W}px){
+    .ph-main,.ph-desktop,.ph-mobile{width:100%!important;max-width:100%!important;}
+    ${hasMobile ? `.ph-desktop{display:none!important;max-height:0!important;overflow:hidden!important;}
+    .ph-mobile-wrap,.ph-mobile{display:block!important;max-height:none!important;overflow:visible!important;}` : ''}
+  }
+</style>`;
+
+  const bg = inp.bgColor || '#ffffff';
+  const body = `<!-- Phloem: generated from Figma frame "${esc(plan.frameName)}" (${W}×${plan.height}). ${plan.slices.length} slices. Never auto-sent. -->
+${style}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${bg}" style="width:100%;border-collapse:collapse;background-color:${bg};"><tr><td align="center" valign="top" style="padding:0;">
+${parts.join('\n')}
+</td></tr></table>`;
+
+  if (!inp.fullDocument) return body;
+
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" lang="${inp.lang || 'vi'}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="color-scheme" content="light" />
+<title>${esc(inp.title)}</title>
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<style type="text/css">body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}img{border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}body{margin:0!important;padding:0!important;width:100%!important;}</style>
+</head>
+<body style="margin:0;padding:0;background-color:${bg};">
+${body}
+</body>
+</html>`;
+}
+
+export function htmlSizeBytes(html: string): number {
+  return utf8Bytes(html).length;
+}

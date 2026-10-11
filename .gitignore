@@ -1,0 +1,5 @@
+node_modules/
+server/.env
+.DS_Store
+# plugin build output (rebuilt with `npm run build`); studio/dist is committed so GitHub Pages can serve it
+dist/
