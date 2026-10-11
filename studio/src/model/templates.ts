@@ -12,16 +12,26 @@ export const W = 600;
 const PAD = 24;
 
 /** Design personality derived from brand.vibe: radii, shadows, pills, decorative shapes, headline scale. */
-export interface Theme { radius: number; btnRadius: number; shadow: boolean; glow: boolean; heroScale: number; eyebrowPill: boolean; blobs: boolean; stroke: boolean; btnH: number }
+export interface Theme {
+  radius: number; btnRadius: number; shadow: boolean; glow: boolean; heroScale: number; eyebrowPill: boolean; blobs: boolean; stroke: boolean; btnH: number;
+  /** Headline letter-spacing in px (negative = tight display type). */
+  track: number;
+  /** Vertical rhythm multiplier (luxury breathes more). */
+  space: number;
+  /** Big numerals instead of small circles for step numbers. */
+  bigNumerals: boolean;
+}
 export function themeFor(vibe?: Vibe): Theme {
   switch (vibe) {
-    case 'playful': return { radius: 22, btnRadius: 999, shadow: true, glow: true, heroScale: 1.08, eyebrowPill: true, blobs: true, stroke: false, btnH: 50 };
-    case 'bold': return { radius: 14, btnRadius: 999, shadow: true, glow: true, heroScale: 1.22, eyebrowPill: true, blobs: true, stroke: false, btnH: 52 };
-    case 'luxury': return { radius: 4, btnRadius: 4, shadow: false, glow: false, heroScale: 1.12, eyebrowPill: false, blobs: false, stroke: true, btnH: 48 };
-    case 'editorial': return { radius: 6, btnRadius: 6, shadow: false, glow: false, heroScale: 1, eyebrowPill: false, blobs: false, stroke: true, btnH: 46 };
-    default: return { radius: 14, btnRadius: 10, shadow: true, glow: false, heroScale: 1, eyebrowPill: false, blobs: false, stroke: false, btnH: 48 };
+    case 'playful': return { radius: 22, btnRadius: 999, shadow: true, glow: true, heroScale: 1.1, eyebrowPill: true, blobs: true, stroke: false, btnH: 52, track: -0.3, space: 1, bigNumerals: false };
+    case 'bold': return { radius: 14, btnRadius: 999, shadow: true, glow: true, heroScale: 1.25, eyebrowPill: true, blobs: true, stroke: false, btnH: 54, track: -1.2, space: 1, bigNumerals: true };
+    case 'luxury': return { radius: 4, btnRadius: 4, shadow: false, glow: false, heroScale: 1.15, eyebrowPill: false, blobs: false, stroke: true, btnH: 50, track: 0.2, space: 1.25, bigNumerals: true };
+    case 'editorial': return { radius: 6, btnRadius: 6, shadow: false, glow: false, heroScale: 1.05, eyebrowPill: false, blobs: false, stroke: true, btnH: 48, track: -0.4, space: 1.1, bigNumerals: true };
+    default: return { radius: 14, btnRadius: 10, shadow: true, glow: false, heroScale: 1.05, eyebrowPill: false, blobs: false, stroke: false, btnH: 50, track: -0.5, space: 1, bigNumerals: true };
   }
 }
+/** Strong lift for poster-style image cards (hero-band / hero-center). */
+const posterShadow = (T: Theme): Shadow | null => (T.shadow ? { blur: 44, y: 20, color: '#000000', opacity: 0.28 } : T.stroke ? { blur: 30, y: 14, color: '#000000', opacity: 0.14 } : null);
 const darken = (hex: string, t: number) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#07100b'; const n = parseInt(m[1], 16); const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v * (1 - t))); return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join(''); };
 const cardShadow = (T: Theme): Shadow | null => (T.shadow ? { blur: 24, y: 10, color: '#000000', opacity: 0.1 } : null);
 const cardStroke = (T: Theme): RectNode['stroke'] => (T.stroke ? { color: { token: 'line' }, width: 1 } : null);
@@ -70,7 +80,7 @@ export function measureWidth(brand: Brand, n: TextNode): number {
 interface ButtonOpts { w?: number; h?: number; radius?: number; fontSize?: number; inverse?: boolean }
 
 export function button(brand: Brand, label: string, url: string, x: number, y: number, o: ButtonOpts = {}): GroupNode {
-  const fs = o.fontSize ?? 15;
+  const fs = o.fontSize ?? 16;
   const probe = text(brand, label, { x: 0, y: 0, w: 400, fontSize: fs, fontWeight: 700, name: label });
   const wText = Math.min(400, Math.ceil(measureWidth(brand, probe)));
   const T = themeFor(brand.vibe);
@@ -109,8 +119,8 @@ export interface BlockContent {
   preferencesLabel?: string;
   /** Footer social links (label is the network name). */
   social?: LinkC[];
-  /** hero-center: 'light' (bg), 'band' (primary), 'gradient' (primary → accent). */
-  style?: 'light' | 'band' | 'gradient';
+  /** Variant of a block: hero-center/hero-product 'light' | 'band' | 'gradient' | 'ink'; cta/stats/nav 'dark'; feature-row 'right' (image on the right). */
+  style?: 'light' | 'band' | 'gradient' | 'ink' | 'dark' | 'card' | 'right';
   /** Set by buildDoc: this block sits on a soft tinted band (alternating rhythm). */
   tint?: boolean;
 }
@@ -146,6 +156,11 @@ export const BLOCKS: { kind: BlockKind; name: string; desc: string }[] = [
   { kind: 'glass-hero', name: 'Hero thẻ kính', desc: 'Ảnh toàn khung, thẻ kính mờ chứa chữ' },
   { kind: 'steps', name: 'Các bước', desc: '1 · 2 · 3 card đánh số' },
   { kind: 'collage', name: 'Collage', desc: '3 ảnh xếp lệch' },
+  { kind: 'hero-product', name: 'Hero sản phẩm', desc: 'Nền tối, chữ khổng lồ, sản phẩm nổi có vầng sáng' },
+  { kind: 'ticker', name: 'Ticker', desc: 'Dải chữ chạy: FREESHIP ✦ NEW DROP' },
+  { kind: 'offer', name: 'Ưu đãi lớn', desc: 'Số -30% khổng lồ trên gradient' },
+  { kind: 'reviews', name: 'Đánh giá', desc: '2–3 card sao + lời khách' },
+  { kind: 'overlap', name: 'Ảnh + card đè', desc: 'Ảnh tràn khung, card chữ đè lên' },
   { kind: 'divider', name: 'Divider', desc: 'Đường kẻ mảnh' },
   { kind: 'spacer', name: 'Spacer', desc: 'Khoảng trống 24px' },
   { kind: 'footer', name: 'Footer', desc: 'Địa chỉ, huỷ đăng ký' },
@@ -168,7 +183,7 @@ const up = (s: string) => s.toUpperCase();
 const B0 = 'https://example.com';
 
 /** Brand logo slot: the uploaded logo image when the brand has one, otherwise the wordmark text. */
-export function logoNode(brand: Brand, c: BlockContent, x: number, cy: number, h: number, align: 'left' | 'center', link: string): Node {
+export function logoNode(brand: Brand, c: BlockContent, x: number, cy: number, h: number, align: 'left' | 'center', link: string, color: TextNode['color'] = { token: 'ink' }): Node {
   if (brand.logoAssetId) {
     const meta = assets.get(brand.logoAssetId);
     const ratio = meta ? meta.w / Math.max(1, meta.h) : 3.2;
@@ -176,7 +191,7 @@ export function logoNode(brand: Brand, c: BlockContent, x: number, cy: number, h
     const xx = align === 'center' ? Math.round((W - w) / 2) : x;
     return image({ x: xx, y: Math.round(cy - h / 2), w, h, assetId: brand.logoAssetId, fit: 'contain', name: 'Logo', alt: brand.name, link });
   }
-  const t = text(brand, up(c.brand || brand.name || 'BRAND'), { x: align === 'center' ? PAD : x, y: 0, w: align === 'center' ? W - PAD * 2 : 260, fontSize: h >= 28 ? 18 : 13, fontWeight: 800, letterSpacing: 1.5, name: 'Logo', link, align: align === 'center' ? 'center' : 'left' });
+  const t = text(brand, up(c.brand || brand.name || 'BRAND'), { x: align === 'center' ? PAD : x, y: 0, w: align === 'center' ? W - PAD * 2 : 260, fontSize: h >= 28 ? 18 : 13, fontWeight: 800, letterSpacing: 1.5, name: 'Logo', link, align: align === 'center' ? 'center' : 'left', color });
   t.y = Math.round(cy - t.h / 2);
   return t;
 }
@@ -189,6 +204,23 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
   const band = (hh: number, fill: RectNode['fill'] = { token: 'bg' }, name = 'Block bg') => rect({ x: 0, y, w: W, h: hh, fill, name });
   const inner = W - PAD * 2;
   const hs = (px: number) => Math.round(px * T.heroScale);
+  const S = (px: number) => Math.round(px * T.space);
+  /** Display headline: heading font, heavy, tight leading and tracking from the theme. */
+  const H = (t: string, o: Partial<TextNode> & { x: number; y: number; w: number }) => text(brand, t, { fontFamily: 'heading', fontWeight: 800, lineHeight: 1.06, letterSpacing: T.track, ...o });
+  const centerBtn = (btn: GroupNode) => { const nx = Math.round((W - btn.w) / 2); const dx = nx - btn.children[0].x; btn.children.forEach((k) => { k.x += dx; }); return syncGroup(btn); };
+  /** Section header used by list blocks: small-caps eyebrow, big heading, optional "see all" link on the right. Returns the y where content starts. */
+  const sectionHead = (yy: number, opts: { eyebrow?: string; heading?: string; link?: LinkC; align?: 'left' | 'center'; onDark?: boolean }): { nodes: Node[]; bottom: number } => {
+    const nodes: Node[] = []; let cy = yy;
+    const fg = opts.onDark ? { token: 'bg' as const } : { token: 'ink' as const };
+    if (opts.eyebrow) { const e = text(brand, up(opts.eyebrow), { x: PAD, y: cy, w: inner, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: opts.onDark ? { token: 'primary' } : { token: 'primary' }, align: opts.align || 'left', name: 'Eyebrow' }); nodes.push(e); cy = e.y + e.h + 8; }
+    if (opts.heading) {
+      const head = H(opts.heading, { x: PAD, y: cy, w: opts.link ? inner - 130 : inner, fontSize: hs(30), lineHeight: 1.1, color: fg, align: opts.align || 'left', name: 'Heading' });
+      nodes.push(head);
+      if (opts.link) { const l = text(brand, opts.link.label, { x: W - PAD - 130, y: head.y + Math.max(0, Math.round((head.h - 20) / 2)), w: 130, fontSize: 14, fontWeight: 700, color: { token: 'primary' }, align: 'right', name: 'Link', link: opts.link.url }); nodes.push(l); }
+      cy = head.y + head.h + 18;
+    }
+    return { nodes, bottom: cy };
+  };
   /** Eyebrow: a pill on playful/bold themes, plain small caps otherwise. Returns nodes and the bottom y. */
   const eyebrowNodes = (label: string, x: number, yy: number, onBand: boolean): { nodes: Node[]; bottom: number } => {
     if (!T.eyebrowPill) { const t = text(brand, up(label), { x, y: yy, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: onBand ? { token: 'onPrimary' } : { token: 'primary' }, name: 'Eyebrow', opacity: onBand ? 0.85 : 1 }); return { nodes: [t], bottom: t.y + t.h }; }
@@ -200,155 +232,186 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
   };
   switch (kind) {
     case 'nav': {
-      h = 68;
-      kids.push(band(h));
+      const dark = c.style === 'dark';
+      h = 72;
+      kids.push(band(h, dark ? { token: 'ink' } : { token: 'bg' }));
       kids.push(rect({ x: 0, y, w: W, h: 4, fill: { token: 'primary' }, name: 'Accent bar' }));
-      kids.push(logoNode(brand, c, PAD, y + 34, 30, 'left', c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com'));
+      kids.push(logoNode(brand, c, PAD, y + 38, 30, 'left', c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com', dark ? { token: 'bg' } : { token: 'ink' }));
       const links = (c.links && c.links.length ? c.links : DEF.links).slice(0, 4);
       let x = W - PAD;
       for (let i = links.length - 1; i >= 0; i--) {
-        const t = text(brand, links[i].label, { x: 0, y: y + 27, w: 120, fontSize: 14, fontWeight: 500, color: { token: 'muted' }, align: 'right', name: links[i].label, link: links[i].url });
-        const tw = Math.ceil(measureWidth(brand, t)) + 2; t.w = tw; t.x = x - tw; x -= tw + 22;
+        const t = text(brand, links[i].label, { x: 0, y: y + 30, w: 120, fontSize: 13, fontWeight: 600, color: dark ? { token: 'bg' } : { token: 'muted' }, align: 'right', name: links[i].label, link: links[i].url, opacity: dark ? 0.78 : 1 });
+        const tw = Math.ceil(measureWidth(brand, t)) + 2; t.w = tw; t.x = x - tw; x -= tw + 24;
         kids.push(t);
       }
       break;
     }
     case 'hero': {
       const d = DEF.hero;
-      const imgH = 360;
+      const imgH = 400;
       const btnC = c.button ?? d.button;
       const img = image({ x: 0, y, w: W, h: imgH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null });
-      let cy = y + imgH + 30;
+      let cy = y + imgH + S(34);
       const eb = c.eyebrow !== '' ? eyebrowNodes(c.eyebrow || d.eyebrow, PAD, cy, false) : null;
-      if (eb) cy = eb.bottom + 12;
-      const eyebrow = eb ? eb.nodes : null;
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: cy, w: inner, fontSize: hs(32), fontWeight: 800, lineHeight: 1.15, fontFamily: 'heading', name: 'Headline' });
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 12, w: inner, fontSize: 16, color: { token: 'muted' }, lineHeight: 1.55, name: 'Subhead' });
-      const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + 22);
-      h = btn.y + btn.h + 36 - y;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), img, ...(eyebrow || []), head, sub, btn);
+      if (eb) cy = eb.bottom + 14;
+      const head = H(c.headline || d.headline, { x: PAD, y: cy, w: inner, fontSize: hs(40), name: 'Headline' });
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 14, w: inner - 40, fontSize: 17, color: { token: 'muted' }, lineHeight: 1.55, name: 'Subhead' });
+      const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + S(26));
+      h = btn.y + btn.h + S(44) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), img, ...(eb ? eb.nodes : []), head, sub, btn);
       break;
     }
     case 'hero-band': {
+      // Poster: copy on the brand band, the photo as a lifted card that breaks out of the band's bottom edge.
       const d = DEF.band;
       const btnC = c.button ?? d.button;
-      const eb = eyebrowNodes(c.eyebrow || d.eyebrow, PAD, y + 40, true);
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: eb.bottom + 14, w: inner, fontSize: hs(38), fontWeight: 800, lineHeight: 1.1, fontFamily: 'heading', color: { token: 'onPrimary' }, name: 'Headline' });
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 14, w: inner, fontSize: 16, color: { token: 'onPrimary' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.85 });
-      const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + 24, { inverse: true });
-      const bandH = btn.y + btn.h + 40 - y;
-      const img = image({ x: 0, y: y + bandH, w: W, h: 300, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null });
-      h = bandH + img.h;
-      kids.push(band(bandH, { token: 'primary' }, 'Band'), ...blobs(T, y, bandH, true), ...eb.nodes, head, sub, btn, img);
+      const eb = eyebrowNodes(c.eyebrow || d.eyebrow, PAD, y + S(46), true);
+      const head = H(c.headline || d.headline, { x: PAD, y: eb.bottom + 16, w: inner, fontSize: hs(46), lineHeight: 1.02, color: { token: 'onPrimary' }, name: 'Headline' });
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 16, w: inner - 40, fontSize: 17, color: { token: 'onPrimary' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.85 });
+      const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + S(26), { inverse: true });
+      const img = image({ x: PAD, y: btn.y + btn.h + S(36), w: inner, h: 320, radius: Math.max(R, 10), name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, shadow: posterShadow(T) });
+      const bandH = img.y + Math.round(img.h * 0.55) - y;
+      h = img.y + img.h + S(40) - y;
+      kids.push(band(h), rect({ x: 0, y, w: W, h: bandH, fill: { token: 'primary' }, name: 'Band' }), ...blobs(T, y, bandH, true), ...eb.nodes, head, sub, btn, img);
       break;
     }
     case 'text': {
       const d = DEF.text;
-      let cy = y + 28;
-      const eyebrow = c.eyebrow !== '' ? text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: cy, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: { token: 'primary' }, name: 'Eyebrow' }) : null;
-      if (eyebrow) cy = eyebrow.y + eyebrow.h + 8;
-      const head = text(brand, c.heading || d.heading, { x: PAD, y: cy, w: inner, fontSize: hs(28), fontWeight: 800, lineHeight: 1.2, fontFamily: 'heading', name: 'Heading' });
-      const body = text(brand, c.body || d.body, { x: PAD, y: head.y + head.h + 12, w: inner, fontSize: 16, lineHeight: 1.6, color: { token: 'muted' }, name: 'Paragraph' });
-      h = body.y + body.h + 28 - y;
+      let cy = y + S(36);
+      const eyebrow = c.eyebrow !== '' ? text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: cy, w: inner, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: { token: 'primary' }, name: 'Eyebrow' }) : null;
+      if (eyebrow) cy = eyebrow.y + eyebrow.h + 10;
+      const head = H(c.heading || d.heading, { x: PAD, y: cy, w: inner, fontSize: hs(32), lineHeight: 1.12, name: 'Heading' });
+      const body = text(brand, c.body || d.body, { x: PAD, y: head.y + head.h + 14, w: inner - 24, fontSize: 17, lineHeight: 1.6, color: { token: 'muted' }, name: 'Paragraph' });
+      h = body.y + body.h + S(36) - y;
       kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...(eyebrow ? [eyebrow] : []), head, body);
       break;
     }
     case 'cta': {
       const d = DEF.cta;
       const btnC = c.button ?? d.button;
-      const cardY = y + 16;
-      const head = text(brand, c.heading || d.heading, { x: PAD + 24, y: cardY + 28, w: inner - 48, fontSize: 22, fontWeight: 700, align: 'center', fontFamily: 'heading', name: 'Heading' });
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD + 24, y: head.y + head.h + 6, w: inner - 48, fontSize: 14, color: { token: 'muted' }, align: 'center', name: 'Sub' });
-      const btn = button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + 18);
-      btn.x = Math.round((W - btn.w) / 2); const dx = btn.x - btn.children[0].x; btn.children.forEach((k) => { k.x += dx; });
-      const cardH = btn.y + btn.h + 28 - cardY;
-      h = cardH + 32;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), head, sub, syncGroup(btn));
+      const dark = c.style === 'dark', onBand = c.style === 'band';
+      const fg = dark ? { token: 'bg' as const } : onBand ? { token: 'onPrimary' as const } : { token: 'ink' as const };
+      const cardY = y + S(20), padX = 32;
+      const head = H(c.heading || d.heading, { x: PAD + padX, y: cardY + S(40), w: inner - padX * 2, fontSize: hs(30), lineHeight: 1.1, align: 'center', color: fg, name: 'Heading' });
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD + padX, y: head.y + head.h + 10, w: inner - padX * 2, fontSize: 16, color: dark || onBand ? fg : { token: 'muted' }, align: 'center', lineHeight: 1.5, name: 'Sub', opacity: dark || onBand ? 0.78 : 1 });
+      const btn = centerBtn(button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + S(24), { inverse: onBand }));
+      const cardH = btn.y + btn.h + S(40) - cardY;
+      h = cardH + S(40);
+      const card = rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: dark ? { token: 'ink' } : onBand ? { token: 'primary' } : c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', stroke: dark || onBand ? null : cardStroke(T), shadow: dark || onBand ? cardShadow(T) : null });
+      const deco: Node[] = (dark || onBand) && T.blobs ? [rect({ x: W - PAD - 110, y: cardY + 14, w: 96, h: 96, fill: dark ? brand.primary : '#FFFFFF', radius: 999, opacity: dark ? 0.22 : 0.12, name: 'Blob' }), rect({ x: PAD + 18, y: cardY + cardH - 70, w: 54, h: 54, fill: dark ? brand.accent : '#FFFFFF', radius: 999, opacity: dark ? 0.2 : 0.1, name: 'Blob' })] : [];
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), card, ...deco, head, sub, btn);
       break;
     }
     case 'products-2':
     case 'products-3': {
       const n = kind === 'products-3' ? 3 : 2;
-      const gap = 16, cw = Math.floor((inner - gap * (n - 1)) / n);
+      const gap = 14, cw = Math.floor((inner - gap * (n - 1)) / n);
       const items: ItemC[] = (c.items && c.items.length ? c.items : Array.from({ length: n }, (_, i) => ({ name: n === 3 ? `Sản phẩm ${i + 1}` : `Tên sản phẩm ${i + 1}`, price: '450.000₫', url: `https://example.com/products/item-${i + 1}` }))).slice(0, n);
       while (items.length < n) items.push({ name: `Sản phẩm ${items.length + 1}`, price: '', url: 'https://example.com/shop' });
+      const sh = sectionHead(y + S(32), { eyebrow: c.eyebrow, heading: c.heading, link: c.link });
+      const top = sh.nodes.length ? sh.bottom : y + S(24);
       const cards: Node[] = [];
       let bottom = y;
+      const cardFill = c.tint ? { token: 'bg' as const } : { token: 'soft' as const };
+      const imgFill = c.tint ? { token: 'soft' as const } : { token: 'bg' as const };
       items.forEach((it, i) => {
         const x = PAD + i * (cw + gap);
         const url = it.url || 'https://example.com/shop';
-        const top = y + 16;
-        const img = image({ x: x + 8, y: top + 8, w: cw - 16, h: cw - 16, radius: RI, name: `Product image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, fit: 'contain', fill: { token: 'bg' } });
-        const name = text(brand, it.name, { x: x + 12, y: img.y + img.h + 12, w: cw - 24, fontSize: n === 3 ? 15 : 17, fontWeight: 700, lineHeight: 1.3, name: 'Name' });
+        const padC = n === 3 ? 10 : 12;
+        const iw = cw - padC * 2;
+        const img = image({ x: x + padC, y: top + padC, w: iw, h: iw, radius: RI, name: `Product image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, fit: 'contain', fill: imgFill });
+        // soft brand disc behind the product so contain-fit photos never float in an empty square
+        const disc = rect({ x: img.x + Math.round(iw * 0.1), y: img.y + Math.round(iw * 0.1), w: Math.round(iw * 0.8), h: Math.round(iw * 0.8), fill: { token: 'primary' }, radius: 999, opacity: 0.07, name: 'Disc' });
+        const name = text(brand, it.name, { x: x + padC + 2, y: img.y + img.h + 14, w: cw - padC * 2 - 4, fontSize: n === 3 ? 15 : 17, fontWeight: 700, lineHeight: 1.3, name: 'Name' });
         const extra: Node[] = [];
         let last: TextNode = name;
-        if (it.oldPrice) { const o = text(brand, it.oldPrice, { x: x + 12, y: last.y + last.h + 4, w: cw - 24, fontSize: 12, color: { token: 'muted' }, strike: true, name: 'Old price' }); extra.push(o); last = o; }
-        if (it.price) { const pr = text(brand, it.price, { x: x + 12, y: last.y + last.h + (it.oldPrice ? 2 : 4), w: cw - 24, fontSize: n === 3 ? 17 : 19, fontWeight: 800, color: { token: 'primary' }, name: 'Price' }); extra.push(pr); last = pr; }
-        if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 200, fontSize: 11, fontWeight: 800, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 16; const bg = rect({ x: x + 8, y: top + 8, w: bw, h: 22, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = x + 16; bt.w = bw - 16; bt.y = top + 8 + Math.round((22 - bt.h) / 2); extra.push(bg, bt); }
-        const cardH = last.y + last.h + 14 - top;
-        const card = rect({ x, y: top, w: cw, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
+        if (it.price) {
+          const pr = text(brand, it.price, { x: x + padC + 2, y: name.y + name.h + 6, w: cw - padC * 2 - 4, fontSize: n === 3 ? 18 : 22, fontWeight: 800, color: { token: 'primary' }, fontFamily: 'heading', letterSpacing: T.track / 2, name: 'Price' });
+          extra.push(pr); last = pr;
+          if (it.oldPrice) { const pw = Math.ceil(measureWidth(brand, pr)); const o = text(brand, it.oldPrice, { x: pr.x + pw + 8, y: pr.y + Math.max(0, pr.h - 18), w: Math.max(40, cw - padC * 2 - pw - 12), fontSize: 13, color: { token: 'muted' }, strike: true, name: 'Old price' }); extra.push(o); }
+        } else if (it.oldPrice) { const o = text(brand, it.oldPrice, { x: x + padC + 2, y: last.y + last.h + 4, w: cw - padC * 2, fontSize: 13, color: { token: 'muted' }, strike: true, name: 'Old price' }); extra.push(o); last = o; }
+        if (it.body && n === 2) { const b = text(brand, it.body, { x: x + padC + 2, y: last.y + last.h + 6, w: cw - padC * 2 - 4, fontSize: 13, color: { token: 'muted' }, lineHeight: 1.45, name: 'Body' }); extra.push(b); last = b; }
+        if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 200, fontSize: 11, fontWeight: 800, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 18; const bg = rect({ x: x + padC + 6, y: top + padC + 6, w: bw, h: 24, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = bg.x + 9; bt.w = bw - 18; bt.y = bg.y + Math.round((24 - bt.h) / 2); extra.push(bg, bt); }
+        const cardH = last.y + last.h + padC + 6 - top;
+        const card = rect({ x, y: top, w: cw, h: cardH, fill: cardFill, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
         bottom = Math.max(bottom, top + cardH);
-        cards.push(group(`Product ${i + 1}`, [card, img, name, ...extra], { link: url, alt: `${it.name}${it.price ? ' — ' + it.price : ''}` }));
+        cards.push(group(`Product ${i + 1}`, [card, disc, img, name, ...extra], { link: url, alt: `${it.name}${it.price ? ' — ' + it.price : ''}` }));
       });
-      h = bottom + 28 - y;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...cards);
+      // equal card heights
+      cards.forEach((g) => { const card = (g as GroupNode).children[0] as RectNode; card.h = bottom - top; syncGroup(g as GroupNode); });
+      h = bottom + S(32) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...sh.nodes, ...cards);
       break;
     }
     case 'feature-row': {
       const d = DEF.feature;
       const linkC = c.link ?? d.link;
-      const cardY = y + 12, imgW = 232, imgH = 180;
-      const img = image({ x: PAD + 14, y: cardY + 14, w: imgW, h: imgH, radius: RI, name: 'Feature image', alt: c.imageAlt || d.imageAlt, assetId: c.image ?? null, link: linkC.url });
-      const cx = PAD + 14 + imgW + 20, cwid = W - PAD - 14 - cx;
-      const head = text(brand, c.heading || d.heading, { x: cx, y: cardY + 24, w: cwid, fontSize: 19, fontWeight: 700, lineHeight: 1.3, fontFamily: 'heading', name: 'Heading' });
-      const body = text(brand, c.body || d.body, { x: cx, y: head.y + head.h + 8, w: cwid, fontSize: 14, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
-      const more = text(brand, linkC.label, { x: cx, y: body.y + body.h + 12, w: cwid, fontSize: 14, fontWeight: 700, color: { token: 'primary' }, name: 'Link', link: linkC.url });
-      const cardH = Math.max(img.y + img.h + 14, more.y + more.h + 22) - cardY;
-      h = cardH + 24;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), img, head, body, more);
+      const right = c.style === 'right';
+      const cardY = y + S(16), imgW = 236, imgH = 196, padC = 14;
+      const imgX = right ? W - PAD - padC - imgW : PAD + padC;
+      const img = image({ x: imgX, y: cardY + padC, w: imgW, h: imgH, radius: RI, name: 'Feature image', alt: c.imageAlt || d.imageAlt, assetId: c.image ?? null, link: linkC.url });
+      const cx = right ? PAD + padC + 8 : PAD + padC + imgW + 22, cwid = inner - padC * 2 - imgW - 30;
+      let cy = cardY + S(26);
+      const eb = c.eyebrow ? text(brand, up(c.eyebrow), { x: cx, y: cy, w: cwid, fontSize: 11, fontWeight: 800, letterSpacing: 1.6, color: { token: 'primary' }, name: 'Eyebrow' }) : null;
+      if (eb) cy = eb.y + eb.h + 8;
+      const head = H(c.heading || d.heading, { x: cx, y: cy, w: cwid, fontSize: 22, lineHeight: 1.2, name: 'Heading' });
+      const body = text(brand, c.body || d.body, { x: cx, y: head.y + head.h + 8, w: cwid, fontSize: 15, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
+      const more = text(brand, linkC.label, { x: cx, y: body.y + body.h + 14, w: cwid, fontSize: 14, fontWeight: 700, color: { token: 'primary' }, name: 'Link', link: linkC.url });
+      const cardH = Math.max(img.y + img.h + padC, more.y + more.h + S(26)) - cardY;
+      img.y = cardY + Math.round((cardH - imgH) / 2);
+      h = cardH + S(32);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), img, ...(eb ? [eb] : []), head, body, more);
       break;
     }
     case 'stats': {
       const items = (c.stats && c.stats.length ? c.stats : DEF.stats).slice(0, 4);
+      const dark = c.style === 'dark';
       const cw = Math.floor(inner / items.length);
+      const sh = sectionHead(y + S(36), { eyebrow: c.eyebrow, heading: c.heading, align: 'center', onDark: dark });
+      let top = sh.nodes.length ? sh.bottom + 4 : y + S(34);
       let bottom = y;
       const cells: Node[] = [];
       items.forEach((st, i) => {
         const x = PAD + i * cw;
-        const nT = text(brand, st.value, { x, y: y + 26, w: cw, fontSize: items.length > 3 ? 26 : 32, fontWeight: 800, color: { token: 'primary' }, align: 'center', fontFamily: 'heading', name: `Stat ${i + 1}` });
-        const lT = text(brand, st.label, { x, y: nT.y + nT.h + 2, w: cw, fontSize: 13, color: { token: 'muted' }, align: 'center', name: `Label ${i + 1}` });
+        const tick = rect({ x: x + Math.round(cw / 2) - 14, y: top, w: 28, h: 3, fill: { token: dark ? 'primary' : 'accent' }, radius: 2, name: 'Tick' });
+        const nT = H(st.value, { x, y: top + 16, w: cw, fontSize: hs(items.length > 3 ? 34 : 44), lineHeight: 1, color: dark ? { token: 'bg' } : { token: 'primary' }, align: 'center', name: `Stat ${i + 1}` });
+        const lT = text(brand, up(st.label), { x: x + 4, y: nT.y + nT.h + 8, w: cw - 8, fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: dark ? { token: 'bg' } : { token: 'muted' }, align: 'center', lineHeight: 1.4, name: `Label ${i + 1}`, opacity: dark ? 0.7 : 1 });
         bottom = Math.max(bottom, lT.y + lT.h);
-        cells.push(nT, lT);
+        cells.push(tick, nT, lT);
       });
-      h = bottom + 26 - y;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: y, w: inner, h: 1, fill: { token: 'line' }, name: 'Line top' }), ...cells, rect({ x: PAD, y: y + h - 1, w: inner, h: 1, fill: { token: 'line' }, name: 'Line bottom' }));
+      h = bottom + S(36) - y;
+      kids.push(band(h, dark ? { token: 'ink' } : c.tint ? { token: 'soft' } : { token: 'bg' }), ...(dark ? blobs(T, y, h, true) : []), ...sh.nodes, ...(dark ? [] : [rect({ x: PAD, y: y, w: inner, h: 1, fill: { token: 'line' }, name: 'Line top' }), rect({ x: PAD, y: y + h - 1, w: inner, h: 1, fill: { token: 'line' }, name: 'Line bottom' })]), ...cells);
       break;
     }
     case 'quote': {
       const d = DEF.quote;
-      const cardY = y + 16;
-      const mark = text(brand, '“', { x: PAD + 24, y: cardY + 10, w: 60, fontSize: 64, fontWeight: 800, color: { token: 'primary' }, fontFamily: 'heading', lineHeight: 1, name: 'Quote mark' });
-      const q = text(brand, c.quote || d.quote, { x: PAD + 24, y: mark.y + 48, w: inner - 48, fontSize: 19, fontWeight: 500, lineHeight: 1.5, italic: true, fontFamily: 'heading', name: 'Quote' });
-      const who = text(brand, c.author || d.author, { x: PAD + 24, y: q.y + q.h + 12, w: inner - 48, fontSize: 13, color: { token: 'muted' }, name: 'Author' });
-      const cardH = who.y + who.h + 26 - cardY;
-      h = cardH + 32;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), mark, q, who);
+      const cardY = y + S(20), padC = 28;
+      const stars = c.eyebrow ? text(brand, c.eyebrow, { x: PAD + padC, y: cardY + S(26), w: inner - padC * 2, fontSize: 16, color: { token: 'accent' }, letterSpacing: 2, name: 'Stars' }) : null;
+      const mark = text(brand, '“', { x: PAD + padC - 4, y: (stars ? stars.y + stars.h : cardY + S(14)) + 2, w: 60, fontSize: 72, fontWeight: 800, color: { token: 'primary' }, fontFamily: 'heading', lineHeight: 1, name: 'Quote mark', opacity: 0.9 });
+      const q = text(brand, c.quote || d.quote, { x: PAD + padC, y: mark.y + 50, w: inner - padC * 2, fontSize: 21, fontWeight: 500, lineHeight: 1.45, italic: T.stroke, fontFamily: 'heading', letterSpacing: T.track / 3, name: 'Quote' });
+      const author = (c.author || d.author).replace(/^[—–-]\s*/, '');
+      const av = rect({ x: PAD + padC, y: q.y + q.h + 18, w: 34, h: 34, fill: { token: 'primary' }, radius: 999, name: 'Avatar', opacity: 0.9 });
+      const avT = text(brand, author.trim().slice(0, 1).toUpperCase() || '★', { x: av.x, y: av.y, w: 34, h: 34, fontSize: 14, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: 'Initial' });
+      const who = text(brand, author, { x: av.x + 44, y: av.y + 8, w: inner - padC * 2 - 44, fontSize: 14, fontWeight: 700, color: { token: 'ink' }, name: 'Author' });
+      const cardH = av.y + av.h + S(26) - cardY;
+      h = cardH + S(40);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T), shadow: cardShadow(T) }), ...(stars ? [stars] : []), mark, q, av, avT, who);
       break;
     }
     case 'hero-overlay': {
       const d = DEF.hero; const btnC = c.button ?? d.button;
-      const H = 470;
-      const img = image({ x: 0, y, w: W, h: H, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: darken(brand.primary, 0.72), opacity: 0.86, gradient: true } });
-      const btn = button(brand, btnC.label, btnC.url, PAD, y + H - 30 - 48);
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: 0, w: inner - 40, fontSize: 16, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
-      sub.y = btn.y - 18 - sub.h;
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: 0, w: inner - 20, fontSize: hs(40), fontWeight: 800, lineHeight: 1.06, fontFamily: 'heading', color: '#FFFFFF', name: 'Headline' });
-      head.y = sub.y - 12 - head.h;
-      const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD + 12, y: 0, w: 300, fontSize: 11, fontWeight: 700, letterSpacing: 1.4, color: { token: 'onPrimary' }, name: 'Eyebrow' });
+      const HH = 520;
+      const img = image({ x: 0, y, w: W, h: HH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: darken(brand.primary, 0.72), opacity: 0.88, gradient: true } });
+      const btn = button(brand, btnC.label, btnC.url, PAD, y + HH - S(36) - T.btnH);
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: 0, w: inner - 60, fontSize: 17, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
+      sub.y = btn.y - 20 - sub.h;
+      const head = H(c.headline || d.headline, { x: PAD, y: 0, w: inner - 20, fontSize: hs(46), lineHeight: 1.02, color: '#FFFFFF', name: 'Headline' });
+      head.y = sub.y - 14 - head.h;
+      const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD + 12, y: 0, w: 300, fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: { token: 'onPrimary' }, name: 'Eyebrow' });
       const pw = Math.ceil(measureWidth(brand, pillT)) + 26; pillT.w = pw - 24;
-      const pill = rect({ x: PAD, y: head.y - 14 - 26, w: pw, h: 26, fill: { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
+      const pill = rect({ x: PAD, y: head.y - 16 - 26, w: pw, h: 26, fill: { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
       pillT.y = pill.y + Math.round((26 - pillT.h) / 2);
-      h = H;
+      h = HH;
       kids.push(img, pill, pillT, head, sub, btn);
       break;
     }
@@ -402,12 +465,13 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'dark-band': {
       const d = DEF.band; const btnC = c.button ?? d.button;
-      const eyebrow = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: y + 44, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.8, color: { token: 'primary' }, name: 'Eyebrow' });
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: eyebrow.y + eyebrow.h + 14, w: inner, fontSize: hs(44), fontWeight: 800, lineHeight: 1.02, fontFamily: 'heading', color: { token: 'bg' }, name: 'Headline' });
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 16, w: inner - 60, fontSize: 15, color: { token: 'bg' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.75 });
-      const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + 26);
-      h = btn.y + btn.h + 48 - y;
-      kids.push(band(h, { token: 'ink' }, 'Band'), ...blobs(T, y, h, true), eyebrow, head, sub, btn);
+      const eyebrow = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: y + S(52), w: inner, fontSize: 11, fontWeight: 800, letterSpacing: 2, color: { token: 'primary' }, name: 'Eyebrow' });
+      const head = H(c.headline || d.headline, { x: PAD, y: eyebrow.y + eyebrow.h + 16, w: inner, fontSize: hs(54), lineHeight: 0.98, color: { token: 'bg' }, name: 'Headline' });
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 18, w: inner - 80, fontSize: 16, color: { token: 'bg' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.72 });
+      const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + S(28));
+      const img = c.image ? image({ x: PAD, y: btn.y + btn.h + S(32), w: inner, h: 300, radius: Math.max(R, 10), name: 'Band image', alt: c.imageAlt || '', assetId: c.image, link: btnC.url, shadow: posterShadow(T) }) : null;
+      h = (img ? img.y + img.h : btn.y + btn.h) + S(52) - y;
+      kids.push(band(h, { token: 'ink' }, 'Band'), ...blobs(T, y, h, true), rect({ x: PAD, y: eyebrow.y - 14, w: 44, h: 3, fill: { token: 'primary' }, name: 'Rule' }), eyebrow, head, sub, btn, ...(img ? [img] : []));
       break;
     }
     case 'categories': {
@@ -455,22 +519,22 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'hero-center': {
       const d = DEF.band; const btnC = c.button ?? d.button;
-      const style = c.style || 'light';
+      const style = c.style === 'ink' ? 'band' : (c.style || 'light');
       const onBand = style !== 'light';
       const fg = onBand ? { token: 'onPrimary' as const } : { token: 'ink' as const };
       const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: 0, y: 0, w: 400, fontSize: 11, fontWeight: 800, letterSpacing: 1.6, color: onBand ? { token: 'primary' } : { token: 'onPrimary' }, name: 'Eyebrow', align: 'center' });
       const pw = Math.ceil(measureWidth(brand, pillT)) + 28;
-      const pill = rect({ x: Math.round((W - pw) / 2), y: y + 36, w: pw, h: 28, fill: onBand ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
+      const pill = rect({ x: Math.round((W - pw) / 2), y: y + S(44), w: pw, h: 28, fill: onBand ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
       pillT.x = pill.x; pillT.w = pw; pillT.y = pill.y + Math.round((28 - pillT.h) / 2);
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 18, w: inner, fontSize: hs(46), fontWeight: 800, lineHeight: 1.05, fontFamily: 'heading', color: fg, align: 'center', name: 'Headline' });
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD + 30, y: head.y + head.h + 14, w: inner - 60, fontSize: 16, color: onBand ? { token: 'onPrimary' } : { token: 'muted' }, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: onBand ? 0.85 : 1 });
-      const btn = button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + 22, { inverse: onBand });
-      btn.x = Math.round((W - btn.w) / 2); const dx = btn.x - btn.children[0].x; btn.children.forEach((k) => { k.x += dx; });
-      const bandH = btn.y + btn.h + 36 - y;
-      const img = c.image === null && !c.imageAlt ? null : image({ x: 0, y: y + bandH, w: W, h: 300, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null });
-      h = bandH + (img ? img.h : 0);
-      const bg = style === 'gradient' ? rect({ x: 0, y, w: W, h: bandH, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 }, name: 'Band' }) : band(bandH, style === 'band' ? { token: 'primary' } : { token: 'bg' }, 'Band');
-      kids.push(bg, ...(onBand ? blobs(T, y, bandH, true) : []), pill, pillT, head, sub, syncGroup(btn), ...(img ? [img] : []));
+      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 20, w: inner, fontSize: hs(50), lineHeight: 1.0, color: fg, align: 'center', name: 'Headline' });
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD + 36, y: head.y + head.h + 16, w: inner - 72, fontSize: 17, color: onBand ? { token: 'onPrimary' } : { token: 'muted' }, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: onBand ? 0.85 : 1 });
+      const btn = centerBtn(button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + S(26), { inverse: onBand }));
+      const hasImg = !(c.image === null && !c.imageAlt);
+      const img = hasImg ? image({ x: PAD, y: btn.y + btn.h + S(38), w: inner, h: 320, radius: Math.max(R, 10), name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, shadow: posterShadow(T) }) : null;
+      const bandH = (img ? img.y + Math.round(img.h * 0.5) : btn.y + btn.h + S(44)) - y;
+      h = (img ? img.y + img.h + S(40) : btn.y + btn.h + S(44)) - y;
+      const bg = style === 'gradient' ? rect({ x: 0, y, w: W, h: bandH, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 }, name: 'Band' }) : rect({ x: 0, y, w: W, h: bandH, fill: style === 'band' ? { token: 'primary' } : { token: 'bg' }, name: 'Band' });
+      kids.push(band(h), bg, ...(onBand ? blobs(T, y, bandH, true) : []), pill, pillT, head, sub, btn, ...(img ? [img] : []));
       break;
     }
     case 'icon-row': {
@@ -490,17 +554,17 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'checklist': {
       const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Thiết kế web 3D' }, { name: 'Logo & nhận diện' }, { name: 'UI/UX' }, { name: 'Hỗ trợ ra mắt' }]).slice(0, 6);
-      let cy = y + 22;
+      let cy = y + S(30);
       const nodes: Node[] = [];
-      if (c.heading) { const hd = text(brand, c.heading, { x: PAD, y: cy, w: inner, fontSize: 22, fontWeight: 800, fontFamily: 'heading', lineHeight: 1.2, name: 'Heading' }); nodes.push(hd); cy = hd.y + hd.h + 12; }
+      if (c.heading) { const hd = H(c.heading, { x: PAD, y: cy, w: inner, fontSize: hs(28), lineHeight: 1.15, name: 'Heading' }); nodes.push(hd); cy = hd.y + hd.h + 16; }
       for (const it of items) {
-        const circ = rect({ x: PAD, y: cy, w: 24, h: 24, fill: { token: 'primary' }, radius: 999, name: 'Check bg' });
-        const ck = text(brand, '✓', { x: PAD, y: cy, w: 24, h: 24, fontSize: 13, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: 'Check' });
-        const t = text(brand, it.name, { x: PAD + 36, y: cy + 2, w: inner - 36, fontSize: 16, fontWeight: 600, name: it.name.slice(0, 20) });
+        const circ = rect({ x: PAD, y: cy, w: 26, h: 26, fill: { token: 'primary' }, radius: 999, name: 'Check bg' });
+        const ck = text(brand, '✓', { x: PAD, y: cy, w: 26, h: 26, fontSize: 13, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: 'Check' });
+        const t = text(brand, it.name, { x: PAD + 40, y: cy + 2, w: inner - 40, fontSize: 17, fontWeight: 600, name: it.name.slice(0, 20) });
         nodes.push(circ, ck, t);
-        cy += Math.max(24, t.h) + 10;
+        cy += Math.max(26, t.h) + 12;
       }
-      h = cy + 14 - y;
+      h = cy + S(18) - y;
       kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
@@ -523,61 +587,73 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     case 'spotlight': {
       const it: ItemC = (c.items && c.items[0]) || { name: c.heading || 'Tên sản phẩm', price: '', badge: '', url: c.button?.url || `${B0}/shop`, image: c.image ?? null };
       const btnC = c.button ?? { label: 'Xem chi tiết', url: it.url || `${B0}/shop` };
-      const img = image({ x: PAD, y: y + 20, w: inner, h: 300, radius: R, name: 'Spotlight image', alt: it.alt || it.name, assetId: it.image ?? c.image ?? null, link: it.url || btnC.url, shadow: cardShadow(T), fit: 'contain', fill: { token: 'bg' } });
+      const img = image({ x: PAD, y: y + S(24), w: inner, h: 340, radius: R, name: 'Spotlight image', alt: it.alt || it.name, assetId: it.image ?? c.image ?? null, link: it.url || btnC.url, shadow: cardShadow(T), fit: 'contain', fill: c.tint ? { token: 'bg' } : { token: 'soft' } });
+      const disc = rect({ x: PAD + Math.round(inner / 2) - 130, y: img.y + 40, w: 260, h: 260, fill: { token: 'primary' }, radius: 999, opacity: 0.08, name: 'Disc' });
       const tagT = text(brand, it.name + (it.price ? `  ·  ${it.price}` : ''), { x: 0, y: 0, w: 320, fontSize: 13, fontWeight: 800, name: 'Tag' });
       const tw = Math.min(inner - 40, Math.ceil(measureWidth(brand, tagT)) + 28);
-      const tag = rect({ x: PAD + inner - tw - 16, y: img.y + img.h - 52, w: tw, h: 36, fill: { token: 'bg' }, radius: T.btnRadius >= 999 ? 999 : Math.min(R, 12), name: 'Tag bg', shadow: { blur: 18, y: 6, color: '#000000', opacity: 0.22 } });
-      tagT.x = tag.x + 14; tagT.w = tw - 28; tagT.y = tag.y + Math.round((36 - tagT.h) / 2);
-      const parts: Node[] = [img, tag, tagT];
+      const tag = rect({ x: PAD + inner - tw - 16, y: img.y + img.h - 54, w: tw, h: 38, fill: { token: 'bg' }, radius: T.btnRadius >= 999 ? 999 : Math.min(R, 12), name: 'Tag bg', shadow: { blur: 18, y: 6, color: '#000000', opacity: 0.22 } });
+      tagT.x = tag.x + 14; tagT.w = tw - 28; tagT.y = tag.y + Math.round((38 - tagT.h) / 2);
+      const parts: Node[] = [disc, img, tag, tagT];
       if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 200, fontSize: 11, fontWeight: 800, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 18; const bg = rect({ x: PAD + 14, y: img.y + 14, w: bw, h: 24, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = bg.x + 9; bt.w = bw - 18; bt.y = bg.y + Math.round((24 - bt.h) / 2); parts.push(bg, bt); }
-      const head = text(brand, c.headline || c.heading || it.name, { x: PAD, y: img.y + img.h + 22, w: inner, fontSize: hs(26), fontWeight: 800, lineHeight: 1.15, fontFamily: 'heading', name: 'Heading' });
-      const body = text(brand, c.body || c.subhead || it.body || 'Một đoạn mô tả ngắn: chất liệu, cảm giác, lý do nên có.', { x: PAD, y: head.y + head.h + 10, w: inner, fontSize: 15, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
-      const btn = button(brand, btnC.label, btnC.url, PAD, body.y + body.h + 18);
-      h = btn.y + btn.h + 32 - y;
+      const head = H(c.headline || c.heading || it.name, { x: PAD, y: img.y + img.h + S(26), w: inner, fontSize: hs(30), lineHeight: 1.1, name: 'Heading' });
+      const body = text(brand, c.body || c.subhead || it.body || 'Một đoạn mô tả ngắn: chất liệu, cảm giác, lý do nên có.', { x: PAD, y: head.y + head.h + 12, w: inner - 24, fontSize: 16, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
+      const btn = button(brand, btnC.label, btnC.url, PAD, body.y + body.h + S(22));
+      h = btn.y + btn.h + S(36) - y;
       kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...parts, head, body, btn);
       break;
     }
     case 'glass-hero': {
       const d = DEF.hero; const btnC = c.button ?? d.button;
-      const H = 480;
-      const img = image({ x: 0, y, w: W, h: H, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: '#07100b', opacity: 0.28 } });
-      const cardX = PAD, cardW = inner, pad = 22;
+      const HH = 520;
+      const img = image({ x: 0, y, w: W, h: HH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: '#07100b', opacity: 0.3 } });
+      const cardX = PAD, cardW = inner, pad = 26;
       const btn = button(brand, btnC.label, btnC.url, cardX + pad, 0);
-      const sub = text(brand, c.subhead || d.subhead, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 15, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
-      const head = text(brand, c.headline || d.headline, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: hs(34), fontWeight: 800, lineHeight: 1.08, fontFamily: 'heading', color: '#FFFFFF', name: 'Headline' });
-      const eb = text(brand, up(c.eyebrow || d.eyebrow), { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 11, fontWeight: 800, letterSpacing: 1.6, color: '#FFFFFF', name: 'Eyebrow', opacity: 0.85 });
-      const cardH = pad + eb.h + 10 + head.h + 10 + sub.h + 18 + btn.h + pad;
-      const cardY = y + H - 24 - cardH;
+      const sub = text(brand, c.subhead || d.subhead, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 16, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
+      const head = H(c.headline || d.headline, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: hs(38), lineHeight: 1.04, color: '#FFFFFF', name: 'Headline' });
+      const eb = text(brand, up(c.eyebrow || d.eyebrow), { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: '#FFFFFF', name: 'Eyebrow', opacity: 0.85 });
+      const cardH = pad + eb.h + 12 + head.h + 12 + sub.h + 20 + btn.h + pad;
+      const cardY = y + HH - 28 - cardH;
       const glass = rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: '#FFFFFF', opacity: 0.16, radius: R, name: 'Glass', stroke: { color: '#FFFFFF', width: 1 } });
       const glass2 = rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: null, radius: R, name: 'Glass edge', stroke: { color: '#FFFFFF', width: 1 }, opacity: 0.45 });
-      eb.y = cardY + pad; head.y = eb.y + eb.h + 10; sub.y = head.y + head.h + 10;
-      const by = sub.y + sub.h + 18; btn.children.forEach((k) => { k.y += by; }); btn.y = by;
-      h = H;
+      eb.y = cardY + pad; head.y = eb.y + eb.h + 12; sub.y = head.y + head.h + 12;
+      const by = sub.y + sub.h + 20; btn.children.forEach((k) => { k.y += by; }); btn.y = by;
+      h = HH;
       kids.push(img, glass, glass2, eb, head, sub, syncGroup(btn));
       break;
     }
     case 'steps': {
       const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Chọn', body: 'Chọn mẫu hoặc tải ảnh lên.' }, { name: 'Chỉnh', body: 'Đổi chữ, màu, logo trong vài phút.' }, { name: 'Gửi', body: 'Tạo draft, duyệt và bấm gửi.' }]).slice(0, 4);
-      const n = items.length, gap = 12, cw = Math.floor((inner - gap * (n - 1)) / n);
-      let cy = y + 24;
-      const nodes: Node[] = [];
-      if (c.heading) { const hd = text(brand, c.heading, { x: PAD, y: cy, w: inner, fontSize: 24, fontWeight: 800, fontFamily: 'heading', lineHeight: 1.2, align: 'center', name: 'Heading' }); nodes.push(hd); cy = hd.y + hd.h + 18; }
-      let bottom = cy;
+      const n = items.length, cols = n === 4 ? 2 : n, gap = 14, cw = Math.floor((inner - gap * (cols - 1)) / cols);
+      const sh = sectionHead(y + S(36), { eyebrow: c.eyebrow, heading: c.heading, align: 'center' });
+      let cy = sh.nodes.length ? sh.bottom + 4 : y + S(28);
       const cards: GroupNode[] = [];
+      const rowBottoms: number[] = [];
       items.forEach((it, i) => {
-        const x = PAD + i * (cw + gap);
-        const num = rect({ x: x + 16, y: cy + 16, w: 34, h: 34, fill: { token: 'primary' }, radius: 999, name: 'Step no bg' });
-        const numT = text(brand, String(i + 1), { x: num.x, y: num.y, w: 34, h: 34, fontSize: 15, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', fontFamily: 'heading', name: 'Step no' });
-        const nm = text(brand, it.name, { x: x + 16, y: num.y + num.h + 12, w: cw - 32, fontSize: 16, fontWeight: 700, fontFamily: 'heading', lineHeight: 1.25, name: 'Step name' });
-        const bd = text(brand, it.body || '', { x: x + 16, y: nm.y + nm.h + 6, w: cw - 32, fontSize: 13, color: { token: 'muted' }, lineHeight: 1.5, name: 'Step body' });
-        const ch = bd.y + bd.h + 18 - cy;
-        bottom = Math.max(bottom, cy + ch);
-        cards.push(group(`Step ${i + 1}`, [rect({ x, y: cy, w: cw, h: ch, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), num, numT, nm, bd], { link: it.url || null, alt: it.name }));
+        const col = i % cols, row = Math.floor(i / cols);
+        if (col === 0 && row > 0) { cy = rowBottoms[row - 1] + gap; }
+        const x = PAD + col * (cw + gap);
+        const padC = cols === 3 ? 16 : 22;
+        const parts: Node[] = [];
+        let ny: number;
+        if (T.bigNumerals) {
+          const num = H(String(i + 1).padStart(2, '0'), { x: x + padC, y: cy + padC, w: cw - padC * 2, fontSize: hs(36), lineHeight: 1, color: { token: 'primary' }, name: 'Step no' });
+          parts.push(num); ny = num.y + num.h + 12;
+        } else {
+          const circ = rect({ x: x + padC, y: cy + padC, w: 38, h: 38, fill: { token: 'primary' }, radius: 999, name: 'Step no bg' });
+          const numT = text(brand, String(i + 1), { x: circ.x, y: circ.y, w: 38, h: 38, fontSize: 16, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', fontFamily: 'heading', name: 'Step no' });
+          parts.push(circ, numT); ny = circ.y + circ.h + 14;
+        }
+        const nm = H(it.name, { x: x + padC, y: ny, w: cw - padC * 2, fontSize: cols === 3 ? 17 : 19, lineHeight: 1.2, letterSpacing: T.track / 2, name: 'Step name' });
+        const bd = text(brand, it.body || '', { x: x + padC, y: nm.y + nm.h + 8, w: cw - padC * 2, fontSize: cols === 3 ? 13 : 14, color: { token: 'muted' }, lineHeight: 1.5, name: 'Step body' });
+        const ch = bd.y + bd.h + padC - cy;
+        rowBottoms[row] = Math.max(rowBottoms[row] || 0, cy + ch);
+        cards.push(group(`Step ${i + 1}`, [rect({ x, y: cy, w: cw, h: ch, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), ...parts, nm, bd], { link: it.url || null, alt: it.name }));
       });
-      // equalise card heights
-      cards.forEach((g) => { const card = g.children[0] as RectNode; card.h = bottom - cy; });
-      h = bottom + 24 - y;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...cards.map((g) => syncGroup(g)));
+      // equalise card heights per row
+      cards.forEach((g, i) => { const row = Math.floor(i / cols); const card = g.children[0] as RectNode; card.h = rowBottoms[row] - card.y; });
+      const bottom = rowBottoms[rowBottoms.length - 1];
+      h = bottom + S(36) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...sh.nodes, ...cards.map((g) => syncGroup(g)));
       break;
     }
     case 'collage': {
@@ -604,37 +680,139 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'stat-tiles': {
       const items = (c.stats && c.stats.length ? c.stats : [{ value: '+320%', label: 'doanh thu từ email' }, { value: '+45%', label: 'tỉ lệ mở' }, { value: '+62%', label: 'tỉ lệ click' }, { value: '2.8×', label: 'ROI 3 tháng' }]).slice(0, 4);
-      const n = items.length, cols = n === 4 ? 2 : n, rows = n === 4 ? 2 : 1, gap = 10;
-      const tw = Math.floor((inner - gap * (cols - 1)) / cols), th = 92;
+      const n = items.length, cols = n === 4 ? 2 : n, rows = n === 4 ? 2 : 1, gap = 12;
+      const sh = sectionHead(y + S(32), { eyebrow: c.eyebrow, heading: c.heading, align: 'left' });
+      const top = sh.nodes.length ? sh.bottom : y + S(20);
+      const tw = Math.floor((inner - gap * (cols - 1)) / cols), th = 104;
       const nodes: Node[] = [];
       items.forEach((st, i) => {
-        const x = PAD + (i % cols) * (tw + gap), ty = y + 16 + Math.floor(i / cols) * (th + gap);
-        nodes.push(rect({ x, y: ty, w: tw, h: th, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Tile', shadow: cardShadow(T), stroke: cardStroke(T) }));
-        nodes.push(text(brand, st.value, { x: x + 16, y: ty + 16, w: tw - 32, fontSize: 30, fontWeight: 800, fontFamily: 'heading', color: { token: 'primary' }, name: 'Value' }));
-        nodes.push(text(brand, st.label, { x: x + 16, y: ty + 58, w: tw - 32, fontSize: 12, color: { token: 'muted' }, name: 'Label' }));
+        const x = PAD + (i % cols) * (tw + gap), ty = top + Math.floor(i / cols) * (th + gap);
+        nodes.push(rect({ x, y: ty, w: tw, h: th, fill: i === 0 ? { token: 'primary' } : c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Tile', shadow: cardShadow(T), stroke: i === 0 ? null : cardStroke(T) }));
+        nodes.push(H(st.value, { x: x + 18, y: ty + 18, w: tw - 36, fontSize: hs(34), lineHeight: 1, color: i === 0 ? { token: 'onPrimary' } : { token: 'primary' }, name: 'Value' }));
+        nodes.push(text(brand, st.label, { x: x + 18, y: ty + 64, w: tw - 36, fontSize: 13, color: i === 0 ? { token: 'onPrimary' } : { token: 'muted' }, name: 'Label', opacity: i === 0 ? 0.85 : 1 }));
       });
-      h = 16 + rows * th + (rows - 1) * gap + 16;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
+      h = (top + rows * th + (rows - 1) * gap) + S(28) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...sh.nodes, ...nodes);
       break;
     }
     case 'articles': {
       const items: ItemC[] = (c.items && c.items.length ? c.items : [1, 2, 3].map((i) => ({ name: `Bài viết ${i}: tiêu đề ngắn gọn, hai dòng`, badge: `EP0${i}`, url: `${B0}/post/${i}` }))).slice(0, 3);
-      const n = items.length, gap = 12, cw = Math.floor((inner - gap * (n - 1)) / n), ih = Math.round(cw * 0.68);
+      const n = items.length, gap = 14, cw = Math.floor((inner - gap * (n - 1)) / n), ih = Math.round(cw * (n === 1 ? 0.56 : 0.72));
+      const sh = sectionHead(y + S(32), { eyebrow: c.eyebrow, heading: c.heading, link: c.link });
+      const top = sh.nodes.length ? sh.bottom : y + S(20);
       const nodes: Node[] = [];
       let bottom = y;
       items.forEach((it, i) => {
-        const x = PAD + i * (cw + gap), top = y + 16;
+        const x = PAD + i * (cw + gap);
         const img = image({ x, y: top, w: cw, h: ih, radius: RI, name: `Article image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, shadow: cardShadow(T) });
         const parts: Node[] = [img];
-        if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 120, fontSize: 10, fontWeight: 800, letterSpacing: 0.5, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 14; const bg = rect({ x: x + 8, y: top + 8, w: bw, h: 20, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = x + 15; bt.w = bw - 14; bt.y = top + 8 + Math.round((20 - bt.h) / 2); parts.push(bg, bt); }
-        const title = text(brand, it.name, { x, y: top + ih + 10, w: cw, fontSize: 14, fontWeight: 700, lineHeight: 1.3, name: 'Title' });
+        if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 120, fontSize: 10, fontWeight: 800, letterSpacing: 0.5, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 14; const bg = rect({ x: x + 10, y: top + 10, w: bw, h: 20, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = x + 17; bt.w = bw - 14; bt.y = top + 10 + Math.round((20 - bt.h) / 2); parts.push(bg, bt); }
+        const title = H(it.name, { x, y: top + ih + 12, w: cw, fontSize: n === 3 ? 15 : 18, lineHeight: 1.3, letterSpacing: 0, name: 'Title' });
         const more = text(brand, it.body || 'Đọc thêm →', { x, y: title.y + title.h + 6, w: cw, fontSize: 12, fontWeight: 700, color: { token: 'primary' }, name: 'Link' });
         parts.push(title, more);
         bottom = Math.max(bottom, more.y + more.h);
         nodes.push(group(`Article ${i + 1}`, parts, { link: it.url || null, alt: it.name }));
       });
-      h = bottom + 20 - y;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
+      h = bottom + S(28) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...sh.nodes, ...nodes);
+      break;
+    }
+    case 'hero-product': {
+      // Dark stage: giant centred headline, product shot floating in a glow, breaking out of the band.
+      const d = DEF.band; const btnC = c.button ?? d.button;
+      const style = c.style === 'band' || c.style === 'primary' as string ? 'band' : c.style === 'gradient' ? 'gradient' : 'ink';
+      const onPrimary = style !== 'ink';
+      const fg = onPrimary ? { token: 'onPrimary' as const } : { token: 'bg' as const };
+      const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: 0, y: 0, w: 400, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: onPrimary ? { token: 'primary' } : { token: 'onPrimary' }, name: 'Eyebrow', align: 'center' });
+      const pw = Math.ceil(measureWidth(brand, pillT)) + 28;
+      const pill = rect({ x: Math.round((W - pw) / 2), y: y + S(46), w: pw, h: 28, fill: onPrimary ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
+      pillT.x = pill.x; pillT.w = pw; pillT.y = pill.y + Math.round((28 - pillT.h) / 2);
+      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 22, w: inner, fontSize: hs(52), lineHeight: 0.98, color: fg, align: 'center', name: 'Headline' });
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD + 40, y: head.y + head.h + 16, w: inner - 80, fontSize: 17, color: fg, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: 0.78 });
+      const btn = centerBtn(button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + S(26), { inverse: onPrimary }));
+      const iw = inner - 60, ih = 330;
+      const img = image({ x: PAD + 30, y: btn.y + btn.h + S(30), w: iw, h: ih, name: 'Product image', alt: c.imageAlt || 'Sản phẩm', link: btnC.url, assetId: c.image ?? null, fit: 'contain', fill: null });
+      const cx = W / 2, cy = img.y + Math.round(ih * 0.5);
+      const glowC = onPrimary ? '#FFFFFF' : brand.primary;
+      const glow: Node[] = [
+        rect({ x: Math.round(cx - 190), y: cy - 190, w: 380, h: 380, fill: glowC, radius: 999, opacity: onPrimary ? 0.1 : 0.16, name: 'Glow' }),
+        rect({ x: Math.round(cx - 130), y: cy - 130, w: 260, h: 260, fill: glowC, radius: 999, opacity: onPrimary ? 0.1 : 0.14, name: 'Glow' }),
+        rect({ x: Math.round(cx - 70), y: cy - 70, w: 140, h: 140, fill: onPrimary ? '#FFFFFF' : brand.accent, radius: 999, opacity: 0.12, name: 'Glow' }),
+      ];
+      const bandH = img.y + Math.round(ih * 0.66) - y;
+      h = img.y + ih + S(26) - y;
+      const bg = style === 'gradient' ? rect({ x: 0, y, w: W, h: bandH, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 }, name: 'Band' }) : rect({ x: 0, y, w: W, h: bandH, fill: style === 'band' ? { token: 'primary' } : { token: 'ink' }, name: 'Band' });
+      kids.push(band(h), bg, ...blobs(T, y, bandH, true), pill, pillT, head, sub, btn, ...glow, img);
+      break;
+    }
+    case 'ticker': {
+      const words = (c.items && c.items.length ? c.items.map((i) => i.name) : c.headline ? c.headline.split(/\s*[✦•·|]\s*/) : ['Freeship toàn quốc', 'Đổi trả 30 ngày', 'Hàng mới mỗi tuần']).filter(Boolean).slice(0, 6);
+      const line = words.map((w) => up(w)).join('   ✦   ');
+      const t = text(brand, line, { x: 0, y: 0, w: 2000, fontSize: 12, fontWeight: 800, letterSpacing: 2.2, color: { token: 'onPrimary' }, name: 'Ticker' });
+      const tw = Math.ceil(measureWidth(brand, t));
+      const reps = tw < W ? Math.ceil((W + 200) / (tw + 60)) : 1;
+      const full = Array.from({ length: reps }, () => line).join('   ✦   ');
+      const tt = text(brand, full, { x: 0, y: 0, w: 4000, fontSize: 12, fontWeight: 800, letterSpacing: 2.2, color: { token: 'onPrimary' }, name: 'Ticker', lineHeight: 1 });
+      const fw = Math.ceil(measureWidth(brand, tt));
+      h = 46;
+      tt.x = PAD; tt.w = fw; tt.y = y + Math.round((h - tt.h) / 2); // starts on a whole word; the right edge runs off like a marquee
+      kids.push(band(h, { token: 'primary' }, 'Band'), tt);
+      break;
+    }
+    case 'offer': {
+      const st = (c.stats && c.stats[0]) || { value: '-30%', label: 'toàn bộ' };
+      const btnC = c.button ?? { label: 'Mua ngay', url: `${B0}/sale` };
+      const cardY = y + S(20), padC = 28, leftW = 200;
+      const card = rect({ x: PAD, y: cardY, w: inner, h: 10, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 20 }, radius: R, name: 'Offer card', shadow: cardShadow(T) });
+      const big = H(st.value, { x: PAD + padC, y: cardY + S(30), w: leftW, fontSize: hs(64), lineHeight: 0.95, color: { token: 'onPrimary' }, letterSpacing: T.track * 1.5, name: 'Big number' });
+      const bl = text(brand, up(st.label), { x: PAD + padC, y: big.y + big.h + 8, w: leftW, fontSize: 11, fontWeight: 800, letterSpacing: 1.6, color: { token: 'onPrimary' }, name: 'Label', opacity: 0.8 });
+      const rx = PAD + padC + leftW + 10, rw = inner - padC * 2 - leftW - 10;
+      const head = H(c.heading || 'Toàn bộ bộ sưu tập', { x: rx, y: cardY + S(32), w: rw, fontSize: 24, lineHeight: 1.12, color: { token: 'onPrimary' }, name: 'Heading' });
+      const sub = text(brand, c.subhead || 'Đến hết Chủ nhật. Không cần mã.', { x: rx, y: head.y + head.h + 8, w: rw, fontSize: 14, lineHeight: 1.5, color: { token: 'onPrimary' }, name: 'Sub', opacity: 0.85 });
+      const btn = button(brand, btnC.label, btnC.url, rx, sub.y + sub.h + 16, { inverse: true, fontSize: 14, h: 42 });
+      const cardH = Math.max(bl.y + bl.h, btn.y + btn.h) + S(30) - cardY;
+      card.h = cardH;
+      const deco = T.blobs ? [rect({ x: PAD + inner - 90, y: cardY - 14, w: 110, h: 110, fill: '#FFFFFF', radius: 999, opacity: 0.12, name: 'Blob' })] : [];
+      h = cardH + S(40);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), card, ...deco, big, bl, head, sub, btn);
+      break;
+    }
+    case 'reviews': {
+      const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Minh Anh', body: 'Mua lần đầu vì tò mò, mua lần hai vì chất lượng.', badge: 'Khách từ 2024' }, { name: 'Quốc Bảo', body: 'Giao nhanh, đóng gói đẹp, đúng như ảnh.', badge: 'Đã mua 3 lần' }, { name: 'Hà My', body: 'Dùng mỗi ngày, bền hơn mong đợi.', badge: 'Khách mới' }]).slice(0, 3);
+      const n = items.length, gap = 14, cw = Math.floor((inner - gap * (n - 1)) / n), padC = n === 3 ? 16 : 20;
+      const sh = sectionHead(y + S(36), { eyebrow: c.eyebrow, heading: c.heading, align: 'center' });
+      const top = sh.nodes.length ? sh.bottom + 4 : y + S(24);
+      const cards: GroupNode[] = [];
+      let bottom = top;
+      items.forEach((it, i) => {
+        const x = PAD + i * (cw + gap);
+        const stars = text(brand, '★★★★★', { x: x + padC, y: top + padC, w: cw - padC * 2, fontSize: 14, color: { token: 'accent' }, letterSpacing: 1.5, name: 'Stars' });
+        const q = text(brand, `“${(it.body || '').replace(/^[“"]|[”"]$/g, '')}”`, { x: x + padC, y: stars.y + stars.h + 10, w: cw - padC * 2, fontSize: n === 3 ? 14 : 15, lineHeight: 1.5, color: { token: 'ink' }, name: 'Quote' });
+        const who = text(brand, it.name, { x: x + padC, y: q.y + q.h + 12, w: cw - padC * 2, fontSize: 13, fontWeight: 800, name: 'Name' });
+        const sub = it.badge || it.price ? text(brand, it.badge || it.price || '', { x: x + padC, y: who.y + who.h + 2, w: cw - padC * 2, fontSize: 12, color: { token: 'muted' }, name: 'Sub' }) : null;
+        const ch = (sub ? sub.y + sub.h : who.y + who.h) + padC - top;
+        bottom = Math.max(bottom, top + ch);
+        cards.push(group(`Review ${i + 1}`, [rect({ x, y: top, w: cw, h: ch, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), stars, q, who, ...(sub ? [sub] : [])], { alt: it.name }));
+      });
+      cards.forEach((g) => { const card = g.children[0] as RectNode; card.h = bottom - top; });
+      h = bottom + S(36) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...sh.nodes, ...cards.map((g) => syncGroup(g)));
+      break;
+    }
+    case 'overlap': {
+      const d = DEF.feature; const linkC = c.link ?? d.link;
+      const img = image({ x: 0, y, w: W, h: 340, name: 'Overlap image', alt: c.imageAlt || d.imageAlt, assetId: c.image ?? null, link: linkC.url });
+      const cardX = PAD + 12, cardW = inner - 24, padC = 26;
+      const cardY = img.y + img.h - 72;
+      let cy = cardY + padC;
+      const eb = text(brand, up(c.eyebrow || 'Câu chuyện'), { x: cardX + padC, y: cy, w: cardW - padC * 2, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: { token: 'primary' }, name: 'Eyebrow' });
+      cy = eb.y + eb.h + 10;
+      const head = H(c.heading || c.headline || d.heading, { x: cardX + padC, y: cy, w: cardW - padC * 2, fontSize: hs(28), lineHeight: 1.12, name: 'Heading' });
+      const body = text(brand, c.body || d.body, { x: cardX + padC, y: head.y + head.h + 10, w: cardW - padC * 2, fontSize: 15, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
+      const more = c.button ? button(brand, c.button.label, c.button.url, cardX + padC, body.y + body.h + 18, { fontSize: 14, h: 42 }) : text(brand, linkC.label, { x: cardX + padC, y: body.y + body.h + 14, w: cardW - padC * 2, fontSize: 14, fontWeight: 700, color: { token: 'primary' }, name: 'Link', link: linkC.url });
+      const cardH = more.y + more.h + padC - cardY;
+      h = cardY + cardH + S(32) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), img, rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: { token: 'bg' }, radius: R, name: 'Card', shadow: posterShadow(T) || cardShadow(T), stroke: cardStroke(T) }), eb, head, body, more);
       break;
     }
     case 'divider': {
@@ -681,13 +859,19 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
 /** A block spec: kind + content. Templates and the AI composer both produce lists of these. */
 export interface BlockSpec { kind: BlockKind; content?: BlockContent }
 
-const TINTABLE = new Set<BlockKind>(['products-2', 'products-3', 'feature-row', 'checklist', 'social', 'stats', 'steps', 'articles', 'quote', 'icon-row', 'badges', 'bento', 'categories', 'gallery', 'collage', 'spotlight', 'stat-tiles', 'countdown', 'code', 'text']);
+const TINTABLE = new Set<BlockKind>(['products-2', 'products-3', 'feature-row', 'checklist', 'social', 'stats', 'steps', 'articles', 'quote', 'icon-row', 'badges', 'bento', 'categories', 'gallery', 'collage', 'spotlight', 'stat-tiles', 'countdown', 'code', 'text', 'reviews', 'offer', 'overlap']);
+const DARK = new Set<BlockKind>(['dark-band', 'hero-product', 'ticker']);
 export function buildDoc(specs: BlockSpec[], brand: Brand): Doc {
   const nodes: Node[] = [];
   let y = 0;
-  // Rhythm: content blocks alternate white / soft bands so long emails never read as one flat sheet.
+  // Rhythm: content blocks alternate white / soft bands so long emails never read as one flat sheet; a dark band resets the beat.
   let tintNext = false;
-  specs = specs.map((sp) => { if (!TINTABLE.has(sp.kind)) return sp; const out = { ...sp, content: { ...(sp.content || {}), tint: tintNext } }; tintNext = !tintNext; return out; });
+  specs = specs.map((sp) => {
+    const st = sp.content?.style;
+    if (DARK.has(sp.kind) || st === 'dark' || st === 'ink' || st === 'band' || st === 'gradient') { tintNext = false; return sp; }
+    if (!TINTABLE.has(sp.kind)) return sp;
+    const out = { ...sp, content: { ...(sp.content || {}), tint: tintNext } }; tintNext = !tintNext; return out;
+  });
   for (const s of specs) { const g = makeBlock(s.kind, brand, y, s.content); nodes.push(g); y += g.h; }
   return { width: W, height: Math.max(y, 400), bg: { token: 'bg' }, nodes };
 }
@@ -720,9 +904,10 @@ export const TEMPLATES: TemplateDef[] = [
     blocks: [
       { kind: 'nav', content: { brand: sampleBrand, links: navLinks } },
       { kind: 'hero-band', content: { eyebrow: 'Chỉ 3 ngày', headline: 'Giảm 30% toàn bộ đồ gốm', subhead: 'Đến hết Chủ nhật 19/10. Nhập mã TERRA30 khi thanh toán. Freeship mọi đơn.', button: { label: 'Mua ngay', url: `${B}/sale` }, imageAlt: 'Bộ cốc và đĩa gốm đang giảm giá' } },
-      { kind: 'products-2', content: { items: [{ name: 'Cốc men tro 300ml', oldPrice: '245.000₫', price: '171.000₫', badge: '-30%', url: `${B}/p/coc-men-tro` }, { name: 'Đĩa ăn 24cm', oldPrice: '320.000₫', price: '224.000₫', badge: '-30%', url: `${B}/p/dia-24` }] } },
-      { kind: 'quote', content: { quote: 'Mua lần đầu vì tò mò, mua lần hai vì chất lượng. Giao nhanh, đóng gói đẹp, đúng như ảnh.', author: '— Minh Anh, khách hàng từ 2024' } },
-      { kind: 'cta', content: { heading: 'Còn 72 giờ', subhead: 'Hàng giảm giá không áp dụng đổi trả. Mỗi mã dùng một lần.', button: { label: 'Xem tất cả sale', url: `${B}/sale` } } },
+      { kind: 'ticker', content: { items: [{ name: 'Giảm 30%' }, { name: 'Freeship mọi đơn' }, { name: 'Đến hết Chủ nhật' }, { name: 'Mã TERRA30' }] } },
+      { kind: 'products-2', content: { eyebrow: 'Đang giảm sâu', heading: 'Hai món bán chạy nhất', link: { label: 'Xem tất cả →', url: `${B}/sale` }, items: [{ name: 'Cốc men tro 300ml', oldPrice: '245.000₫', price: '171.000₫', badge: '-30%', url: `${B}/p/coc-men-tro` }, { name: 'Đĩa ăn 24cm', oldPrice: '320.000₫', price: '224.000₫', badge: '-30%', url: `${B}/p/dia-24` }] } },
+      { kind: 'reviews', content: { eyebrow: '2.300 đánh giá', heading: 'Khách nói gì', items: [{ name: 'Minh Anh', body: 'Mua lần đầu vì tò mò, mua lần hai vì chất lượng.', badge: 'Khách từ 2024' }, { name: 'Quốc Bảo', body: 'Giao nhanh, đóng gói đẹp, đúng như ảnh.', badge: 'Đã mua 3 lần' }, { name: 'Hà My', body: 'Cốc giữ nhiệt tốt, cầm rất vừa tay.', badge: 'Khách mới' }] } },
+      { kind: 'cta', content: { style: 'band', heading: 'Còn 72 giờ', subhead: 'Hàng giảm giá không áp dụng đổi trả. Mỗi mã dùng một lần.', button: { label: 'Xem tất cả sale', url: `${B}/sale` } } },
       { kind: 'footer', content: footer },
     ],
   },
@@ -764,13 +949,13 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'launch', name: 'Ra mắt sản phẩm', desc: 'Dải màu · 3 điểm nổi bật · số liệu · đặt trước', preset: 'Royal', brand: { headingFamily: 'Montserrat', name: 'Terra' },
+    kind: 'launch', name: 'Ra mắt sản phẩm', desc: 'Hero sản phẩm nền tối · 2 điểm nổi bật · số liệu · đặt trước', preset: 'Royal', brand: { headingFamily: 'Montserrat', name: 'Terra' },
     fields: { campaignName: 'Ra mắt Terra Thermo', subject: 'Ra mắt: Bình giữ nhiệt Terra Thermo 500ml', preheader: 'Giữ nóng 12 giờ, đặt trước giảm 20% đến 25/10' },
     blocks: [
       { kind: 'nav', content: { brand: sampleBrand, links: navLinks } },
-      { kind: 'hero-band', content: { eyebrow: 'Sản phẩm mới', headline: 'Terra Thermo. Gốm bên ngoài, thép bên trong.', subhead: 'Bình giữ nhiệt 500ml đầu tiên của Terra. Giữ nóng 12 giờ, lạnh 24 giờ. Đặt trước giảm 20%.', button: { label: 'Đặt trước', url: `${B}/thermo` }, imageAlt: 'Bình giữ nhiệt Terra Thermo màu đất' } },
+      { kind: 'hero-product', content: { style: 'ink', eyebrow: 'Sản phẩm mới', headline: 'Terra Thermo.', subhead: 'Bình giữ nhiệt 500ml đầu tiên của Terra. Giữ nóng 12 giờ, lạnh 24 giờ. Đặt trước giảm 20%.', button: { label: 'Đặt trước', url: `${B}/thermo` }, imageAlt: 'Bình giữ nhiệt Terra Thermo màu đất' } },
       { kind: 'feature-row', content: { heading: 'Vỏ gốm nung 1.250°C', body: 'Cầm ấm tay như cốc gốm, không bị trơn như kim loại.', link: { label: 'Xem chất liệu →', url: `${B}/thermo#material` }, imageAlt: 'Cận cảnh vỏ gốm' } },
-      { kind: 'feature-row', content: { heading: 'Lõi thép 316 hai lớp', body: 'Chân không giữa hai lớp. Không ám mùi, rửa máy được.', link: { label: 'Xem cấu tạo →', url: `${B}/thermo#core` }, imageAlt: 'Mặt cắt lõi thép' } },
+      { kind: 'feature-row', content: { style: 'right', heading: 'Lõi thép 316 hai lớp', body: 'Chân không giữa hai lớp. Không ám mùi, rửa máy được.', link: { label: 'Xem cấu tạo →', url: `${B}/thermo#core` }, imageAlt: 'Mặt cắt lõi thép' } },
       { kind: 'feature-row', content: { heading: 'Nắp xoay kín, một tay mở', body: 'Thử 2.000 lần đóng mở, không rò.', link: { label: 'Xem video →', url: `${B}/thermo#lid` }, imageAlt: 'Nắp bình đang mở' } },
       { kind: 'stats', content: { stats: [{ value: '12 giờ', label: 'giữ nóng' }, { value: '24 giờ', label: 'giữ lạnh' }, { value: '-20%', label: 'đặt trước' }] } },
       { kind: 'cta', content: { heading: 'Giao từ 1/11', subhead: 'Đặt trước đến 25/10. Thanh toán khi nhận hàng.', button: { label: 'Đặt trước 480.000₫', url: `${B}/thermo` } } },
@@ -847,9 +1032,10 @@ export const TEMPLATES: TemplateDef[] = [
     blocks: [
       { kind: 'nav', content: { brand: 'VOLT', links: [{ label: 'Drop', url: `${B}/drop` }, { label: 'Lookbook', url: `${B}/lookbook` }, { label: 'Size', url: `${B}/size` }] } },
       { kind: 'dark-band', content: { eyebrow: 'Drop 03 · 24.10 · 20:00', headline: 'VOLT WIND. 300 CHIẾC. KHÔNG RESTOCK.', subhead: 'Áo khoác gió 3 lớp, chống nước 10k, phản quang toàn thân. Mở bán 48 giờ hoặc đến khi hết.', button: { label: 'Vào hàng chờ', url: `${B}/drop/03` } } },
+      { kind: 'ticker', content: { items: [{ name: 'Drop 03' }, { name: '300 chiếc' }, { name: 'Không restock' }, { name: '24.10 · 20:00' }] } },
       { kind: 'badges', content: { stats: [{ value: '300', label: 'chiếc' }, { value: '48h', label: 'mở bán' }, { value: 'Freeship', label: '' }, { value: 'Đổi size 7 ngày', label: '' }] } },
       { kind: 'gallery', content: { items: [{ name: 'Mặt trước', url: `${B}/drop/03` }, { name: 'Mặt sau phản quang', url: `${B}/drop/03` }, { name: 'Chi tiết khoá', url: `${B}/drop/03` }] } },
-      { kind: 'products-3', content: { items: [{ name: 'Wind · Đen', price: '1.290.000₫', url: `${B}/p/wind-black` }, { name: 'Wind · Xám tro', price: '1.290.000₫', url: `${B}/p/wind-ash` }, { name: 'Wind · Neon', price: '1.390.000₫', url: `${B}/p/wind-neon` }] } },
+      { kind: 'products-3', content: { eyebrow: 'Ba màu', heading: 'Chọn màu của bạn', items: [{ name: 'Wind · Đen', price: '1.290.000₫', url: `${B}/p/wind-black` }, { name: 'Wind · Xám tro', price: '1.290.000₫', url: `${B}/p/wind-ash` }, { name: 'Wind · Neon', price: '1.390.000₫', badge: 'Mới', url: `${B}/p/wind-neon` }] } },
       { kind: 'cta-wide', content: { button: { label: 'Vào hàng chờ trước 20:00', url: `${B}/drop/03` }, subhead: 'Hàng chờ được mua trước 15 phút. Mỗi tài khoản 1 chiếc.' } },
       { kind: 'footer', content: { brand: 'VOLT', address: 'VOLT Studio · 12 Nguyễn Huệ, Q1, TP.HCM · drop@volt.vn' } },
     ],

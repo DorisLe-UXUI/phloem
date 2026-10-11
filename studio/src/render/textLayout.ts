@@ -32,10 +32,12 @@ export function fontString(n: Pick<TextNode, 'fontFamily' | 'fontSize' | 'fontWe
 export function layoutText(n: TextNode, brand: Brand, ctx: CanvasRenderingContext2D = mctx(), scale = 1): TextLayout {
   const font = fontString(n, brand, scale);
   ctx.font = font;
-  try { (ctx as any).letterSpacing = `${n.letterSpacing * scale}px`; } catch { /* unsupported */ }
+  let native = false;
+  try { (ctx as any).letterSpacing = `${n.letterSpacing * scale}px`; native = typeof (ctx as any).letterSpacing === 'string'; } catch { /* unsupported */ }
   const maxW = Math.max(1, n.w * scale);
   const lines: Line[] = [];
-  const measure = (s: string) => ctx.measureText(s).width + (n.letterSpacing ? n.letterSpacing * scale * s.length : 0);
+  // Chrome ≥ 99 applies ctx.letterSpacing inside measureText; older engines need the manual add.
+  const measure = (s: string) => ctx.measureText(s).width + (!native && n.letterSpacing ? n.letterSpacing * scale * s.length : 0);
   for (const para of n.text.split('\n')) {
     if (!para) { lines.push({ text: '', width: 0 }); continue; }
     const words = para.split(/(\s+)/).filter((w) => w.length);

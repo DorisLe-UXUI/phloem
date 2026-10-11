@@ -69,7 +69,7 @@ export function brandFromSite(p: SiteProfile): Partial<Brand> {
   const dark = p.darks[0] && lum(p.darks[0]) < 0.08 ? p.darks[0] : '#141414';
   const heading = mapFont(p.fonts[0]?.name, 'heading'), body = mapFont(p.fonts[1]?.name || p.fonts[0]?.name, 'body');
   return {
-    primary, accent, onPrimary, ink: dark, muted: mix(dark, '#ffffff', 0.45), bg: '#FFFFFF', soft: mix(primary, '#ffffff', 0.9), line: mix(primary, '#ffffff', 0.82),
+    primary, accent, onPrimary, ink: dark, muted: mix(dark, '#ffffff', 0.45), bg: '#FFFFFF', soft: mix(mix(primary, '#8a8a8a', 0.55), '#ffffff', 0.93), line: mix(mix(primary, '#8a8a8a', 0.5), '#ffffff', 0.84),
     ...(heading ? { headingFamily: heading } : {}), ...(body ? { fontFamily: body } : {}),
     name: (p.siteName || p.title.split(/[|·•–-]/)[0] || 'BRAND').trim().slice(0, 40),
   };

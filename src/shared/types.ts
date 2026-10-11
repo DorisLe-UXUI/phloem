@@ -92,6 +92,11 @@ export type SuggestionAction =
   | { kind: 'create-mobile' };
 
 export type BlockKind =
+  | 'hero-product'
+  | 'ticker'
+  | 'offer'
+  | 'reviews'
+  | 'overlap'
   | 'spotlight'
   | 'steps'
   | 'collage'
