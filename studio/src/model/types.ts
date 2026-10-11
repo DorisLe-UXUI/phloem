@@ -2,7 +2,8 @@
 export type NodeType = 'rect' | 'text' | 'image' | 'group';
 
 /** A colour is a hex string or a reference to a brand token. */
-export type Color = string | { token: BrandToken };
+/** A hex string, or a brand token (optionally with alpha 0..1 for glows and scrims that still follow the palette). */
+export type Color = string | { token: BrandToken; alpha?: number };
 export type BrandToken = 'primary' | 'accent' | 'onPrimary' | 'ink' | 'muted' | 'bg' | 'soft' | 'line';
 
 export interface Brand {
@@ -61,7 +62,8 @@ export interface RectNode extends BaseNode {
   type: 'rect';
   fill: Color | null;
   /** Linear gradient on top of (or instead of) the flat fill. */
-  gradient: { from: Color; to: Color; angle: number } | null;
+  /** Linear by default; `radial` fades from the centre (`from`) to the edge (`to`): soft glows, spotlights. */
+  gradient: { from: Color; to: Color; angle: number; radial?: boolean } | null;
   stroke: { color: Color; width: number } | null;
   radius: number;
   shadow?: Shadow | null;
@@ -256,5 +258,9 @@ export const isDarkColor = (hex: string | null | undefined) => luminance(hex) < 
 export function resolveColor(c: Color | null | undefined, brand: Brand): string | null {
   if (c == null) return null;
   if (typeof c === 'string') return c;
-  return brand[c.token] as string;
+  const hex = brand[c.token] as string;
+  if (c.alpha === undefined || c.alpha >= 1) return hex;
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.max(0, c.alpha)})`;
 }

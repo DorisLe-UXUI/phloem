@@ -67,6 +67,15 @@ const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - overlap: {eyebrow, heading, body, link:{label,url} hoặc button, image, imageAlt} ảnh tràn khung + card chữ đè lên mép dưới ảnh. Rất "editorial", hợp kể chuyện, giới thiệu, lifestyle.
 - feature-row nhận style:"right" để đảo ảnh sang phải (xen kẽ trái/phải khi dùng 2 feature-row liên tiếp).
 - dark-band nhận image (ảnh card nổi dưới nút).
+- hero-card: {style:"band"|"soft"|"dark", eyebrow, headline (≤ 6 từ), subhead, button, image, imageAlt, badge:"-30%" (tuỳ chọn)} ảnh lớn trên dải màu, CARD TRẮNG đè lên mép dưới ảnh, chữ căn giữa, nút chữ HOA. Kiểu email thời trang/lifestyle/bán lẻ (MeUndies, Crate&Barrel).
+- zigzag: {eyebrow, heading, items:[{name, body (1 câu), price, badge:"MỚI", url, image}]} 2–4 hàng: ảnh tràn mép một bên, chữ bên kia, xen kẽ. Lookbook, bộ sưu tập, dịch vụ. MỖI item PHẢI có ảnh.
+- statement: {headline:"-50%" hoặc "FREESHIP" (≤ 12 ký tự), eyebrow:"MEMBER ONLY", body, button, style:"light"|"dark"} một dòng chữ khổng lồ căn giữa.
+- menu: {eyebrow, heading, items:[{name, body, price, url, image}], button:{label}} 2–4 hàng card: chữ trái, ảnh TRÒN phải, giá + nút nhỏ. Món ăn, đồ uống, dịch vụ spa, gói.
+- hero-product nhận style:"soft" (nền pastel nhạt của thương hiệu, chữ tối: F&B, mỹ phẩm, trẻ em) và badge:"-30%" (badge tròn đè góc ảnh).
+- gallery nhận 2 / 4 / 6 ảnh (lưới 2 cột) và caption: items có price thì hiện tên + giá dưới ảnh.
+- quote nhận style:"center" (không card: dấu ngoặc lớn, chữ căn giữa, kẻ mảnh trên dưới, tên khách IN HOA giãn chữ). text nhận style:"center" (căn giữa + kẻ ngắn màu brand).
+- nav nhận style:"menu" (logo giữa, hàng link IN HOA có kẻ mảnh: boutique, thời trang) — nav tự đổi màu theo hero ngay dưới, không cần đặt.
+- footer nhận style:"band" (dải màu brand phía trên: "Theo dõi" + icon social, link:{label:"Tải app",url} bên phải).
 - collage: {items:[{name, url, image}]} 3 ảnh xếp lệch (1 lớn trái, 2 nhỏ phải): bộ sưu tập, không gian, hậu trường.
 - divider: {} · spacer: {}
 - footer: {brand, address, unsubscribeUrl, preferencesUrl, unsubscribeLabel ("Huỷ đăng ký" | "Unsubscribe"), preferencesLabel ("Cập nhật thông tin" | "Update preferences") theo ngôn ngữ copy}`;
@@ -92,7 +101,12 @@ CÔNG THỨC "WOW" (mỗi phương án chọn MỘT công thức khác nhau, đ�
 4. LUXURY (luxury; làm đẹp, thời trang cao cấp, khách sạn, trang sức): nav → glass-hero hoặc hero-overlay → text ngắn (eyebrow + 1 câu) → spotlight → collage → quote → cta band → footer. Nhiều khoảng trắng, serif, không ticker.
 5. AGENCY / DỊCH VỤ (bold/clean; giới thiệu dịch vụ, B2B, studio, tư vấn): nav (dark nếu web tối) → dark-band (headline ≤ 6 từ, ảnh đội ngũ/og nếu có) → stat-tiles (kết quả thật) → steps 4 (cách làm việc) → articles (heading "Dự án đã làm", ảnh case study, badge tên khách) → reviews hoặc quote → cta dark ("Đặt lịch 20 phút") → footer.
 6. SAAS / APP (clean/bold): nav → hero-center (gradient hoặc light, ảnh UI card nổi) → icon-row (4 lợi ích) → feature-row + feature-row style right (ảnh UI thật) → stats dark → checklist → cta dark → footer.
-7. GAME / TRẺ EM (playful): nav → hero-overlay (ảnh nhân vật) → icon-row (emoji) → categories/gallery → code + badges → cta-wide → footer.
+7. GAME / TRẺ EM (playful): nav → hero-overlay (ảnh nhân vật) → icon-row (emoji) → gallery 4 ảnh → code + badges → cta-wide → footer.
+8. LOOKBOOK / THỜI TRANG (editorial hoặc luxury; ảnh là tất cả): nav menu → hero-card (ảnh người mẫu, "SHOP TEES") hoặc hero (ảnh lớn, chữ căn giữa) → zigzag 3 hàng (ảnh thật từng món) → statement ("-50%" · "MEMBER ONLY") → gallery 4 ảnh có caption giá → quote center → footer band.
+9. F&B ẤM ÁP (playful/clean, nền soft): nav → hero-product style soft (ảnh món tách nền hoặc nền đơn, badge "-30%") → menu 3 món (ảnh tròn, giá, "Đặt ngay") → quote center (lời khách) → cta band → footer band.
+10. BOUTIQUE TỐI GIẢN (clean/luxury): nav menu → hero (ảnh lớn, chữ căn giữa, nút viền) → text center (1 đoạn ngắn) → gallery 4 ảnh caption → icon-row 4 lợi ích (freeship, đổi trả…) → footer.
+11. TỐI SANG TRỌNG (luxury/editorial; serif): nav dark → hero-overlay (serif, eyebrow ngày tháng) → text center → articles 3 (caption nhỏ) → cta band → footer dark.
+NGUYÊN TẮC từ email thương hiệu thật (MeUndies, Crate&Barrel, Blue Apron, lookbook thời trang, Paris Fashion Week): ảnh thật là nhân vật chính và chiếm ≥ 50% màn hình đầu; chữ căn giữa, eyebrow IN HOA giãn chữ; rất ít trang trí (không pill/badge khắp nơi; tối đa 1 dải màu + 1 dải tối mỗi email); khoảng trắng rộng; nút ngắn 1–3 từ; card trắng đè ảnh; zig-zag; lưới ảnh có caption nhỏ; icon-row chỉ để nói chính sách. Thời trang / lifestyle / nội thất → editorial hoặc luxury (không bold); F&B / mỹ phẩm / trẻ em → playful hoặc clean với hero nền soft; agency / tech / streetwear → bold.
 BẮT BUỘC: mỗi email có ít nhất một dải tối hoặc gradient (hero-product / dark-band / stats dark / cta dark / hero-center gradient), trừ công thức LUXURY. Không bao giờ đặt block text ngay trước products/articles/steps/reviews/stat-tiles: dùng heading/eyebrow của chính block đó. Tối đa 1 block text mỗi email. Headline của hero-product/dark-band ≤ 6 từ, hero khác ≤ 8 từ. Steps: body ≤ 10 từ. Stats chỉ dùng số thật.
 CHECKLIST PREMIUM (tự kiểm trước khi trả): headline ≤ 8 từ, nói một lợi ích cụ thể, không mở đầu bằng "Chào mừng bạn đến với"; không câu sáo rỗng ("chất lượng cao", "giá tốt nhất"); mỗi block một ý, không lặp ý; số liệu/giá/mã lấy từ nguồn thật; hero và mọi card có ảnh nếu có ảnh; 1 CTA chính, lặp ở cuối với cùng lời kêu gọi; eyebrow ngắn (2–4 từ); subject và preheader bổ sung nhau; 3 phương án khác nhau cả cấu trúc, vibe lẫn font; ít nhất một phương án dùng block "mới" (spotlight / glass-hero / collage / steps) khi ngành phù hợp.`;
 
@@ -150,7 +164,7 @@ async function thumbOf(assetId: string): Promise<AiImage | null> {
   } catch { return null; }
 }
 
-const CRITIC = `Bạn là creative director khó tính của một agency email hàng đầu. Bạn nhận JSON 3 phương án email (cùng schema bạn sẽ trả về). Hãy chấm từng phương án theo checklist premium và SỬA TRỰC TIẾP những chỗ yếu: headline nhạt hoặc dài → viết lại sắc hơn; copy sáo rỗng → cụ thể; block thừa hoặc lặp ý → bỏ/thay; thiếu ảnh ở hero/card khi có imageId → gán ảnh hợp ngữ cảnh; 2 phương án quá giống nhau → đổi cấu trúc một cái; vibe/font không hợp ngành → đổi; subject/preheader yếu → viết lại; email không có dải tối/gradient (trừ luxury) → đổi cta sang style "dark" hoặc hero sang hero-product/dark-band; block text đứng ngay trước products/articles/steps/reviews → xoá text và chuyển heading vào block đó; steps có body dài → rút còn ≤ 10 từ; stats bịa số → bỏ; hero-product/dark-band headline > 6 từ → rút. Giữ nguyên imageId, URL, giá, tên sản phẩm thật. Trả về CHỈ JSON cùng schema {"variants":[…]}, không giải thích.`;
+const CRITIC = `Bạn là creative director khó tính của một agency email hàng đầu. Bạn nhận JSON 3 phương án email (cùng schema bạn sẽ trả về). Hãy chấm từng phương án theo checklist premium và SỬA TRỰC TIẾP những chỗ yếu: headline nhạt hoặc dài → viết lại sắc hơn; copy sáo rỗng → cụ thể; block thừa hoặc lặp ý → bỏ/thay; thiếu ảnh ở hero/card khi có imageId → gán ảnh hợp ngữ cảnh; 2 phương án quá giống nhau → đổi cấu trúc một cái; vibe/font không hợp ngành → đổi; subject/preheader yếu → viết lại; email không có dải tối/gradient (trừ luxury) → đổi cta sang style "dark" hoặc hero sang hero-product/dark-band; block text đứng ngay trước products/articles/steps/reviews → xoá text và chuyển heading vào block đó; steps có body dài → rút còn ≤ 10 từ; stats bịa số → bỏ; hero-product/dark-band headline > 6 từ → rút; thời trang/lifestyle mà dùng bold hoặc nhiều pill/badge → chuyển sang công thức LOOKBOOK/BOUTIQUE (hero-card hoặc hero, zigzag, gallery caption); zigzag/menu/gallery có item thiếu ảnh trong khi còn ảnh phù hợp → gán ảnh. Giữ nguyên imageId, URL, giá, tên sản phẩm thật. Trả về CHỈ JSON cùng schema {"variants":[…]}, không giải thích.`;
 
 function normalizeVariants(parsed: { variants?: Variant[] } | null, inp: GenInput, presets: string[], lang: 'vi' | 'en'): Variant[] {
   const variants = (parsed?.variants || []).filter((v) => v && Array.isArray(v.blocks) && v.blocks.length).slice(0, 3);
@@ -161,10 +175,10 @@ function normalizeVariants(parsed: { variants?: Variant[] } | null, inp: GenInpu
       const c = (b.content ||= {});
       if (c.image && !validIds.has(String(c.image))) c.image = null;
       if (c.items) for (const it of c.items) if (it.image && !validIds.has(String(it.image))) it.image = null;
-      if (c.style && !['light', 'band', 'gradient', 'ink', 'dark', 'card', 'right'].includes(String(c.style))) delete c.style;
+      if (c.style && !['light', 'band', 'gradient', 'ink', 'dark', 'card', 'right', 'soft', 'menu', 'center', 'plain'].includes(String(c.style))) delete c.style;
     }
     // A text block right before a list block becomes that block's heading (one idea, one block).
-    const HEADED = new Set(['products-2', 'products-3', 'articles', 'steps', 'reviews', 'stat-tiles', 'stats', 'bento', 'categories', 'gallery', 'collage']);
+    const HEADED = new Set(['products-2', 'products-3', 'articles', 'steps', 'reviews', 'stat-tiles', 'stats', 'bento', 'categories', 'gallery', 'collage', 'zigzag', 'menu']);
     for (let i = 0; i < v.blocks.length - 1; i++) {
       const a = v.blocks[i], b = v.blocks[i + 1];
       if (a.kind === 'text' && HEADED.has(b.kind)) { const bc = (b.content ||= {}); if (!bc.heading) { bc.heading = a.content?.heading || a.content?.headline; if (!bc.eyebrow && a.content?.eyebrow) bc.eyebrow = a.content.eyebrow; } v.blocks.splice(i, 1); i--; }

@@ -92,6 +92,10 @@ export type SuggestionAction =
   | { kind: 'create-mobile' };
 
 export type BlockKind =
+  | 'hero-card'
+  | 'zigzag'
+  | 'statement'
+  | 'menu'
   | 'hero-product'
   | 'ticker'
   | 'offer'

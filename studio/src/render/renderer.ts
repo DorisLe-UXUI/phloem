@@ -45,10 +45,19 @@ function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: n
   if (fill) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = fill; ctx.fill(); });
   else if (n.shadow && n.gradient) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.gradient!.from, brand) || '#000'; ctx.fill(); });
   if (n.gradient) {
-    const a = ((n.gradient.angle || 0) * Math.PI) / 180;
-    const cx = x + w / 2, cy = y + h / 2, len = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
-    const g = ctx.createLinearGradient(cx - (Math.cos(a) * len) / 2, cy - (Math.sin(a) * len) / 2, cx + (Math.cos(a) * len) / 2, cy + (Math.sin(a) * len) / 2);
-    g.addColorStop(0, col(n.gradient.from, brand) || '#000'); g.addColorStop(1, col(n.gradient.to, brand) || '#000');
+    const cx = x + w / 2, cy = y + h / 2;
+    let g: CanvasGradient;
+    if (n.gradient.radial) {
+      g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) / 2);
+      const from = n.gradient.from;
+      const mid: Color = typeof from === 'object' ? { token: from.token, alpha: (from.alpha ?? 1) * 0.45 } : from;
+      g.addColorStop(0, col(from, brand) || 'rgba(0,0,0,0)'); g.addColorStop(0.55, col(mid, brand) || 'rgba(0,0,0,0)'); g.addColorStop(1, col(n.gradient.to, brand) || 'rgba(0,0,0,0)');
+    } else {
+      const a = ((n.gradient.angle || 0) * Math.PI) / 180;
+      const len = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
+      g = ctx.createLinearGradient(cx - (Math.cos(a) * len) / 2, cy - (Math.sin(a) * len) / 2, cx + (Math.cos(a) * len) / 2, cy + (Math.sin(a) * len) / 2);
+      g.addColorStop(0, col(n.gradient.from, brand) || '#000'); g.addColorStop(1, col(n.gradient.to, brand) || '#000');
+    }
     rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = g; ctx.fill();
   }
   if (n.stroke && n.stroke.width > 0) {

@@ -36,15 +36,21 @@ const darken = (hex: string, t: number) => { const m = /^#?([0-9a-f]{6})$/i.exec
 const cardShadow = (T: Theme): Shadow | null => (T.shadow ? { blur: 24, y: 10, color: '#000000', opacity: 0.1 } : null);
 const cardStroke = (T: Theme): RectNode['stroke'] => (T.stroke ? { color: { token: 'line' }, width: 1 } : null);
 const btnShadow = (T: Theme, brand: Brand): Shadow | null => (T.glow ? { blur: 24, y: 8, color: brand.primary, opacity: 0.38 } : T.shadow ? { blur: 14, y: 6, color: '#000000', opacity: 0.16 } : null);
-/** Decorative translucent circles inside a band (never outside it, so neighbours stay clean). */
+/** Soft light pools inside a band (radial fades, never flat discs; kept inside the band so neighbours stay clean). */
 function blobs(T: Theme, y: number, bandH: number, light: boolean): RectNode[] {
-  if (!T.blobs || bandH < 160) return [];
-  const c = light ? '#FFFFFF' : '#000000';
+  if (!T.blobs || bandH < 180) return [];
+  const sz = Math.min(380, bandH - 16);
+  const a = light ? 0.5 : 0.28;
   return [
-    rect({ x: W - 150, y: y + 18, w: 132, h: 132, fill: c, radius: 999, opacity: 0.1, name: 'Blob' }),
-    rect({ x: W - 232, y: y + bandH - 104, w: 84, h: 84, fill: c, radius: 999, opacity: 0.08, name: 'Blob' }),
-    rect({ x: W - 60, y: y + bandH - 60, w: 40, h: 40, fill: c, radius: 999, opacity: 0.12, name: 'Blob' }),
+    rect({ x: W - Math.round(sz * 0.8), y: y + 8, w: sz, h: sz, fill: null, gradient: { from: { token: 'accent', alpha: a }, to: { token: 'accent', alpha: 0 }, angle: 0, radial: true }, name: 'Glow' }),
+    rect({ x: 0, y: y + bandH - sz - 8, w: Math.round(sz * 0.8), h: Math.round(sz * 0.8), fill: null, gradient: { from: light ? '#FFFFFF55' : '#FFFFFF22', to: '#FFFFFF00', angle: 0, radial: true }, name: 'Glow' }),
   ];
+}
+/** A round "-30%" style badge (two short lines) pinned on a photo. */
+function badgeCircle(brand: Brand, label: string, cx: number, cy: number, d: number, dark: boolean): Node[] {
+  const t = text(brand, label, { x: cx - d / 2 + 6, y: cy - d / 2, w: d - 12, h: d, fontSize: label.length > 8 ? 13 : 16, fontWeight: 800, fontFamily: 'heading', align: 'center', autoHeight: false, vAlign: 'middle', lineHeight: 1.1, color: dark ? { token: 'ink' } : { token: 'onPrimary' }, name: 'Badge' });
+  const bg = rect({ x: cx - d / 2, y: cy - d / 2, w: d, h: d, fill: dark ? { token: 'bg' } : { token: 'accent' }, radius: 999, name: 'Badge circle', shadow: { blur: 18, y: 8, color: '#000000', opacity: 0.22 } });
+  return [bg, t];
 }
 
 const base = (name: string) => ({ id: uid(), name, visible: true, locked: false, opacity: 1, link: null as string | null, alt: '' });
@@ -120,7 +126,9 @@ export interface BlockContent {
   /** Footer social links (label is the network name). */
   social?: LinkC[];
   /** Variant of a block: hero-center/hero-product 'light' | 'band' | 'gradient' | 'ink'; cta/stats/nav 'dark'; feature-row 'right' (image on the right). */
-  style?: 'light' | 'band' | 'gradient' | 'ink' | 'dark' | 'card' | 'right';
+  style?: 'light' | 'band' | 'gradient' | 'ink' | 'dark' | 'card' | 'right' | 'soft' | 'menu' | 'center' | 'plain';
+  /** Round badge on the hero/spotlight photo ("-30%", "NEW"). */
+  badge?: string;
   /** Set by buildDoc: this block sits on a soft tinted band (alternating rhythm). */
   tint?: boolean;
 }
@@ -161,6 +169,10 @@ export const BLOCKS: { kind: BlockKind; name: string; desc: string }[] = [
   { kind: 'offer', name: 'Ưu đãi lớn', desc: 'Số -30% khổng lồ trên gradient' },
   { kind: 'reviews', name: 'Đánh giá', desc: '2–3 card sao + lời khách' },
   { kind: 'overlap', name: 'Ảnh + card đè', desc: 'Ảnh tràn khung, card chữ đè lên' },
+  { kind: 'hero-card', name: 'Hero card trắng', desc: 'Ảnh trên dải màu, card trắng đè lên, chữ căn giữa' },
+  { kind: 'zigzag', name: 'Zig-zag ảnh / chữ', desc: '2–4 hàng ảnh tràn mép xen chữ' },
+  { kind: 'statement', name: 'Chữ khổng lồ', desc: '-50% · MEMBER ONLY' },
+  { kind: 'menu', name: 'Thực đơn / dịch vụ', desc: 'Card chữ + ảnh tròn, giá, nút nhỏ' },
   { kind: 'divider', name: 'Divider', desc: 'Đường kẻ mảnh' },
   { kind: 'spacer', name: 'Spacer', desc: 'Khoảng trống 24px' },
   { kind: 'footer', name: 'Footer', desc: 'Địa chỉ, huỷ đăng ký' },
@@ -245,15 +257,28 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
   };
   switch (kind) {
     case 'nav': {
-      const dark = c.style === 'dark';
+      const st = c.style === 'ink' ? 'dark' : (c.style || 'light');
+      const behind: Color = st === 'dark' ? { token: 'ink' } : st === 'band' ? { token: 'primary' } : st === 'soft' ? { token: 'soft' } : { token: 'bg' };
+      const linkTok = st === 'dark' ? contrastToken(brand, { token: 'ink' }) : st === 'band' ? 'onPrimary' : 'muted';
+      const links = (c.links && c.links.length ? c.links : DEF.links).slice(0, 5);
+      const home = c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com';
+      if (st === 'menu') {
+        // Boutique header: logo centred, a thin ruled row of category links under it.
+        h = 112;
+        kids.push(band(h), logoNode(brand, c, PAD, y + 36, 28, 'center', home, { token: 'bg' }));
+        const ws = links.map((l) => { const t = text(brand, up(l.label), { x: 0, y: y + 80, w: 200, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: { token: 'ink' }, name: l.label, link: l.url }); return { t, w: Math.ceil(measureWidth(brand, t)) + 2 }; });
+        const gap = 28; let x = Math.round((W - (ws.reduce((a, b) => a + b.w, 0) + gap * (ws.length - 1))) / 2);
+        kids.push(rect({ x: PAD, y: y + 68, w: inner, h: 1, fill: { token: 'line' }, name: 'Rule' }), rect({ x: PAD, y: y + h - 1, w: inner, h: 1, fill: { token: 'line' }, name: 'Rule' }));
+        for (const { t, w } of ws) { t.x = x; t.w = w; kids.push(t); x += w + gap; }
+        break;
+      }
       h = 72;
-      kids.push(band(h, dark ? { token: 'ink' } : { token: 'bg' }));
-      kids.push(rect({ x: 0, y, w: W, h: 4, fill: { token: 'primary' }, name: 'Accent bar' }));
-      kids.push(logoNode(brand, c, PAD, y + 38, 30, 'left', c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com', dark ? { token: 'ink' } : { token: 'bg' }));
-      const links = (c.links && c.links.length ? c.links : DEF.links).slice(0, 4);
+      kids.push(band(h, behind));
+      if (st === 'light' || st === 'soft') kids.push(rect({ x: 0, y, w: W, h: 4, fill: { token: 'primary' }, name: 'Accent bar' }));
+      kids.push(logoNode(brand, c, PAD, y + 38, 30, 'left', home, behind));
       let x = W - PAD;
-      for (let i = links.length - 1; i >= 0; i--) {
-        const t = text(brand, links[i].label, { x: 0, y: y + 30, w: 120, fontSize: 13, fontWeight: 600, color: dark ? { token: contrastToken(brand, { token: 'ink' }) } : { token: 'muted' }, align: 'right', name: links[i].label, link: links[i].url, opacity: dark ? 0.78 : 1 });
+      for (let i = Math.min(4, links.length) - 1; i >= 0; i--) {
+        const t = text(brand, links[i].label, { x: 0, y: y + 30, w: 120, fontSize: 13, fontWeight: 600, color: { token: linkTok }, align: 'right', name: links[i].label, link: links[i].url, opacity: st === 'light' || st === 'soft' ? 1 : 0.8 });
         const tw = Math.ceil(measureWidth(brand, t)) + 2; t.w = tw; t.x = x - tw; x -= tw + 24;
         kids.push(t);
       }
@@ -290,13 +315,15 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'text': {
       const d = DEF.text;
-      let cy = y + S(36);
-      const eyebrow = c.eyebrow !== '' ? text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: cy, w: inner, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: { token: 'primary' }, name: 'Eyebrow' }) : null;
-      if (eyebrow) cy = eyebrow.y + eyebrow.h + 10;
-      const head = H(c.heading || d.heading, { x: PAD, y: cy, w: inner, fontSize: hs(32), lineHeight: 1.12, name: 'Heading' });
-      const body = text(brand, c.body || d.body, { x: PAD, y: head.y + head.h + 14, w: inner - 24, fontSize: 17, lineHeight: 1.6, color: { token: 'muted' }, name: 'Paragraph' });
-      h = body.y + body.h + S(36) - y;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...(eyebrow ? [eyebrow] : []), head, body);
+      const center = c.style === 'center';
+      let cy = y + S(center ? 44 : 36);
+      const eyebrow = c.eyebrow !== '' ? text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: cy, w: inner, fontSize: 11, fontWeight: 800, letterSpacing: center ? 3 : 1.8, color: { token: 'primary' }, align: center ? 'center' : 'left', name: 'Eyebrow' }) : null;
+      if (eyebrow) cy = eyebrow.y + eyebrow.h + (center ? 14 : 10);
+      const head = H(c.heading || d.heading, { x: center ? PAD + 30 : PAD, y: cy, w: center ? inner - 60 : inner, fontSize: hs(32), lineHeight: 1.12, align: center ? 'center' : 'left', name: 'Heading' });
+      const rule = center ? rect({ x: Math.round(W / 2 - 22), y: head.y + head.h + 16, w: 44, h: 2, fill: { token: 'primary' }, name: 'Rule' }) : null;
+      const body = text(brand, c.body || d.body, { x: center ? PAD + 40 : PAD, y: (rule ? rule.y + rule.h + 16 : head.y + head.h + 14), w: center ? inner - 80 : inner - 24, fontSize: center ? 16 : 17, lineHeight: 1.6, color: { token: 'muted' }, align: center ? 'center' : 'left', name: 'Paragraph' });
+      h = body.y + body.h + S(center ? 44 : 36) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...(eyebrow ? [eyebrow] : []), head, ...(rule ? [rule] : []), body);
       break;
     }
     case 'cta': {
@@ -398,11 +425,23 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'quote': {
       const d = DEF.quote;
+      const author = (c.author || d.author).replace(/^[—–-]\s*/, '');
+      if (c.style === 'center' || c.style === 'plain') {
+        const top = y + S(40);
+        const rule1 = rect({ x: Math.round(W / 2 - 60), y: top, w: 120, h: 1, fill: { token: 'line' }, name: 'Rule' });
+        const stars = c.eyebrow ? text(brand, c.eyebrow, { x: PAD, y: top + 18, w: inner, fontSize: 15, color: { token: 'accent' }, letterSpacing: 3, align: 'center', name: 'Stars' }) : null;
+        const mark = text(brand, '“', { x: PAD, y: (stars ? stars.y + stars.h : top + 10) + 4, w: inner, fontSize: 64, fontWeight: 800, color: { token: 'primary' }, fontFamily: 'heading', lineHeight: 1, align: 'center', name: 'Quote mark' });
+        const q = text(brand, c.quote || d.quote, { x: PAD + 40, y: mark.y + 44, w: inner - 80, fontSize: 21, fontWeight: 500, lineHeight: 1.5, italic: T.stroke, fontFamily: 'heading', align: 'center', letterSpacing: T.track / 3, name: 'Quote' });
+        const who = text(brand, up(author), { x: PAD, y: q.y + q.h + 18, w: inner, fontSize: 11, fontWeight: 800, letterSpacing: 2.4, color: { token: 'muted' }, align: 'center', name: 'Author' });
+        const rule2 = rect({ x: Math.round(W / 2 - 60), y: who.y + who.h + 22, w: 120, h: 1, fill: { token: 'line' }, name: 'Rule' });
+        h = rule2.y + S(40) - y;
+        kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rule1, ...(stars ? [stars] : []), mark, q, who, rule2);
+        break;
+      }
       const cardY = y + S(20), padC = 28;
       const stars = c.eyebrow ? text(brand, c.eyebrow, { x: PAD + padC, y: cardY + S(26), w: inner - padC * 2, fontSize: 16, color: { token: 'accent' }, letterSpacing: 2, name: 'Stars' }) : null;
       const mark = text(brand, '“', { x: PAD + padC - 4, y: (stars ? stars.y + stars.h : cardY + S(14)) + 2, w: 60, fontSize: 72, fontWeight: 800, color: { token: 'primary' }, fontFamily: 'heading', lineHeight: 1, name: 'Quote mark', opacity: 0.9 });
       const q = text(brand, c.quote || d.quote, { x: PAD + padC, y: mark.y + 50, w: inner - padC * 2, fontSize: 21, fontWeight: 500, lineHeight: 1.45, italic: T.stroke, fontFamily: 'heading', letterSpacing: T.track / 3, name: 'Quote' });
-      const author = (c.author || d.author).replace(/^[—–-]\s*/, '');
       const av = rect({ x: PAD + padC, y: q.y + q.h + 18, w: 34, h: 34, fill: { token: 'primary' }, radius: 999, name: 'Avatar', opacity: 0.9 });
       const avT = text(brand, author.trim().slice(0, 1).toUpperCase() || '★', { x: av.x, y: av.y, w: 34, h: 34, fontSize: 14, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: 'Initial' });
       const who = text(brand, author, { x: av.x + 44, y: av.y + 8, w: inner - padC * 2 - 44, fontSize: 14, fontWeight: 700, color: { token: 'ink' }, name: 'Author' });
@@ -414,7 +453,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     case 'hero-overlay': {
       const d = DEF.hero; const btnC = c.button ?? d.button;
       const HH = 520;
-      const img = image({ x: 0, y, w: W, h: HH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: darken(brand.primary, 0.72), opacity: 0.88, gradient: true } });
+      const img = image({ x: 0, y, w: W, h: HH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: darken(brand.primary, 0.72), opacity: 0.8, gradient: true } });
       const btn = button(brand, btnC.label, btnC.url, PAD, y + HH - S(36) - T.btnH);
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: 0, w: inner - 60, fontSize: 17, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
       sub.y = btn.y - 20 - sub.h;
@@ -523,11 +562,22 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       break;
     }
     case 'gallery': {
-      const items: ItemC[] = (c.items && c.items.length ? c.items : [1, 2, 3].map((i) => ({ name: `Ảnh ${i}`, url: `${B0}/gallery/${i}` }))).slice(0, 3);
-      const gap = 12, n = items.length, size = Math.floor((inner - gap * (n - 1)) / n);
-      const nodes = items.map((it, i) => image({ x: PAD + i * (size + gap), y: y + 16, w: size, h: size, radius: R, shadow: cardShadow(T), name: `Gallery ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, link: it.url || null }));
-      h = size + 32;
-      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
+      const items: ItemC[] = (c.items && c.items.length ? c.items : [1, 2, 3].map((i) => ({ name: `Ảnh ${i}`, url: `${B0}/gallery/${i}` }))).slice(0, 6);
+      const n = items.length, gap = 12, cols = n === 2 || n === 4 ? 2 : 3, rows = Math.ceil(n / cols);
+      const cw = Math.floor((inner - gap * (cols - 1)) / cols), ch = cols === 2 ? Math.round(cw * 0.82) : cw;
+      const captions = items.some((it) => it.price) || c.style === 'card';
+      const sh = sectionHead(y + S(32), { eyebrow: c.eyebrow, heading: c.heading, link: c.link, align: 'center' });
+      const top = sh.nodes.length ? sh.bottom : y + S(16);
+      const capH = captions ? 46 : 0;
+      const nodes: Node[] = [];
+      items.forEach((it, i) => {
+        const x = PAD + (i % cols) * (cw + gap), yy = top + Math.floor(i / cols) * (ch + capH + gap);
+        const parts: Node[] = [image({ x, y: yy, w: cw, h: ch, radius: T.stroke ? 0 : RI, shadow: captions ? null : cardShadow(T), name: `Gallery ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null })];
+        if (captions) { parts.push(text(brand, it.name, { x, y: yy + ch + 10, w: cw, fontSize: 13, fontWeight: 700, align: 'center', name: 'Caption' })); if (it.price) parts.push(text(brand, it.price, { x, y: yy + ch + 28, w: cw, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Price' })); }
+        nodes.push(group(`Gallery · ${it.name}`, parts, { link: it.url || null, alt: it.name }));
+      });
+      h = top + rows * (ch + capH) + (rows - 1) * gap + S(28) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...sh.nodes, ...nodes);
       break;
     }
     case 'hero-center': {
@@ -731,31 +781,33 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       break;
     }
     case 'hero-product': {
-      // Dark stage: giant centred headline, product shot floating in a glow, breaking out of the band.
+      // Stage for a product shot: giant centred headline, product floating in a soft glow, breaking out of the band.
       const d = DEF.band; const btnC = c.button ?? d.button;
-      const style = c.style === 'band' || c.style === 'primary' as string ? 'band' : c.style === 'gradient' ? 'gradient' : 'ink';
-      const onPrimary = style !== 'ink';
-      const fg = onPrimary ? { token: 'onPrimary' as const } : { token: 'bg' as const };
+      const style = c.style === 'band' ? 'band' : c.style === 'gradient' ? 'gradient' : c.style === 'soft' || c.style === 'light' ? 'soft' : 'ink';
+      const onPrimary = style === 'band' || style === 'gradient';
+      const soft = style === 'soft';
+      const fg = onPrimary ? { token: 'onPrimary' as const } : soft ? { token: 'ink' as const } : { token: 'bg' as const };
       const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: 0, y: 0, w: 400, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: onPrimary ? { token: 'primary' } : { token: 'onPrimary' }, name: 'Eyebrow', align: 'center' });
       const pw = Math.ceil(measureWidth(brand, pillT)) + 28;
       const pill = rect({ x: Math.round((W - pw) / 2), y: y + S(46), w: pw, h: 28, fill: onPrimary ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
       pillT.x = pill.x; pillT.w = pw; pillT.y = pill.y + Math.round((28 - pillT.h) / 2);
-      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 22, w: inner, fontSize: hs(52), lineHeight: 0.98, color: fg, align: 'center', name: 'Headline' });
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD + 40, y: head.y + head.h + 16, w: inner - 80, fontSize: 17, color: fg, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: 0.78 });
+      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 22, w: inner, fontSize: hs(50), lineHeight: 0.98, color: fg, align: 'center', name: 'Headline' });
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD + 40, y: head.y + head.h + 16, w: inner - 80, fontSize: 17, color: soft ? { token: 'muted' } : fg, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: soft ? 1 : 0.78 });
       const btn = centerBtn(button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + S(26), { inverse: onPrimary }));
       const iw = inner - 60, ih = 330;
       const img = image({ x: PAD + 30, y: btn.y + btn.h + S(30), w: iw, h: ih, name: 'Product image', alt: c.imageAlt || 'Sản phẩm', link: btnC.url, assetId: c.image ?? null, fit: 'contain', fill: null });
       const cx = W / 2, cy = img.y + Math.round(ih * 0.5);
-      const glowC = onPrimary ? '#FFFFFF' : brand.primary;
+      h = img.y + ih + S(26) - y;
+      const r1 = Math.min(240, y + h - cy - 6, cy - y - 6), r2 = Math.round(r1 * 0.62);
+      const glowTok = onPrimary ? 'bg' : 'primary';
       const glow: Node[] = [
-        rect({ x: Math.round(cx - 190), y: cy - 190, w: 380, h: 380, fill: glowC, radius: 999, opacity: onPrimary ? 0.1 : 0.16, name: 'Glow' }),
-        rect({ x: Math.round(cx - 130), y: cy - 130, w: 260, h: 260, fill: glowC, radius: 999, opacity: onPrimary ? 0.1 : 0.14, name: 'Glow' }),
-        rect({ x: Math.round(cx - 70), y: cy - 70, w: 140, h: 140, fill: onPrimary ? '#FFFFFF' : brand.accent, radius: 999, opacity: 0.12, name: 'Glow' }),
+        rect({ x: Math.round(cx - r1), y: cy - r1, w: r1 * 2, h: r1 * 2, fill: null, gradient: { from: { token: glowTok, alpha: onPrimary ? 0.45 : soft ? 0.5 : 0.75 }, to: { token: glowTok, alpha: 0 }, angle: 0, radial: true }, name: 'Glow' }),
+        rect({ x: Math.round(cx - r2), y: cy - r2, w: r2 * 2, h: r2 * 2, fill: null, gradient: { from: { token: 'accent', alpha: onPrimary ? 0.3 : 0.45 }, to: { token: 'accent', alpha: 0 }, angle: 0, radial: true }, name: 'Glow' }),
       ];
       const bandH = img.y + Math.round(ih * 0.66) - y;
-      h = img.y + ih + S(26) - y;
-      const bg = style === 'gradient' ? rect({ x: 0, y, w: W, h: bandH, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 }, name: 'Band' }) : rect({ x: 0, y, w: W, h: bandH, fill: style === 'band' ? { token: 'primary' } : { token: 'ink' }, name: 'Band' });
-      kids.push(band(h), bg, ...blobs(T, y, bandH, true), pill, pillT, head, sub, btn, ...glow, img);
+      const bg = style === 'gradient' ? rect({ x: 0, y, w: W, h: bandH, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 }, name: 'Band' }) : rect({ x: 0, y, w: W, h: bandH, fill: style === 'band' ? { token: 'primary' } : soft ? { token: 'soft' } : { token: 'ink' }, name: 'Band' });
+      const badge = c.badge ? badgeCircle(brand, c.badge, img.x + iw - 54, img.y + 36, 88, soft || onPrimary) : [];
+      kids.push(band(h), bg, ...(soft ? [] : blobs(T, y, bandH, true)), pill, pillT, head, sub, btn, ...glow, img, ...badge);
       break;
     }
     case 'ticker': {
@@ -828,6 +880,87 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), img, rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: { token: 'bg' }, radius: R, name: 'Card', shadow: posterShadow(T) || cardShadow(T), stroke: cardStroke(T) }), eb, head, body, more);
       break;
     }
+    case 'hero-card': {
+      // Photo on a brand-colour band, a white card overlapping its bottom with centred copy (MeUndies-style).
+      const d = DEF.hero; const btnC = c.button ?? d.button;
+      const bandTok = c.style === 'soft' || c.style === 'light' ? 'soft' : c.style === 'dark' || c.style === 'ink' ? 'ink' : 'primary';
+      const img = image({ x: PAD, y: y + S(24), w: inner, h: 400, radius: T.stroke ? 0 : Math.max(R, 10), name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null });
+      const cardX = PAD + 14, cardW = inner - 28, padC = 30;
+      const cardY = img.y + img.h - 80;
+      const eb = text(brand, up(c.eyebrow || d.eyebrow), { x: cardX + padC, y: cardY + S(34), w: cardW - padC * 2, fontSize: 11, fontWeight: 800, letterSpacing: 3.2, color: { token: 'ink' }, align: 'center', name: 'Eyebrow', opacity: 0.8 });
+      const head = H(c.headline || d.headline, { x: cardX + padC, y: eb.y + eb.h + 14, w: cardW - padC * 2, fontSize: hs(36), lineHeight: 1.08, align: 'center', name: 'Headline' });
+      const sub = text(brand, c.subhead || d.subhead, { x: cardX + padC + 10, y: head.y + head.h + 14, w: cardW - padC * 2 - 20, fontSize: 15, lineHeight: 1.6, color: { token: 'muted' }, align: 'center', name: 'Subhead' });
+      const btn = centerBtn(button(brand, up(btnC.label), btnC.url, 0, sub.y + sub.h + S(24), { fontSize: 13, radius: T.btnRadius >= 999 ? 999 : Math.min(T.btnRadius, 4) }));
+      const cardH = btn.y + btn.h + S(34) - cardY;
+      const bandH = cardY + Math.round(cardH * 0.5) - y;
+      h = cardY + cardH + S(36) - y;
+      const badge = c.badge ? badgeCircle(brand, c.badge, img.x + img.w - 56, img.y + 40, 88, false) : [];
+      kids.push(band(h), rect({ x: 0, y, w: W, h: bandH, fill: { token: bandTok }, name: 'Band' }), img, ...badge, rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: { token: 'bg' }, radius: T.stroke ? 0 : R, name: 'Card', shadow: posterShadow(T) }), eb, head, sub, btn);
+      break;
+    }
+    case 'zigzag': {
+      // Lookbook rows: edge-to-edge photo on one side, copy on the other, alternating.
+      const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Áo khoác gió', body: 'Ba lớp, chống nước, phản quang.', price: '1.290.000₫', url: `${B0}/p/1` }, { name: 'Quần jogger', body: 'Co giãn bốn chiều, túi khoá.', price: '690.000₫', url: `${B0}/p/2` }, { name: 'Mũ len', body: 'Len merino, một cỡ.', price: '290.000₫', url: `${B0}/p/3` }]).slice(0, 4);
+      const rowH = 236, half = W / 2;
+      const sh = sectionHead(y + S(32), { eyebrow: c.eyebrow, heading: c.heading, align: 'center' });
+      let cy = sh.nodes.length ? sh.bottom : y;
+      const rows: Node[] = [];
+      items.forEach((it, i) => {
+        const left = i % 2 === 0;
+        const img = image({ x: left ? 0 : half, y: cy, w: half, h: rowH, name: `Zig image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, link: it.url || null });
+        const tx = (left ? half : 0) + 30, tw = half - 60;
+        const parts: TextNode[] = [];
+        if (it.badge) parts.push(text(brand, up(it.badge), { x: tx, y: 0, w: tw, fontSize: 10, fontWeight: 800, letterSpacing: 2, color: { token: 'primary' }, name: 'Eyebrow' }));
+        const nm = H(it.name, { x: tx, y: 0, w: tw, fontSize: 20, lineHeight: 1.18, letterSpacing: T.track / 2, name: 'Name' }); parts.push(nm);
+        if (it.body) parts.push(text(brand, it.body, { x: tx, y: 0, w: tw, fontSize: 13, lineHeight: 1.55, color: { token: 'muted' }, name: 'Body' }));
+        if (it.price) parts.push(text(brand, it.price, { x: tx, y: 0, w: tw, fontSize: 14, fontWeight: 800, color: { token: 'ink' }, name: 'Price' }));
+        const link = text(brand, up(c.link?.label || 'Xem ngay →'), { x: tx, y: 0, w: tw, fontSize: 11, fontWeight: 800, letterSpacing: 1.6, color: { token: 'primary' }, name: 'Link', link: it.url || null }); parts.push(link);
+        const totalH = parts.reduce((a, t) => a + t.h, 0) + (parts.length - 1) * 10;
+        let ty = cy + Math.round((rowH - totalH) / 2);
+        for (const t of parts) { t.y = ty; ty += t.h + 10; }
+        rows.push(group(`Row ${i + 1} · ${it.name}`, [rect({ x: left ? half : 0, y: cy, w: half, h: rowH, fill: i % 2 === 0 ? { token: 'bg' } : { token: 'soft' }, name: 'Row bg' }), img, ...parts], { link: it.url || null, alt: it.name }));
+        cy += rowH;
+      });
+      h = cy - y;
+      kids.push(band(h), ...sh.nodes, ...rows);
+      break;
+    }
+    case 'statement': {
+      // One giant line of type, tracked label under it: "-50%" / "MEMBER ONLY".
+      const dark = c.style === 'dark';
+      const fg = dark ? { token: 'bg' as const } : { token: 'ink' as const };
+      const big = H(c.headline || '-50%', { x: PAD, y: y + S(52), w: inner, fontSize: hs(76), lineHeight: 0.95, letterSpacing: T.track * 2, color: dark ? { token: 'bg' } : { token: 'primary' }, align: 'center', name: 'Statement' });
+      const lbl = text(brand, up(c.eyebrow || c.heading || 'Member only'), { x: PAD, y: big.y + big.h + 14, w: inner, fontSize: 13, fontWeight: 800, letterSpacing: 5, color: fg, align: 'center', name: 'Label' });
+      const body = c.body || c.subhead ? text(brand, c.body || c.subhead || '', { x: PAD + 60, y: lbl.y + lbl.h + 14, w: inner - 120, fontSize: 14, lineHeight: 1.55, color: dark ? { token: 'bg' } : { token: 'muted' }, align: 'center', name: 'Body', opacity: dark ? 0.75 : 1 }) : null;
+      const btn = c.button ? centerBtn(button(brand, c.button.label, c.button.url, 0, (body ? body.y + body.h : lbl.y + lbl.h) + S(22), { inverse: dark })) : null;
+      const last = btn ? btn.y + btn.h : body ? body.y + body.h : lbl.y + lbl.h;
+      h = last + S(52) - y;
+      kids.push(band(h, dark ? { token: 'ink' } : c.tint ? { token: 'soft' } : { token: 'bg' }), big, lbl, ...(body ? [body] : []), ...(btn ? [btn] : []));
+      break;
+    }
+    case 'menu': {
+      // Dish / service rows: copy left, round photo right, price and a small button (food-delivery style).
+      const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Phở bò tái', body: 'Nước dùng ninh 12 giờ, bánh phở tươi.', price: '65.000₫', url: `${B0}/menu/pho` }, { name: 'Bún chả', body: 'Chả nướng than, nước mắm pha nhà làm.', price: '55.000₫', url: `${B0}/menu/bun-cha` }, { name: 'Cà phê sữa', body: 'Robusta Buôn Ma Thuột, sữa đặc.', price: '29.000₫', url: `${B0}/menu/ca-phe` }]).slice(0, 4);
+      const sh = sectionHead(y + S(32), { eyebrow: c.eyebrow, heading: c.heading, link: c.link, align: 'center' });
+      let cy = sh.nodes.length ? sh.bottom : y + S(20);
+      const gap = 14, padC = 20, photo = 108;
+      const cards: Node[] = [];
+      items.forEach((it, i) => {
+        const cardY = cy;
+        const tx = PAD + padC, tw = inner - padC * 2 - photo - 18;
+        const nm = H(it.name, { x: tx, y: cardY + padC, w: tw, fontSize: 18, lineHeight: 1.2, letterSpacing: T.track / 2, name: 'Name' });
+        const bd = text(brand, it.body || '', { x: tx, y: nm.y + nm.h + 6, w: tw, fontSize: 13, lineHeight: 1.5, color: { token: 'muted' }, name: 'Body' });
+        const btn = button(brand, c.button?.label || 'Đặt ngay', it.url || c.button?.url || `${B0}/menu`, tx, bd.y + bd.h + 12, { fontSize: 12, h: 32 });
+        const pr = it.price ? text(brand, it.price, { x: btn.x + btn.w + 12, y: btn.y + 7, w: 120, fontSize: 15, fontWeight: 800, color: { token: 'primary' }, name: 'Price' }) : null;
+        const cardH = Math.max(btn.y + btn.h + padC, cardY + photo + padC * 2) - cardY;
+        const img = image({ x: PAD + inner - padC - photo, y: cardY + Math.round((cardH - photo) / 2), w: photo, h: photo, radius: 999, name: `Dish ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, shadow: cardShadow(T) });
+        cards.push(group(`Menu · ${it.name}`, [rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), img, nm, bd, syncGroup(btn), ...(pr ? [pr] : [])], { link: it.url || null, alt: `${it.name}${it.price ? ' — ' + it.price : ''}` }));
+        cy = cardY + cardH + gap;
+      });
+      h = cy - gap + S(28) - y;
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...sh.nodes, ...cards);
+      break;
+    }
     case 'divider': {
       h = 33;
       kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), T.stroke ? rect({ x: Math.round(W / 2 - 24), y: y + 15, w: 48, h: 2, fill: { token: 'primary' }, name: 'Ornament' }) : rect({ x: PAD, y: y + 16, w: inner, h: 1, fill: { token: 'line' }, name: 'Line' }));
@@ -840,7 +973,9 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'footer': {
       const d = DEF.footer;
-      const brandT = logoNode(brand, c, PAD, y + 40, 24, 'center', c.links?.[0]?.url || 'https://example.com', { token: 'soft' });
+      const strip = c.style === 'band' || c.style === 'dark';
+      const stripH = strip ? 58 : 0;
+      const brandT = logoNode(brand, c, PAD, y + stripH + 40, 24, 'center', c.links?.[0]?.url || 'https://example.com', { token: 'soft' });
       const addr = text(brand, c.address || d.address, { x: PAD, y: brandT.y + brandT.h + 10, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Address' });
       const unsub = text(brand, c.unsubscribeLabel || 'Huỷ đăng ký', { x: 0, y: addr.y + addr.h + 12, w: 90, fontSize: 12, color: { token: 'muted' }, align: 'right', underline: true, name: 'Unsubscribe', link: c.unsubscribeUrl || d.unsubscribeUrl });
       const prefs = text(brand, c.preferencesLabel || 'Cập nhật thông tin', { x: 0, y: unsub.y, w: 120, fontSize: 12, color: { token: 'muted' }, align: 'left', underline: true, name: 'Preferences', link: c.preferencesUrl || d.preferencesUrl });
@@ -848,9 +983,20 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       unsub.w = uw; prefs.w = pw;
       const total = uw + 20 + pw; unsub.x = Math.round((W - total) / 2); prefs.x = unsub.x + uw + 20;
       const socials: Node[] = [];
-      if (c.social && c.social.length) {
-        const GLYPH: Record<string, string> = { youtube: '▶', instagram: '◎', tiktok: '♪', facebook: 'f', x: 'X', twitter: 'X', linkedin: 'in', zalo: 'Z', website: '⌂' };
-        const sz = 32, gap = 10, list = c.social.slice(0, 6);
+      const GLYPH: Record<string, string> = { youtube: '▶', instagram: '◎', tiktok: '♪', facebook: 'f', x: 'X', twitter: 'X', linkedin: 'in', zalo: 'Z', website: '⌂' };
+      const list = (c.social || []).slice(0, 6);
+      if (strip) {
+        // Brand strip on top: "Theo dõi" + icons, like the social bars of big retail emails.
+        const stripFill = c.style === 'dark' ? { token: 'ink' as const } : { token: 'primary' as const };
+        const fgTok = c.style === 'dark' ? contrastToken(brand, { token: 'ink' }) : 'onPrimary';
+        socials.push(rect({ x: 0, y, w: W, h: stripH, fill: stripFill, name: 'Social strip' }));
+        const lbl = text(brand, c.heading || 'Theo dõi', { x: PAD, y: y + 20, w: 200, fontSize: 13, fontWeight: 700, color: { token: fgTok }, name: 'Follow' });
+        socials.push(lbl);
+        const sz = 30, gap = 10; let sx = PAD + Math.ceil(measureWidth(brand, lbl)) + 18;
+        for (const so of list) { const key = so.label.toLowerCase().replace(/[^a-z]/g, ''); const ring = rect({ x: sx, y: y + 14, w: sz, h: sz, fill: null, radius: 999, stroke: { color: { token: fgTok }, width: 1 }, name: `${so.label} ring`, opacity: 0.7 }); const g = text(brand, GLYPH[key] || so.label.slice(0, 1).toUpperCase(), { x: sx, y: y + 14, w: sz, h: sz, fontSize: 12, fontWeight: 800, color: { token: fgTok }, align: 'center', autoHeight: false, vAlign: 'middle', name: so.label }); socials.push(group(`Social · ${so.label}`, [ring, g], { link: so.url, alt: so.label })); sx += sz + gap; }
+        if (c.link) { const t = text(brand, c.link.label, { x: W - PAD - 200, y: y + 21, w: 200, fontSize: 12, fontWeight: 700, color: { token: fgTok }, align: 'right', name: 'Strip link', link: c.link.url }); socials.push(t); }
+      } else if (list.length) {
+        const sz = 32, gap = 10;
         let sx = Math.round((W - (list.length * sz + (list.length - 1) * gap)) / 2);
         const sy = unsub.y + unsub.h + 18;
         for (const so of list) {
@@ -861,8 +1007,9 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
           sx += sz + gap;
         }
       }
-      h = (socials.length ? unsub.y + unsub.h + 18 + 32 : unsub.y + unsub.h) + 30 - y;
-      kids.push(band(h, { token: 'soft' }), rect({ x: 0, y: y + h - 4, w: W, h: 4, fill: { token: 'primary' }, name: 'Accent bar' }), brandT, addr, unsub, prefs, ...socials);
+      const bottomRow = !strip && list.length ? unsub.y + unsub.h + 18 + 32 : unsub.y + unsub.h;
+      h = bottomRow + 30 - y;
+      kids.push(band(h, { token: 'soft' }), rect({ x: 0, y: y + h - 4, w: W, h: 4, fill: { token: 'primary' }, name: 'Accent bar' }), ...socials, brandT, addr, unsub, prefs);
       break;
     }
   }
@@ -872,13 +1019,27 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
 /** A block spec: kind + content. Templates and the AI composer both produce lists of these. */
 export interface BlockSpec { kind: BlockKind; content?: BlockContent }
 
-const TINTABLE = new Set<BlockKind>(['products-2', 'products-3', 'feature-row', 'checklist', 'social', 'stats', 'steps', 'articles', 'quote', 'icon-row', 'badges', 'bento', 'categories', 'gallery', 'collage', 'spotlight', 'stat-tiles', 'countdown', 'code', 'text', 'reviews', 'offer', 'overlap']);
-const DARK = new Set<BlockKind>(['dark-band', 'hero-product', 'ticker']);
+const TINTABLE = new Set<BlockKind>(['products-2', 'products-3', 'feature-row', 'checklist', 'social', 'stats', 'steps', 'articles', 'quote', 'icon-row', 'badges', 'bento', 'categories', 'gallery', 'collage', 'spotlight', 'stat-tiles', 'countdown', 'code', 'text', 'reviews', 'offer', 'overlap', 'menu', 'statement']);
+const DARK = new Set<BlockKind>(['dark-band', 'hero-product', 'ticker', 'hero-card', 'hero-band']);
 export function buildDoc(specs: BlockSpec[], brand: Brand): Doc {
   const nodes: Node[] = [];
   let y = 0;
   // Rhythm: content blocks alternate white / soft bands so long emails never read as one flat sheet; a dark band resets the beat.
   let tintNext = false;
+  // The nav takes the colour of the band right under it (dark stage, brand band, soft band), so the top reads as one composition.
+  specs = specs.map((sp, i) => {
+    if (sp.kind !== 'nav' || sp.content?.style) return sp;
+    const nx = specs[i + 1]; if (!nx) return sp;
+    const st = nx.content?.style;
+    let navStyle: BlockContent['style'] | undefined;
+    if (nx.kind === 'hero-product') navStyle = st === 'band' || st === 'gradient' ? 'band' : st === 'soft' || st === 'light' ? 'soft' : 'dark';
+    else if (nx.kind === 'dark-band' || nx.kind === 'hero-overlay' || nx.kind === 'glass-hero') navStyle = 'dark';
+    else if (nx.kind === 'hero-band') navStyle = 'band';
+    else if (nx.kind === 'hero-card') navStyle = st === 'soft' || st === 'light' ? 'soft' : st === 'dark' || st === 'ink' ? 'dark' : 'band';
+    else if (nx.kind === 'hero-center' && (st === 'band' || st === 'gradient' || st === 'ink')) navStyle = 'band';
+    else if (nx.kind === 'stats' && st === 'dark') navStyle = 'dark';
+    return navStyle ? { ...sp, content: { ...(sp.content || {}), style: navStyle } } : sp;
+  });
   specs = specs.map((sp) => {
     const st = sp.content?.style;
     if (DARK.has(sp.kind) || st === 'dark' || st === 'ink' || st === 'band' || st === 'gradient') { tintNext = false; return sp; }
@@ -1066,16 +1227,16 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'luxe', name: 'Beauty tối giản', desc: 'Chia đôi · câu chuyện · 2 sản phẩm · trích dẫn', preset: 'Linen', tag: 'trend', brand: { vibe: 'luxury', headingFamily: 'Playfair Display', name: 'Sóng' },
+        kind: 'luxe', name: 'Lookbook thời trang', desc: 'Card trắng đè ảnh · zig-zag · chữ khổng lồ · lưới 4 ảnh · trích dẫn · footer social', preset: 'Linen', tag: 'trend', brand: { vibe: 'luxury', headingFamily: 'Cormorant Garamond', name: 'MAISON' },
     fields: { campaignName: 'Sóng · Serum mới', subject: 'Serum Sóng No.3: 12 tuần, da đều màu', preheader: 'Công thức mới, giá ra mắt đến 31/10' },
     blocks: [
-      { kind: 'nav', content: { brand: 'Sóng', links: [{ label: 'Da mặt', url: `${B}/face` }, { label: 'Cơ thể', url: `${B}/body` }, { label: 'Triết lý', url: `${B}/about` }] } },
-      { kind: 'split', content: { eyebrow: 'Mới', heading: 'Serum No.3. Ít thành phần hơn, hiệu quả rõ hơn.', body: '5 thành phần, không hương liệu. Thử nghiệm 12 tuần trên 120 người: 87% da đều màu hơn.', button: { label: 'Khám phá No.3', url: `${B}/p/serum-3` }, imageAlt: 'Chai serum Sóng No.3 trên nền vải linen' } },
-      { kind: 'text', content: { eyebrow: 'Triết lý', heading: 'Chúng tôi bỏ đi 23 thành phần', body: 'Mỗi thứ còn lại phải trả lời được một câu hỏi: nó làm gì cho da bạn? Không trả lời được thì không có trong chai.' } },
-      { kind: 'products-2', content: { items: [{ name: 'Serum No.3 · 30ml', price: '890.000₫', url: `${B}/p/serum-3` }, { name: 'Kem dưỡng No.1 · 50ml', price: '650.000₫', url: `${B}/p/cream-1` }] } },
-      { kind: 'quote', content: { quote: 'Tôi đã thử nhiều serum. Đây là chai đầu tiên tôi dùng hết.', author: '— Khánh Linh, biên tập viên làm đẹp' } },
-      { kind: 'cta', content: { heading: 'Giá ra mắt đến 31/10', subhead: 'Giảm 15% và tặng mẫu thử kem dưỡng No.1.', button: { label: 'Mua No.3', url: `${B}/p/serum-3` } } },
-      { kind: 'footer', content: { brand: 'Sóng', address: 'Sóng Skincare · 8 Hàn Thuyên, Q1, TP.HCM · hello@song.vn' } },
+      { kind: 'nav', content: { style: 'menu', brand: 'MAISON', links: [{ label: 'Mới về', url: `${B}/new` }, { label: 'Áo', url: `${B}/tops` }, { label: 'Váy', url: `${B}/dresses` }, { label: 'Phụ kiện', url: `${B}/accessories` }] } },
+      { kind: 'hero-card', content: { style: 'soft', eyebrow: 'Bộ sưu tập Thu', headline: 'Mềm như sớm mai', subhead: 'Len merino dệt thưa, cashmere Mông Cổ và lụa tơ tằm. Mười hai dáng, bốn tông màu đất.', button: { label: 'Xem bộ sưu tập', url: `${B}/fall` }, imageAlt: 'Người mẫu mặc áo len kem trên nền be' } },
+      { kind: 'zigzag', content: { items: [{ name: 'Áo len Sương', body: 'Cổ tròn, len merino dệt thưa, nhẹ như không mặc.', price: '1.890.000₫', badge: 'Mới', url: `${B}/p/suong` }, { name: 'Váy lụa Hạ Tuần', body: 'Lụa tơ tằm Bảo Lộc, dáng suông, dài qua gối.', price: '2.450.000₫', url: `${B}/p/ha-tuan` }, { name: 'Khăn cashmere', body: 'Cashmere Mông Cổ, 70×200, bốn màu.', price: '1.290.000₫', url: `${B}/p/khan` }] } },
+      { kind: 'statement', content: { headline: '-20%', eyebrow: 'Dành riêng thành viên', body: 'Đến hết 31/10. Tự động áp dụng khi đăng nhập.', button: { label: 'Mua sớm', url: `${B}/members` } } },
+      { kind: 'gallery', content: { eyebrow: 'Phối cùng', heading: 'Bốn món mặc cả tuần', items: [{ name: 'Quần ống rộng', price: '1.650.000₫', url: `${B}/p/1` }, { name: 'Áo sơ mi lụa', price: '1.950.000₫', url: `${B}/p/2` }, { name: 'Giày loafer', price: '2.900.000₫', url: `${B}/p/3` }, { name: 'Túi da bò', price: '3.200.000₫', url: `${B}/p/4` }] } },
+      { kind: 'quote', content: { style: 'center', quote: 'Chiếc áo len đầu tiên tôi mặc đi làm, đi chơi và đi ngủ trưa cuối tuần. Nhẹ, ấm, không ngứa.', author: 'Thu Hà, Hà Nội' } },
+      { kind: 'footer', content: { style: 'band', brand: 'MAISON', address: 'Maison · 18 Nguyễn Huệ, Quận 1, TP.HCM · hello@maison.vn', social: [{ label: 'Instagram', url: 'https://instagram.com' }, { label: 'Facebook', url: 'https://facebook.com' }, { label: 'TikTok', url: 'https://tiktok.com' }], link: { label: 'Tìm cửa hàng', url: `${B}/stores` } } },
     ],
   },
   {
@@ -1093,16 +1254,15 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'food', name: 'Nhà hàng · F&B', desc: 'Chia đôi · nhãn · 3 món · social proof · CTA', preset: 'Sunset', tag: 'trend', brand: { vibe: 'playful', headingFamily: 'Montserrat', name: 'Bếp Nhà' },
+        kind: 'food', name: 'F&B ấm áp', desc: 'Hero nền soft + badge tròn · thực đơn ảnh tròn · trích dẫn · CTA · footer social', preset: 'Sunset', tag: 'trend', brand: { vibe: 'playful', headingFamily: 'Baloo 2', name: 'Bếp Nhà' },
     fields: { campaignName: 'Menu thu', subject: 'Menu thu đã lên: 6 món mới, giao nóng 30 phút', preheader: 'Giảm 20% đơn đầu qua app, hết 31/10' },
     blocks: [
-      { kind: 'nav', content: { brand: 'Bếp Nhà', links: [{ label: 'Menu', url: `${B}/menu` }, { label: 'Đặt bàn', url: `${B}/book` }, { label: 'Giao hàng', url: `${B}/delivery` }] } },
-      { kind: 'split', content: { eyebrow: 'Menu thu', heading: 'Sáu món mới, nấu từ 6 giờ sáng', body: 'Bò kho sả, canh chua cá lóc, cơm gà xối mỡ… Nguyên liệu chợ sớm, nấu theo đơn, giao nóng trong 30 phút.', button: { label: 'Xem menu', url: `${B}/menu` }, imageAlt: 'Mâm cơm với bò kho và canh chua' } },
-      { kind: 'badges', content: { stats: [{ value: '-20%', label: 'đơn đầu' }, { value: '30 phút', label: 'giao nóng' }, { value: 'Không MSG', label: '' }] } },
-      { kind: 'products-3', content: { items: [{ name: 'Bò kho sả', price: '79.000₫', url: `${B}/menu/bo-kho` }, { name: 'Canh chua cá lóc', price: '69.000₫', url: `${B}/menu/canh-chua` }, { name: 'Cơm gà xối mỡ', price: '65.000₫', url: `${B}/menu/com-ga` }] } },
-      { kind: 'social', content: { quote: '4.8/5 từ 3.100 đơn tháng này', author: 'Món được đặt lại nhiều nhất: bò kho sả' } },
-      { kind: 'cta', content: { heading: 'Đói rồi?', subhead: 'Đặt qua app, nhập BEP20 cho đơn đầu tiên.', button: { label: 'Đặt ngay', url: `${B}/order` } } },
-      { kind: 'footer', content: { brand: 'Bếp Nhà', address: 'Bếp Nhà · 21 Võ Văn Tần, Q3, TP.HCM · 1900 1234' } },
+      { kind: 'nav', content: { brand: 'Bếp Nhà', links: [{ label: 'Thực đơn', url: `${B}/menu` }, { label: 'Đặt bàn', url: `${B}/book` }, { label: 'Giao tận nơi', url: `${B}/delivery` }] } },
+      { kind: 'hero-product', content: { style: 'soft', eyebrow: 'Món mới tuần này', headline: 'Bún bò Huế, nấu kiểu nhà', subhead: 'Nước dùng ninh 10 giờ từ xương ống và sả tươi. Giao nóng trong 30 phút quanh Quận 1, 3, Bình Thạnh.', button: { label: 'Đặt ngay', url: `${B}/menu/bun-bo` }, badge: '-30%', imageAlt: 'Tô bún bò Huế tách nền' } },
+      { kind: 'menu', content: { eyebrow: 'Thực đơn', heading: 'Ba món gọi nhiều nhất', items: [{ name: 'Bún bò Huế', body: 'Giò heo, chả cua, rau sống Đà Lạt.', price: '69.000₫', url: `${B}/menu/bun-bo` }, { name: 'Cơm tấm sườn bì', body: 'Sườn nướng than, bì tươi, mỡ hành.', price: '59.000₫', url: `${B}/menu/com-tam` }, { name: 'Chè khúc bạch', body: 'Hạnh nhân, nhãn tươi, nước đường phèn.', price: '35.000₫', url: `${B}/menu/che` }], button: { label: 'Đặt ngay', url: `${B}/menu` } } },
+      { kind: 'quote', content: { style: 'center', eyebrow: '★★★★★', quote: 'Đặt lúc 11:40, 12:05 đã có tô bún nóng hổi trên bàn. Nước dùng đậm đúng kiểu Huế.', author: 'Minh Quân, khách tuần nào cũng đặt' } },
+      { kind: 'cta', content: { style: 'band', heading: 'Freeship đơn đầu tiên', subhead: 'Nhập mã NHA30 khi thanh toán. Áp dụng đến Chủ nhật.', button: { label: 'Xem thực đơn', url: `${B}/menu` } } },
+      { kind: 'footer', content: { style: 'band', brand: 'Bếp Nhà', address: 'Bếp Nhà · 45 Lê Thánh Tôn, Quận 1, TP.HCM · 1900 1234', social: [{ label: 'Facebook', url: 'https://facebook.com' }, { label: 'Instagram', url: 'https://instagram.com' }, { label: 'Zalo', url: 'https://zalo.me' }], link: { label: 'Tải app đặt món', url: `${B}/app` } } },
     ],
   },
   {
