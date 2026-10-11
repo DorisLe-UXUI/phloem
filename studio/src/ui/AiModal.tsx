@@ -15,7 +15,7 @@ import { Icon } from './icons';
 import { ask } from './confirm';
 
 const GOALS = [
-  { v: 'promo', label: 'Khuyến mãi / sale' }, { v: 'newsletter', label: 'Newsletter định kỳ' }, { v: 'launch', label: 'Ra mắt sản phẩm' },
+  { v: 'promo', label: 'Khuyến mãi / sale' }, { v: 'intro', label: 'Giới thiệu dịch vụ / thương hiệu' }, { v: 'newsletter', label: 'Newsletter định kỳ' }, { v: 'launch', label: 'Ra mắt sản phẩm' },
   { v: 'welcome', label: 'Chào mừng người mới' }, { v: 'event', label: 'Mời sự kiện' }, { v: 'cart', label: 'Nhắc giỏ hàng' },
   { v: 'digest', label: 'Bản tin biên tập' }, { v: 'reengagement', label: 'Kéo khách quay lại' }, { v: 'other', label: 'Khác' },
 ];

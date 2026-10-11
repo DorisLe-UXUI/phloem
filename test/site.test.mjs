@@ -35,6 +35,24 @@ test('analyzeHtml pulls title, lang, meta, logo, icons, images, headings, nav, b
   assert.deepEqual(a._googleFamilies, ['Playfair Display', 'Inter']);
 });
 
+test('logo: header/home-link mark wins, client logo walls and other brands are ignored, inline header SVG is captured', () => {
+  const wall = `<html><head><title>SentryX — Growth operators</title><meta property="og:site_name" content="SentryX" /></head><body>
+<header><a class="brand" href="/" aria-label="SentryX home"><svg viewBox="0 0 169 32" fill="none"><path d="M1 1h10" fill="currentColor"/></svg></a><nav><a href="/work">Work</a></nav></header>
+<div class="trust"><p>Operators behind</p><ul><li><img src="/img/lucys-logo.webp" alt="Lucy's" width="130" height="44" class="trust-logo lucys"></li><li><img src="/img/trust-toolmart.webp" alt="Tool Mart" width="138" height="108" class="trust-logo"></li></ul></div>
+<img class="chart3d-logo" src="/img/lucys-logo.webp" alt="Lucy's logo" width="260" height="88">
+<img src="/img/case.jpg" alt="Tool Mart — storefront" width="1200" height="800">
+<a class="btn" href="/cdn-cgi/l/email-protection">[email&#160;protected]</a><a class="btn" href="/contact">Talk to us</a></body></html>`;
+  const a = analyzeHtml(wall, 'https://www.sentryxp.com/');
+  assert.equal(a.logo, '', 'client logos are not the brand logo');
+  assert.match(a.logoSvg, /^<svg[^>]*xmlns=/, 'inline header SVG becomes the logo');
+  assert.match(a.logoSvg, /width="169" height="32"/, 'size injected from viewBox');
+  assert.doesNotMatch(a.logoSvg, /currentColor/);
+  assert.deepEqual(a.images.map((i) => i.url), ['https://www.sentryxp.com/img/case.jpg'], 'logo-wall images never become content images');
+  assert.deepEqual(a.buttons, ['Talk to us'], 'obfuscated e-mail buttons dropped');
+  const own = analyzeHtml('<html><head><title>Acme</title></head><body><section class="partners"><img src="/p/other-logo.png" alt="Other Co" class="logo"></section><footer><img src="/acme-logo.png" alt="Acme logo"></footer></body></html>', 'https://acme.example/');
+  assert.equal(own.logo, 'https://acme.example/acme-logo.png', 'a logo naming the site beats a partner logo even outside the header');
+});
+
 test('extractStyle ranks brand colours (no greys), merges case, finds fonts', () => {
   const a = analyzeHtml(HTML, 'https://terra.example/');
   const st = extractStyle(a._inlineCss + '\n.grey{color:#888}.white{background:#ffffff}.ink{color:#111}', a._googleFamilies);

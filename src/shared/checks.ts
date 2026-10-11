@@ -13,7 +13,7 @@ export const WEIGHT_ERROR = 3_000_000;
 export const OUTLOOK_MAX_IMG_H = 1728;
 
 export function validateLink(url: string): { ok: boolean; reason?: string; soft?: string } {
-  const u = url.trim();
+  const u = String(url || '').trim();
   if (!u) return { ok: false, reason: 'rỗng' };
   if (isMergeTag(u)) return { ok: true };
   if (/^(mailto:|tel:|sms:)/i.test(u)) return { ok: true };
@@ -72,7 +72,7 @@ export function runChecks(inp: CheckInput): Check[] {
       if (!v.ok) out.push({ level: 'error', code: 'link-invalid', message: `Link lỗi (${v.reason}): ${s.link}`, nodeId: s.linkNodeId ?? undefined, sliceKey: s.key });
       else if (v.soft) out.push({ level: 'info', code: 'link-http', message: `${v.soft}: ${s.link}`, nodeId: s.linkNodeId ?? undefined, sliceKey: s.key });
     }
-    if (!s.alt.trim()) {
+    if (!String(s.alt || '').trim()) {
       if (hasImg || s.link) out.push({ level: 'warn', code: 'alt-missing', message: `Lát ${s.index + 1} (${s.label}) thiếu alt text.`, nodeId: s.ownerNodeId ?? undefined, sliceKey: s.key });
       if (hasImg) imgNoAlt++;
     }
@@ -111,8 +111,8 @@ export function runChecks(inp: CheckInput): Check[] {
   }
 
   if (inp.fields) {
-    if (!inp.fields.subject.trim()) out.push({ level: 'info', code: 'subject-missing', message: 'Chưa có subject — cần khi tạo draft.' });
-    if (!inp.fields.preheader.trim()) out.push({ level: 'info', code: 'preheader-missing', message: 'Chưa có preheader — dòng xem trước trong hộp thư.' });
+    if (!String(inp.fields.subject || '').trim()) out.push({ level: 'info', code: 'subject-missing', message: 'Chưa có subject — cần khi tạo draft.' });
+    if (!String(inp.fields.preheader || '').trim()) out.push({ level: 'info', code: 'preheader-missing', message: 'Chưa có preheader — dòng xem trước trong hộp thư.' });
   }
   if (inp.hasMobile === false && plan.width > 480) out.push({ level: 'info', code: 'mobile-none', message: 'Chưa có frame mobile — email sẽ scale theo tỉ lệ trên điện thoại.' });
 

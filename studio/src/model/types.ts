@@ -113,6 +113,8 @@ export interface Doc {
   height: number;
   bg: Color;
   nodes: Node[];
+  /** false = the user typed a height; otherwise the artboard hugs its content on every edit. */
+  autoHeight?: boolean;
 }
 
 export interface Project {

@@ -80,7 +80,7 @@ export async function fetchText(url, { limit = 2_000_000, timeout = 10_000 } = {
   return (await safeGet(url, { accept: 'text/html,text/css,*/*;q=0.8', limit, timeout, truncate: true })).buf.toString('utf8');
 }
 
-const decode = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const decode = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(+d)).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;|\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 const unent = (s) => String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 const attr = (tag, name) => { const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag); return m ? unent(m[2] ?? m[3] ?? m[4] ?? '') : ''; };
 /** Largest candidate of a srcset ("url 320w, url 1400w" or "url 1x, url 2x"); Shopify-style ?width= params are bumped to a usable size. */
@@ -150,17 +150,62 @@ export function analyzeHtml(html, baseUrl) {
   icons.sort((a, b) => (parseInt(b.sizes) || 0) - (parseInt(a.sizes) || 0));
   const inlineCss = [...raw.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n') + '\n' + [...raw.matchAll(/style\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(';');
   const imgTags = [...h.matchAll(/<img[^>]+>/gi)].map((m) => m[0]);
-  const images = [], seen = new Set(); let logo = '';
+  const siteName0 = meta('og:site_name') || '';
+  const origin = (() => { try { return new URL(baseUrl).origin; } catch { return ''; } })();
+  const host = (() => { try { return new URL(baseUrl).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+  // Words that identify this site (name, title's first segment, host): a "logo" whose alt names a different brand is a client's.
+  const siteWords = new Set([siteName0, title.split(/[|·•–—-]/)[0], host.split('.')[0]].flatMap((x) => String(x).toLowerCase().split(/[^a-z0-9]+/)).filter((w) => w.length >= 3));
+  const headerHtml = (/<header[\s\S]*?<\/header>/i.exec(h) || /<nav[\s\S]*?<\/nav>/i.exec(h) || [''])[0];
+  const homeHtml = [...h.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/gi)].map((m) => m[0]).filter((a) => { const href = attr(a, 'href'); return href === '/' || href === '' || href === './' || (origin && abs(href, baseUrl) === origin + '/'); }).join('\n');
+  // Logo walls ("trusted by", partners, press, awards). "client"/"customer" alone is ambiguous (case-study galleries), so it is not enough.
+  const WALL = /trust|partner|sponsor|press|award|payment|integration|logos?\b|logo-|-logo|brands|chart/i;
+  const images = [], seen = new Set(); let logo = '', logoScore = 0;
   for (const t of imgTags) {
     let src = bestSrc(attr(t, 'srcset') || attr(t, 'data-srcset')) || attr(t, 'data-src') || attr(t, 'src');
     if (!src || src.startsWith('data:')) continue;
     src = abs(upsize(src), baseUrl); if (!src || seen.has(src)) continue; seen.add(src);
     const alt = decode(attr(t, 'alt')), w = parseInt(attr(t, 'width')) || 0, hh = parseInt(attr(t, 'height')) || 0;
-    const isLogo = /logo/i.test(t) && !/sponsor|partner|client/i.test(t);
-    if (isLogo && !logo) { logo = src; continue; }
+    const mentionsLogo = /logo/i.test(t);
+    const idx = h.indexOf(t); const ctx = idx >= 0 ? h.slice(Math.max(0, idx - 600), idx) : '';
+    // Inside a "trusted by / clients / partners" container? Look at the nearest such class before the tag and check it was not closed since.
+    const wallCtx = (() => { const re = /<(?:div|section|ul|ol|li|nav|aside|footer|header|article|figure)\b[^>]*class\s*=\s*["'][^"']*(trust|partner|sponsor|logos?\b|logo-|press|award|brands)[^"']*["'][^>]*>/gi; let last = -1, m; while ((m = re.exec(ctx))) last = m.index + m[0].length; if (last < 0) return false; let depth = 1; for (const t2 of ctx.slice(last).matchAll(/<(\/?)(?:div|section|ul|ol|li|nav|footer|header|aside|span|a|figure|p|article)\b[^>]*>/gi)) { depth += t2[1] ? -1 : 1; if (depth <= 0) return false; } return true; })();
+    const file = src.split('/').pop() || '';
+    const wall = WALL.test(attr(t, 'class')) || /sponsor|partner|trust-|badge/i.test(file) || wallCtx;
+    const logoish = mentionsLogo || /logo/i.test(file);
+    if (logoish || wall) {
+      const altWords = alt.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length >= 3 && !/^(logo|brand|home|icon|image)$/.test(x));
+      const altSite = altWords.some((x) => siteWords.has(x) || [...siteWords].some((sw) => x.includes(sw) || sw.includes(x)));
+      const altOther = siteWords.size > 0 && altWords.length > 0 && !altSite;
+      let score = 0;
+      if (homeHtml.includes(t)) score += 6;
+      if (headerHtml.includes(t)) score += 4;
+      if (logoish) score += 3;
+      if (altSite) score += 3;
+      if (/\.svg(\?|$)/i.test(src)) score += 1;
+      if (wall) score -= 8;
+      if (altOther) score -= 5;
+      if (score >= 3 && score > logoScore) { logo = src; logoScore = score; }
+      continue; // logo walls and other marks are never content images
+    }
     if (/\.svg(\?|$)/i.test(src) || (w && w < 80) || (hh && hh < 80) || /icon|sprite|pixel|tracking|badge|flag/i.test(src)) continue;
     images.push({ url: src, alt, w, h: hh });
     if (images.length >= 16) break;
+  }
+  // No <img> logo: many sites draw the wordmark as an inline SVG inside the header's home link.
+  let logoSvg = '';
+  if (!logo) {
+    const rawHeader = (/<header[\s\S]*?<\/header>/i.exec(raw) || /<nav[\s\S]*?<\/nav>/i.exec(raw) || [''])[0];
+    const homes = [...rawHeader.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/gi)].map((m) => m[0]).filter((a) => { const href = attr(a, 'href'); return href === '/' || (origin && abs(href, baseUrl) === origin + '/') || /logo|brand|home/i.test(a.slice(0, 200)); });
+    const svgIn = (block) => (/<svg[\s\S]*?<\/svg>/i.exec(block) || [''])[0];
+    let svg = ''; for (const a of homes) { svg = svgIn(a); if (svg) break; }
+    if (!svg) { const cands = [...rawHeader.matchAll(/<svg[\s\S]*?<\/svg>/gi)].map((m) => m[0]).filter((x) => /logo|brand/i.test(x.slice(0, 300)) || (() => { const vb = attr(x, 'viewBox').split(/[\s,]+/).map(Number); return vb.length === 4 && vb[2] > 0 && vb[3] > 0 && vb[2] / vb[3] >= 2.2 && vb[2] / vb[3] <= 12 && x.length > 400; })()); svg = cands[0] || ''; }
+    if (svg && svg.length <= 80_000 && !/<image\b|<foreignObject/i.test(svg)) {
+      let out = svg.replace(/currentColor/g, '#111111');
+      if (!/xmlns=/.test(out)) out = out.replace(/<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      const vb = attr(out, 'viewBox').split(/[\s,]+/).map(Number);
+      if (!attr(out, 'width') && vb.length === 4 && vb[2] > 0) out = out.replace(/<svg/, `<svg width="${Math.round(vb[2])}" height="${Math.round(vb[3])}"`);
+      logoSvg = out;
+    }
   }
   const ogRaw = meta('og:image') || meta('twitter:image');
   const ogImage = ogRaw ? abs(ogRaw, baseUrl) : '';
@@ -169,10 +214,10 @@ export function analyzeHtml(html, baseUrl) {
   const nav = [...navHtml.matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)].map((m) => decode(m[1])).filter((t) => t && t.length <= 24 && !/logo/i.test(t));
   const navUnique = [...new Set(nav)].slice(0, 7);
   const text = [...h.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map((m) => decode(m[1])).filter((t) => t.length > 40).join(' ').slice(0, 900);
-  const buttons = [...new Set([...h.matchAll(/<(?:a|button)[^>]*class\s*=\s*"[^"]*(?:btn|button|cta)[^"]*"[^>]*>([\s\S]*?)<\/(?:a|button)>/gi)].map((m) => decode(m[1])).filter((t) => t && t.length <= 30))].slice(0, 6);
+  const buttons = [...new Set([...h.matchAll(/<(?:a|button)[^>]*class\s*=\s*"[^"]*(?:btn|button|cta)[^"]*"[^>]*>([\s\S]*?)<\/(?:a|button)>/gi)].map((m) => decode(m[1])).filter((t) => t && t.length <= 30 && !/\[email|@|protected/i.test(t)))].slice(0, 6);
   return {
-    title, lang: lang || '', siteName: meta('og:site_name') || '', description: meta('description') || meta('og:description') || '', themeColor: hexOf(meta('theme-color')) || '',
-    logo, icon: icons[0]?.href || '', ogImage, images, headings, nav: navUnique, buttons, text,
+    title, lang: lang || '', siteName: siteName0, description: meta('description') || meta('og:description') || '', themeColor: hexOf(meta('theme-color')) || '',
+    logo, logoSvg, icon: icons[0]?.href || '', ogImage, images, headings, nav: navUnique, buttons, text,
     _styles: styles, _inlineCss: inlineCss, _googleFamilies: [...new Set(googleFamilies)],
     _shopify: /cdn\/shop\/|cdn\.shopify\.com|Shopify\.theme/i.test(raw),
   };

@@ -137,9 +137,9 @@ export function suggest(inp: SuggestInput): { suggestions: Suggestion[]; score: 
   }
 
   // 11. fields
-  if (!fields.subject.trim()) { penalty += 5; out.push({ id: 'subject', level: 'fix', title: 'Chưa có subject', detail: 'Cần để tạo draft. 30–50 ký tự, nói thẳng lợi ích.', action: { kind: 'set-field', field: 'subject' } }); }
-  else if (fields.subject.length > 60) out.push({ id: 'subject-long', level: 'tip', title: `Subject dài ${fields.subject.length} ký tự`, detail: 'Điện thoại cắt sau ~40–50 ký tự. Đưa ý chính lên đầu.', action: { kind: 'set-field', field: 'subject' } });
-  if (!fields.preheader.trim()) { penalty += 3; out.push({ id: 'preheader', level: 'tip', title: 'Chưa có preheader', detail: 'Dòng xem trước dưới subject trong hộp thư. Nếu bỏ trống, hộp thư sẽ lấy alt text của ảnh đầu.', action: { kind: 'set-field', field: 'preheader' } }); }
+  if (!String(fields.subject || "").trim()) { penalty += 5; out.push({ id: 'subject', level: 'fix', title: 'Chưa có subject', detail: 'Cần để tạo draft. 30–50 ký tự, nói thẳng lợi ích.', action: { kind: 'set-field', field: 'subject' } }); }
+  else if (String(fields.subject || "").length > 60) out.push({ id: 'subject-long', level: 'tip', title: `Subject dài ${String(fields.subject || "").length} ký tự`, detail: 'Điện thoại cắt sau ~40–50 ký tự. Đưa ý chính lên đầu.', action: { kind: 'set-field', field: 'subject' } });
+  if (!String(fields.preheader || "").trim()) { penalty += 3; out.push({ id: 'preheader', level: 'tip', title: 'Chưa có preheader', detail: 'Dòng xem trước dưới subject trong hộp thư. Nếu bỏ trống, hộp thư sẽ lấy alt text của ảnh đầu.', action: { kind: 'set-field', field: 'preheader' } }); }
 
   // 12. mobile frame
   if (!inp.hasMobile) out.push({ id: 'mobile', level: 'tip', title: 'Tạo frame mobile', detail: 'Phloem sẽ nhúng cả hai bản: điện thoại nhận bản mobile, desktop nhận bản gốc. Không bắt buộc — bản gốc vẫn scale được.', action: { kind: 'create-mobile' } });

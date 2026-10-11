@@ -21,13 +21,26 @@ export function Editor() {
     const h = async (e: ClipboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
-      if (!files.length) return;
+      const cd = e.clipboardData;
+      const files = Array.from(cd?.files || []).filter((f) => f.type.startsWith('image/'));
+      // Copied from a web page / another app: an <img> in the HTML or a bare image link.
+      const urls: string[] = [];
+      if (!files.length && cd) {
+        const html = cd.getData('text/html') || '';
+        for (const m of html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) if (/^https?:\/\//i.test(m[1])) urls.push(m[1]);
+        const txt = (cd.getData('text/plain') || '').trim();
+        if (!urls.length && /^https?:\/\/\S+\.(png|jpe?g|gif|webp|avif|svg)(\?\S*)?$/i.test(txt)) urls.push(txt);
+      }
+      if (!files.length && !urls.length) return;
       e.preventDefault();
       const sel = get().selection; const d = A.doc();
       const target = sel.length === 1 ? ops.findNode(d, sel[0]) : null;
-      for (const f of files) await A.addImageFile(f, undefined, target && target.type === 'image' ? target.id : undefined);
-      toast(files.length === 1 ? 'Đã dán ảnh.' : `Đã dán ${files.length} ảnh.`, 'ok');
+      const intoImage = target && target.type === 'image' ? target.id : undefined;
+      let n = 0;
+      for (const f of files) { if (intoImage && n === 0) await A.addImageFile(f, undefined, intoImage); else await A.addImageFileToScraps(f); n++; }
+      for (const u of urls.slice(0, 6)) { const id = await A.addImageUrl(u); if (!id) continue; if (intoImage && n === 0) A.placeAsset(id, undefined, intoImage); else A.addScrap(id); n++; }
+      if (!n) { toast('Không lấy được ảnh từ clipboard (link bị chặn?). Thử lưu ảnh rồi kéo vào.', 'err'); return; }
+      toast(intoImage ? 'Đã thay ảnh cho layer đang chọn.' : n === 1 ? 'Ảnh nằm cạnh email — kéo vào mail để dùng.' : `${n} ảnh nằm cạnh email — kéo vào mail để dùng.`, 'ok');
     };
     window.addEventListener('paste', h);
     return () => window.removeEventListener('paste', h);
@@ -124,7 +137,7 @@ function keys(e: KeyboardEvent) {
   if (mod && k === 'enter') { stop(); set({ rightTab: 'export' }); return; }
   if (mod) return;
   if (k === 'delete' || k === 'backspace') { stop(); A.deleteSelection(); return; }
-  if (k === 'escape') { stop(); if (st.editingText) set({ editingText: null }); else if (st.selection.length) A.clearSelection(); else if (st.enteredGroup) set({ enteredGroup: null }); else set({ tool: 'select' }); return; }
+  if (k === 'escape') { stop(); if (st.editingText) set({ editingText: null }); else if (st.scrapSel) set({ scrapSel: null }); else if (st.selection.length) A.clearSelection(); else if (st.enteredGroup) set({ enteredGroup: null }); else set({ tool: 'select' }); return; }
   if (k.startsWith('arrow')) { stop(); const d = e.shiftKey ? 10 : 1; A.nudge(k === 'arrowleft' ? -d : k === 'arrowright' ? d : 0, k === 'arrowup' ? -d : k === 'arrowdown' ? d : 0); return; }
   if (k === 'v') set({ tool: 'select' }); else if (k === 'r') set({ tool: 'rect' }); else if (k === 't') set({ tool: 'text' }); else if (k === 'i') set({ tool: 'image' }); else if (k === 'h') set({ tool: 'hand' });
   else if (k === '?') set({ modal: 'shortcuts' });

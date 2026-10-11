@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "phloem", "runtimeExecutable": "node", "runtimeArgs": ["dev/serve.mjs"], "port": 5173 }
+  ]
+}

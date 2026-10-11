@@ -57,7 +57,12 @@ export interface State {
   catalogAt: string | null;
   /** Products handed to the AI composer from the catalog (consumed when the AI modal opens). */
   aiSeed: { products: SiteProduct[]; goal?: string; brief?: string } | null;
+  /** Pasteboard: images parked beside the artboard (doc coordinates), dragged into the email when needed. */
+  scraps: Scrap[];
+  scrapSel: string | null;
 }
+
+export interface Scrap { id: string; assetId: string; x: number; y: number; w: number; h: number }
 
 const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings', LS_CATALOG = 'phloem.catalog';
 
@@ -83,6 +88,8 @@ export const initialState: State = {
   catalog: loadLS<{ items: CatalogItem[]; at: string | null }>(LS_CATALOG, { items: [], at: null }).items,
   catalogAt: loadLS<{ items: CatalogItem[]; at: string | null }>(LS_CATALOG, { items: [], at: null }).at,
   aiSeed: null,
+  scraps: [],
+  scrapSel: null,
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),

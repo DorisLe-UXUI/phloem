@@ -10,6 +10,8 @@ export interface SiteImage { url: string; alt: string; w: number; h: number }
 export interface SiteProfile {
   url: string; title: string; lang: string; siteName: string; description: string; themeColor: string;
   logo: string; icon: string; ogImage: string; images: SiteImage[]; headings: string[]; nav: string[]; buttons: string[]; text: string;
+  /** Inline SVG wordmark from the site header (when the logo is not an <img>). */
+  logoSvg?: string;
   colors: { hex: string; n: number }[]; darks: string[]; lights: string[]; fonts: { name: string; n: number }[];
   platform?: string;
   products?: SiteProduct[];
@@ -107,10 +109,12 @@ export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (d
   if (p.ogImage) push(p.ogImage, 'og-image');
   for (const im of p.images) push(im.url, im.alt || im.url.split('/').pop()?.split('?')[0] || 'image');
   const list = urls.slice(0, productCount + max);
-  const wantLogo = !skipLogo && !!(p.logo || p.icon);
+  const wantLogo = !skipLogo && !!(p.logo || p.logoSvg || p.icon);
   const total = list.length + (wantLogo ? 1 : 0);
   let done = 0;
-  const logoId = wantLogo ? await grab(p.logo || p.icon, 'logo') : null;
+  const grabSvg = async (svg: string) => { try { const png = await svgToPng(new Blob([svg], { type: 'image/svg+xml' })); return (await assets.add(png, 'logo.png')).id; } catch { return null; } };
+  // Order: the site's own <img> logo → inline header SVG → the largest icon as a last resort.
+  const logoId = !wantLogo ? null : (p.logo ? await grab(p.logo, 'logo') : null) || (p.logoSvg ? await grabSvg(p.logoSvg) : null) || (p.icon && !p.logo && !p.logoSvg ? await grab(p.icon, 'logo') : null);
   if (wantLogo) { done++; onProgress?.(done, total); }
   const imageIds: string[] = [];
   const byUrl = new Map<string, string>();
@@ -134,6 +138,7 @@ export function siteSummary(p: SiteProfile, brand: Partial<Brand>): string {
     p.nav.length ? `Menu: ${p.nav.join(' · ')}` : '',
     p.buttons.length ? `Nút trên trang: ${p.buttons.join(' · ')}` : '',
     p.text ? `Trích văn bản: ${p.text.slice(0, 600)}` : '',
+    `Thương hiệu GỬI email là ${p.siteName || p.title.split(/[|·•–-]/)[0] || 'website này'}: email nói về chính họ và dịch vụ/sản phẩm của họ. Ảnh có alt mang tên thương hiệu khác (khách hàng, đối tác, case study) chỉ dùng làm "khách hàng tiêu biểu" / dự án đã làm trong articles, gallery, collage, quote; không bao giờ coi thương hiệu đó là người gửi hay chủ đề chính.`,
     `Màu thương hiệu (theo tần suất): ${p.colors.map((c) => c.hex).join(', ') || '(không rõ)'} → primary ${brand.primary}, accent ${brand.accent}`,
     `Font trên web: ${p.fonts.map((f) => f.name).join(', ') || '(không rõ)'} → Phloem dùng ${brand.headingFamily || 'mặc định'} / ${brand.fontFamily || 'mặc định'}`,
     p.products && p.products.length ? `Sản phẩm thật trên web (${p.platform || 'cửa hàng'}), dùng đúng tên/giá/link/ảnh:\n${p.products.map((pr) => `- ${pr.name}${pr.type ? ` (${pr.type})` : ''}${pr.price ? ` · giá ${pr.price}` : ''}${pr.compareAt ? ` (giá cũ ${pr.compareAt})` : ''} · ${pr.url}${pr.assetId ? ` · imageId "${pr.assetId}"` : ''}`).join('\n')}` : '',

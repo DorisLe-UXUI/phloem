@@ -14,7 +14,7 @@ import { thumbnail } from '../render/renderer';
 import { ensureFonts } from '../render/fonts';
 import { db } from '../storage/idb';
 import { assets } from '../storage/assets';
-import { get, history, set, toast, type Variant } from '../store';
+import { get, history, set, toast, type Scrap, type Variant } from '../store';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import * as auth from '../auth/core';
 import { cloud } from '../storage/sync';
@@ -34,11 +34,19 @@ export function brand(): Brand { return get().project?.brand ?? DEFAULT_BRAND; }
 
 let saveTimer: number | null = null;
 
+/** The artboard hugs its content unless the user typed a height (autoHeight === false). Empty docs keep their size. */
+export function fitHeight(d: Doc): Doc {
+  if (d.autoHeight === false || !d.nodes.length) return d;
+  const h = Math.max(100, ops.contentHeight(d));
+  return h === d.height ? d : { ...d, height: h };
+}
+
 export function commit(next: Doc, pushHistory = true) {
   const s = get();
   if (!s.project) return;
   const cur = doc();
   if (next === cur) return;
+  next = fitHeight(next);
   if (pushHistory) history.push(cur);
   const project: Project = s.variant === 'mobile' && s.project.mobile ? { ...s.project, mobile: next } : { ...s.project, desktop: next };
   set({ project, dirty: true });
@@ -124,7 +132,7 @@ export function remeasureAll() {
   if (next !== d) commit(next, false);
 }
 
-export function deleteSelection() { const s = get(); if (!s.selection.length) return; commit(ops.removeNodes(doc(), s.selection)); set({ selection: [] }); }
+export function deleteSelection() { const s = get(); if (s.scrapSel) { removeScrap(s.scrapSel); return; } if (!s.selection.length) return; commit(ops.removeNodes(doc(), s.selection)); set({ selection: [] }); }
 export function duplicateSelection() { const s = get(); if (!s.selection.length) return; const r = ops.duplicate(doc(), topLevelIds(s.selection)); commit(r.doc); set({ selection: r.ids }); }
 export function groupSelection() { const ids = topLevelIds(get().selection); if (ids.length < 2) return; const r = ops.group(doc(), ids); commit(r.doc); set({ selection: [r.id] }); }
 export function ungroupSelection() {
@@ -207,8 +215,60 @@ export async function addImageFile(file: File, at?: { x: number; y: number }, in
 
 export function setImageAsset(id: string, assetId: string | null) { updateNode(id, (n) => (n.type === 'image' ? { ...n, assetId } : n)); }
 
-export function setDocHeightToContent() { const d = doc(); commit({ ...d, height: Math.max(ops.contentHeight(d), 100) }); }
-export function setDocProps(p: Partial<Doc>) { commit({ ...doc(), ...p }); }
+export function setDocHeightToContent() { const d = doc(); commit({ ...d, autoHeight: true, height: Math.max(ops.contentHeight(d), 100) }); }
+export function setDocProps(p: Partial<Doc>) { commit({ ...doc(), ...p, ...('height' in p ? { autoHeight: false } : {}) }); }
+
+// ---------- pasteboard (scraps beside the artboard) ----------
+const scrapKey = (pid: string) => `phloem.scraps.${pid}`;
+export function loadScraps(pid: string): Scrap[] { try { return (JSON.parse(localStorage.getItem(scrapKey(pid)) || '[]') as Scrap[]).filter((x) => x && assets.get(x.assetId) && [x.x, x.y, x.w, x.h].every((v) => Number.isFinite(v)) && x.w > 0 && x.h > 0); } catch { return []; } }
+export function setScraps(list: Scrap[]) {
+  set({ scraps: list });
+  const pid = get().project?.id; if (!pid) return;
+  try { if (list.length) localStorage.setItem(scrapKey(pid), JSON.stringify(list)); else localStorage.removeItem(scrapKey(pid)); } catch { /* ignore */ }
+}
+/** Park an asset beside the artboard (right side, stacked) or at a given doc point. Returns the scrap id. */
+export function addScrap(assetId: string, at?: { x: number; y: number }): string | null {
+  const a = assets.get(assetId); if (!a) return null;
+  const d = doc(); const list = get().scraps;
+  const w = Math.min(260, a.w), h = Math.round(w * (a.h / a.w));
+  let x: number, y: number;
+  if (at) { x = Math.round(at.x - w / 2); y = Math.round(at.y - h / 2); }
+  else {
+    x = d.width + 48;
+    const column = list.filter((sc) => sc.x >= d.width);
+    y = column.length ? Math.max(...column.map((sc) => sc.y + sc.h)) + 24 : 0;
+  }
+  const sc: Scrap = { id: uid(), assetId, x, y, w, h };
+  setScraps([...list, sc]); set({ scrapSel: sc.id, selection: [] });
+  return sc.id;
+}
+export function moveScrap(id: string, x: number, y: number) { setScraps(get().scraps.map((sc) => (sc.id === id ? { ...sc, x: Math.round(x), y: Math.round(y) } : sc))); }
+export function removeScrap(id: string) { setScraps(get().scraps.filter((sc) => sc.id !== id)); if (get().scrapSel === id) set({ scrapSel: null }); }
+/** Drop a scrap into the email: onto an image layer (replace) or as a new image layer at the scrap's position. */
+export function scrapIntoDoc(id: string, into?: string) {
+  const sc = get().scraps.find((x) => x.id === id); if (!sc) return;
+  const a = assets.get(sc.assetId); if (!a) { removeScrap(id); return; }
+  const d = doc();
+  if (into) { commit(ops.updateNode(d, into, (n) => (n.type === 'image' ? { ...n, assetId: a.id, name: n.name === 'Image' ? a.name : n.name } : n))); removeScrap(id); set({ selection: [into] }); return; }
+  const w = Math.min(d.width, sc.w), h = Math.round(w * (sc.h / sc.w));
+  const x = Math.max(0, Math.min(d.width - w, Math.round(sc.x))), y = Math.max(0, Math.round(sc.y));
+  const n = mkImage({ x, y, w, h, assetId: a.id, name: a.name, alt: a.name.replace(/\.[a-z0-9]+$/i, '') });
+  commit(ops.insertNodes(d, [n])); removeScrap(id); set({ selection: [n.id], tool: 'select' });
+}
+export async function addImageFileToScraps(file: File, at?: { x: number; y: number }) { const a = await assets.add(file); return addScrap(a.id, at); }
+/** Pull a pasted image URL (from copied HTML or a link) into the library: via the relay when configured, else directly. */
+export async function addImageUrl(url: string): Promise<string | null> {
+  const st = get(); const relay = (st.settings.relayUrl || '').replace(/\/$/, '');
+  const ses = auth.getSession();
+  const tryFetch = async (u: string, headers: Record<string, string> = {}) => { const r = await fetch(u, { headers, signal: AbortSignal.timeout(20_000) }); if (!r.ok) throw new Error(String(r.status)); const b = await r.blob(); if (!b.type.startsWith('image/')) throw new Error('not image'); return b; };
+  let blob: Blob | null = null;
+  if (relay) { try { blob = await tryFetch(`${relay}/image?url=${encodeURIComponent(url)}`, { ...(ses?.mode === 'relay' ? { Authorization: `Bearer ${ses.token}` } : {}), ...(st.settings.relayToken ? { 'X-Phloem-Token': st.settings.relayToken } : {}) }); } catch { blob = null; } }
+  if (!blob) { try { blob = await tryFetch(url); } catch { blob = null; } }
+  if (!blob) return null;
+  const name = (url.split('/').pop() || 'image').split('?')[0].slice(0, 60) || 'image';
+  const a = await assets.add(new File([blob], name, { type: blob.type }), name);
+  return a.id;
+}
 export function reflow() { commit(ops.reflowBlocks(doc())); }
 export function optimize(): string[] {
   const d = doc();
@@ -312,8 +372,15 @@ export async function openProject(id: string) {
     if (!p) { toast('Không tìm thấy project.', 'err'); return; }
     history.clear();
     const { thumb: _t, thumbMobile: _tm, provider: _pv, ...project } = p;
+    // Older / synced records can miss fields; every consumer assumes strings.
+    const f0 = (project.fields || {}) as Partial<typeof project.fields>;
+    project.fields = { campaignName: f0.campaignName || '', subject: f0.subject || '', preheader: f0.preheader || '' };
+    const sane = (d: Doc | null, w: number): Doc | null => { if (!d) return d; const nodes = Array.isArray(d.nodes) ? d.nodes : []; const width = Number.isFinite(d.width) && d.width >= 100 ? d.width : w; const height = Number.isFinite(d.height) && d.height >= 100 ? d.height : Math.max(100, ops.contentHeight({ ...d, nodes })); return { ...d, nodes, width, height }; };
+    project.desktop = sane(project.desktop, 600)!; project.mobile = sane(project.mobile, 375);
     ensureFonts([project.brand.fontFamily, project.brand.headingFamily]);
-    set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [] });
+    // Parked images never rest on the artboard: anything overlapping it (older data) is moved to the right margin.
+    const scraps = loadScraps(id).map((sc) => (sc.x + sc.w > 0 && sc.x < project.desktop.width && sc.y + sc.h > 0 ? { ...sc, x: project.desktop.width + 48 } : sc));
+    set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [], scraps, scrapSel: null });
   } catch (e) { toast(`Không mở được: ${(e as Error).message}`, 'err'); }
 }
 

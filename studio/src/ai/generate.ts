@@ -79,6 +79,19 @@ const DESIGN_DOC = `HỆ THỐNG THIẾT KẾ (Phloem vẽ email thành ảnh, n
 - Nhịp điệu: anchor khổ lớn → hàng icon/badges → nội dung chính (sản phẩm/bài viết/feature) → social proof → CTA lặp lại → footer. Khoảng trắng rộng, mỗi block một ý.
 CHECKLIST PREMIUM (tự kiểm trước khi trả): headline ≤ 8 từ, nói một lợi ích cụ thể, không mở đầu bằng "Chào mừng bạn đến với"; không câu sáo rỗng ("chất lượng cao", "giá tốt nhất"); mỗi block một ý, không lặp ý; số liệu/giá/mã lấy từ nguồn thật; hero và mọi card có ảnh nếu có ảnh; 1 CTA chính, lặp ở cuối với cùng lời kêu gọi; eyebrow ngắn (2–4 từ); subject và preheader bổ sung nhau; 3 phương án khác nhau cả cấu trúc, vibe lẫn font; ít nhất một phương án dùng block "mới" (spotlight / glass-hero / collage / steps) khi ngành phù hợp.`;
 
+const GOAL_DESC: Record<string, string> = {
+  promo: 'promo / khuyến mãi (giá, mã, hạn chót, sản phẩm giảm giá)',
+  intro: 'giới thiệu dịch vụ / thương hiệu: email đầu tiên gửi cho khách tiềm năng, nói rõ công ty làm gì, cho ai, khác gì, kết quả đã đạt, cách bắt đầu; CTA là đặt lịch / liên hệ / xem dịch vụ',
+  newsletter: 'newsletter định kỳ (tin, bài viết, cập nhật)',
+  launch: 'ra mắt sản phẩm / dịch vụ mới (điểm mới, lợi ích, ưu đãi mở bán)',
+  welcome: 'chào mừng người mới (giới thiệu thương hiệu, ưu đãi đầu, bước tiếp theo)',
+  event: 'mời sự kiện (thời gian, địa điểm, lý do tham gia, đăng ký)',
+  cart: 'nhắc giỏ hàng (sản phẩm bỏ dở, lý do quay lại, ưu đãi nhỏ)',
+  digest: 'bản tin biên tập (tuyển chọn bài / tập / dự án)',
+  reengagement: 'kéo khách cũ quay lại (nhớ bạn, có gì mới, ưu đãi quay lại)',
+  other: 'khác',
+};
+
 function systemPrompt(presetNames: string[], lang: 'vi' | 'en' = 'vi'): string {
   return `Bạn là art director email cho Phloem Studio. Nhiệm vụ: từ website, nội dung và ảnh người dùng đưa, dựng 3 phương án email marketing KHÁC NHAU RÕ RỆT về cấu trúc và nhịp điệu, mỗi phương án 7–10 block, luôn bắt đầu bằng nav và kết thúc bằng footer.
 
@@ -157,7 +170,7 @@ export async function generateVariants(inp: GenInput, onStage?: (s: string) => v
     inp.site ? `Hồ sơ website (AI đã đọc trang này):\n${siteSummary(inp.site, inp.webBrand || {})}\n→ Dùng đúng giọng văn, danh mục, tên nút và ngôn ngữ của website. Ảnh từ web nằm trong danh sách ảnh bên dưới (tên/alt mô tả nội dung): ưu tiên ảnh thật, chọn đúng ngữ cảnh (hero: ảnh ngang lớn hoặc og-image; sản phẩm/bài viết: ảnh tương ứng). Logo đã được gắn vào nav/footer tự động.` : '',
     inp.products && inp.products.length ? `SẢN PHẨM ĐÃ CHỌN TỪ KHO (bắt buộc dùng đúng tên/giá/link/ảnh, email xoay quanh các sản phẩm này):\n${inp.products.map((pr) => `- ${pr.name}${pr.type ? ` (${pr.type})` : ''}${pr.price ? ` · giá ${pr.price}` : ''}${pr.compareAt ? ` (giá cũ ${pr.compareAt})` : ''} · ${pr.url || ''}${pr.assetId ? ` · imageId "${pr.assetId}"` : ''}`).join('\n')}` : '',
     `Ngôn ngữ copy: ${lang === 'en' ? 'English (natural, concise marketing English)' : 'tiếng Việt'}`,
-    `Loại email: ${inp.goal}`,
+    `Loại email: ${GOAL_DESC[inp.goal] || inp.goal}`,
     `Thương hiệu: ${inp.brandName || '(chưa đặt tên — dùng "BRAND")'}`,
     `Giọng điệu: ${inp.tone}`,
     inp.palette !== 'auto' ? `Bảng màu người dùng đã chọn: ${inp.palette} (dùng cho cả 3 phương án)` : 'Bảng màu: AI chọn',

@@ -155,7 +155,7 @@ function Assets() {
       {list.length ? (
         <div class="asset-grid">
           {list.map((a) => (
-            <div key={a.id} class="asset" draggable title={`${a.name} · ${a.w}×${a.h} · ${(a.bytes / 1024).toFixed(0)} KB\nBấm: dùng cho layer ảnh đang chọn (hoặc thêm mới). Kéo thả vào email.`} onClick={() => use(a.id)} onDragStart={(e) => { e.dataTransfer?.setData('text/phloem-asset', a.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'; }}>
+            <div key={a.id} class="asset" draggable title={`${a.name} · ${a.w}×${a.h} · ${(a.bytes / 1024).toFixed(0)} KB\nBấm: dùng cho layer ảnh đang chọn (hoặc thêm mới). Kéo vào email, hoặc thả ra cạnh artboard để xếp tạm.`} onClick={() => use(a.id)} onDragStart={(e) => { e.dataTransfer?.setData('text/phloem-asset', a.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'; }}>
               {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
               <button class="del" title="Xoá khỏi thư viện" onClick={async (e) => { e.stopPropagation(); if (await ask(`Xoá "${a.name}" khỏi thư viện?`)) void assets.remove(a.id).then(() => bump((n) => n + 1)); }}>✕</button>
               <div class="nm">{a.name}</div>

@@ -6,12 +6,19 @@ import * as ops from '../model/ops';
 import { renderDoc } from '../render/renderer';
 import { fontString } from '../render/textLayout';
 import { assets } from '../storage/assets';
-import { get, history, set, subscribe, useStore } from '../store';
+import { get, history, set, subscribe, toast, useStore } from '../store';
 import * as A from '../pipeline/actions';
 import { Btn } from './components';
 import { Icon } from './icons';
 
-type Mode = { kind: 'idle' } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } };
+type Mode = { kind: 'idle' } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } }
+  // dragging a pasteboard image; `inside` = pointer over the artboard, `over` = image layer that would be replaced
+  | { kind: 'scrap'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; inside: boolean; over: string | null };
+
+function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath(); ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad); ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad); ctx.closePath();
+}
 
 const HANDLE = 7;
 const CURSORS = ['nw-resize', 'n-resize', 'ne-resize', 'e-resize', 'se-resize', 'sw-resize', 's-resize', 'w-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize'];
@@ -64,6 +71,31 @@ export function CanvasView() {
     // label
     ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = '#5d7265'; ctx.textBaseline = 'bottom';
     ctx.fillText(`${st.variant === 'mobile' ? 'Mobile' : 'Desktop'} · ${doc.width} × ${doc.height}`, px, py - 6);
+    // pasteboard: images parked beside the artboard
+    const mm = mode.current;
+    if (st.scraps.length) {
+      for (const sc of st.scraps) {
+        const r = { x: px + sc.x * z, y: py + sc.y * z, w: sc.w * z, h: sc.h * z };
+        const img = assets.image(sc.assetId);
+        const dragging = mm.kind === 'scrap' && mm.id === sc.id;
+        ctx.save();
+        if (dragging && mm.inside) ctx.globalAlpha = 0.75;
+        ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8; ctx.fillStyle = '#0d1210'; rrPath(ctx, r.x, r.y, r.w, r.h, 6 * z); ctx.fill(); ctx.restore();
+        ctx.save(); rrPath(ctx, r.x, r.y, r.w, r.h, 6 * z); ctx.clip();
+        if (img && img.width) ctx.drawImage(img, r.x, r.y, r.w, r.h);
+        else { ctx.fillStyle = '#1a2420'; ctx.fillRect(r.x, r.y, r.w, r.h); }
+        ctx.restore();
+        const selected = st.scrapSel === sc.id;
+        ctx.setLineDash(selected || dragging ? [] : [4, 3]); ctx.strokeStyle = selected || dragging ? '#39ff14' : 'rgba(57,255,20,0.5)'; ctx.lineWidth = selected ? 1.5 : 1;
+        rrPath(ctx, r.x + 0.5, r.y + 0.5, r.w, r.h, 6 * z); ctx.stroke(); ctx.setLineDash([]);
+        if (z >= 0.3 && r.w > 60) { const a = assets.get(sc.assetId); ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = selected ? '#39ff14' : '#5d7265'; ctx.textBaseline = 'bottom'; ctx.fillText(a ? `${a.w}×${a.h} · kéo vào mail` : 'ảnh', r.x, r.y - 4); }
+        ctx.restore();
+      }
+      if (mm.kind === 'scrap' && mm.inside) {
+        ctx.save(); ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2; ctx.shadowColor = '#39ff14'; ctx.shadowBlur = 16; ctx.strokeRect(px + 1, py + 1, doc.width * z - 2, doc.height * z - 2); ctx.restore();
+        if (mm.over) { const t = ops.findNode(doc, mm.over); if (t) { const b = ops.bounds(t); ctx.save(); ctx.fillStyle = 'rgba(57,255,20,0.18)'; ctx.fillRect(px + b.x * z, py + b.y * z, b.w * z, b.h * z); ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2; ctx.strokeRect(px + b.x * z, py + b.y * z, b.w * z, b.h * z); ctx.restore(); } }
+      }
+    }
     // grid
     if (st.settings.grid && z >= 0.5) {
       ctx.save(); ctx.beginPath(); ctx.rect(px, py, doc.width * z, doc.height * z); ctx.clip();
@@ -159,6 +191,8 @@ export function CanvasView() {
     for (let i = 0; i < hs.length; i++) if (Math.abs(hs[i].x - x) <= tol && Math.abs(hs[i].y - y) <= tol) return i;
     return -1;
   }
+  function hitScrap(x: number, y: number) { const list = get().scraps; for (let i = list.length - 1; i >= 0; i--) { const sc = list[i]; if (x >= sc.x && x <= sc.x + sc.w && y >= sc.y && y <= sc.y + sc.h) return sc; } return null; }
+  function insideArtboard(x: number, y: number) { const d = docOf(); return x >= 0 && x <= d.width && y >= 0 && y <= Math.max(d.height, ops.contentHeight(d)) + 40; }
   function hit(x: number, y: number, deep: boolean): Node | null {
     const st = get(); const doc = docOf();
     const within = st.enteredGroup ? (ops.findNode(doc, st.enteredGroup) as GroupNode | null) : null;
@@ -196,6 +230,9 @@ export function CanvasView() {
     // select tool
     const hIdx = handleAt(d.x, d.y);
     if (hIdx >= 0) { const sel = ops.selectionBounds(docOf(), st.selection)!; mode.current = { kind: 'resize', handle: hIdx, base: docOf(), ids: st.selection.slice(), start: sel, sx: d.x, sy: d.y }; return; }
+    const sc = hitScrap(d.x, d.y);
+    if (sc) { set({ scrapSel: sc.id, selection: [], hover: null }); mode.current = { kind: 'scrap', id: sc.id, sx: d.x, sy: d.y, ox: sc.x, oy: sc.y, moved: false, inside: false, over: null }; return; }
+    if (st.scrapSel) set({ scrapSel: null });
     const n = hit(d.x, d.y, e.metaKey || e.ctrlKey);
     if (n) {
       let ids = st.selection;
@@ -213,7 +250,7 @@ export function CanvasView() {
     if (m.kind === 'idle') {
       if (st.tool === 'select') {
         const hIdx = handleAt(d.x, d.y);
-        wrap.current!.style.cursor = hIdx >= 0 ? CURSORS[hIdx] : '';
+        wrap.current!.style.cursor = hIdx >= 0 ? CURSORS[hIdx] : hitScrap(d.x, d.y) ? 'grab' : '';
         const n = hit(d.x, d.y, e.metaKey || e.ctrlKey);
         const hv = n ? n.id : null;
         if (hv !== st.hover) set({ hover: hv });
@@ -221,6 +258,17 @@ export function CanvasView() {
       return;
     }
     if (m.kind === 'pan') { set({ pan: { x: m.px + (p.x - m.sx), y: m.py + (p.y - m.sy) } }); return; }
+    if (m.kind === 'scrap') {
+      const dx = d.x - m.sx, dy = d.y - m.sy;
+      if (!m.moved && Math.hypot(dx * st.zoom, dy * st.zoom) < 3) return;
+      m.moved = true;
+      m.inside = insideArtboard(d.x, d.y);
+      const t = m.inside ? hit(d.x, d.y, true) : null;
+      m.over = t && t.type === 'image' ? t.id : null;
+      wrap.current!.style.cursor = 'grabbing';
+      A.moveScrap(m.id, m.ox + dx, m.oy + dy);
+      return;
+    }
     if (m.kind === 'marquee' || m.kind === 'draw') { m.cur = d; set({}); return; }
     if (m.kind === 'move') {
       let dx = d.x - m.sx, dy = d.y - m.sy;
@@ -269,6 +317,9 @@ export function CanvasView() {
       if (r.w > 2 && r.h > 2) A.addRect(r); else A.addRect({ x: d.x - 60, y: d.y - 40, w: 120, h: 80 });
     } else if (m.kind === 'move' && m.moved) {
       A.commit(ops.roundAll(docOf()), false);
+    } else if (m.kind === 'scrap' && m.moved) {
+      wrap.current!.style.cursor = '';
+      if (insideArtboard(d.x, d.y)) { const t = hit(d.x, d.y, true); A.scrapIntoDoc(m.id, t && t.type === 'image' ? t.id : undefined); }
     }
     mode.current = { kind: 'idle' };
     set({});
@@ -300,12 +351,15 @@ export function CanvasView() {
   const onDrop = async (e: DragEvent) => {
     e.preventDefault(); setDropping(false);
     const p = local(e); const d = toDoc(p.x, p.y);
-    const target = hit(d.x, d.y, true);
+    const outside = !insideArtboard(d.x, d.y);
+    const target = outside ? null : hit(d.x, d.y, true);
     const assetId = e.dataTransfer?.getData('text/phloem-asset');
-    if (assetId) { A.placeAsset(assetId, d, target && target.type === 'image' ? target.id : undefined); return; }
+    if (assetId) { if (outside) A.addScrap(assetId, d); else A.placeAsset(assetId, d, target && target.type === 'image' ? target.id : undefined); return; }
     const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
     if (!files.length) return;
-    for (const f of files) await A.addImageFile(f, d, target && target.type === 'image' ? target.id : undefined);
+    let i = 0;
+    for (const f of files) { if (outside) await A.addImageFileToScraps(f, { x: d.x + i * 24, y: d.y + i * 24 }); else await A.addImageFile(f, d, target && target.type === 'image' ? target.id : undefined); i++; }
+    if (outside) toast(files.length === 1 ? 'Ảnh nằm cạnh email — kéo vào mail để dùng.' : `${files.length} ảnh nằm cạnh email — kéo vào mail để dùng.`, 'ok');
   };
 
   // ----- text editing overlay -----
@@ -334,10 +388,10 @@ export function CanvasView() {
           onPointerDown={(e) => e.stopPropagation()} />
       )}
       {!doc.nodes.length && !s.editingText && (
-        <div class="canvas-empty"><div>
+        <div class="canvas-empty"><div onPointerDown={(e) => e.stopPropagation()}>
           <Icon name="sparkle" size={28} style={{ color: 'var(--neon)' }} />
           <div style={{ fontWeight: 700, color: 'var(--text)' }}>Artboard trống</div>
-          <div class="small">Chèn block từ panel trái, kéo ảnh vào, hoặc nhấn <span class="kbd">T</span> để gõ chữ.</div>
+          <div class="small">Chèn block từ panel trái, dán (⌘V) hoặc kéo ảnh vào, hoặc nhấn <span class="kbd">T</span> để gõ chữ. Ảnh dán sẽ nằm cạnh artboard, kéo vào mail khi cần.</div>
           <div class="row"><Btn kind="primary" sm onClick={() => A.addBlock('hero')}>+ Hero</Btn><Btn sm onClick={() => set({ leftTab: 'blocks' })}>Xem block</Btn></div>
         </div></div>
       )}
