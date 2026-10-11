@@ -3,7 +3,7 @@
 //   2. the relay (`POST /ai`, server holds ANTHROPIC_API_KEY)
 //   3. the claude.ai artifact `sample` capability (no key needed inside claude.ai)
 import Anthropic from '@anthropic-ai/sdk';
-import { getSession } from '../auth/core';
+import { getSession, expired } from '../auth/core';
 import { get } from '../store';
 
 export interface AiImage { name: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; base64: string }
@@ -84,6 +84,7 @@ export async function askClaude(req: AiRequest): Promise<string> {
       body: JSON.stringify({ model, max_tokens: maxTokens, effort: req.effort ?? 'medium', system: req.system, messages: messagesOf(req) }),
     });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 401) throw expired();
     if (!r.ok) throw new Error(j.error || `Relay /ai trả HTTP ${r.status}`);
     return String(j.text || '');
   }

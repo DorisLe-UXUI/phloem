@@ -120,7 +120,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
           <div class="grow"><TextInput value={form.website || ''} mono placeholder="https://tenmien.com" onInput={(v) => upd({ website: v })} onCommit={(v) => upd({ website: v })} /></div>
           <Btn kind="primary" sm icon="sparkle" disabled={!!siteBusy || !(form.website || '').trim()} onClick={analyze}>{siteBusy || 'AI đọc web'}</Btn>
         </div>
-        {siteErr && <div class="check err"><span class="lv">LỖI</span><span class="m">{siteErr}</span></div>}
+        {siteErr && <div class="check err"><span class="lv">LỖI</span><span class="m">{siteErr}</span>{/đăng nhập/i.test(siteErr) && <Btn sm kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập</Btn>}</div>}
         {form.site && (
           <div class="row wrap" style={{ alignItems: 'center', gap: 10 }}>
             {form.logoAssetId && assets.url(form.logoAssetId) ? <img src={assets.url(form.logoAssetId)} alt="" style={{ height: 28, maxWidth: 120, objectFit: 'contain', background: '#fff', borderRadius: 6, padding: '2px 6px' }} /> : null}
@@ -171,7 +171,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
         {form.webBrand && <button class={`preset ${form.palette === 'Web' ? 'on' : ''}`} onClick={() => upd({ palette: 'Web' })} title="Màu lấy từ website"><i style={{ background: form.webBrand.primary, borderColor: form.webBrand.accent }} />Web</button>}
         {BRAND_PRESETS.map((p) => <button key={p.name} class={`preset ${form.palette === p.name ? 'on' : ''}`} onClick={() => upd({ palette: p.name })}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}
       </div>
-      {err && <div class="check error"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
+      {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span>{/đăng nhập/i.test(err) && <Btn sm kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập</Btn>}</div>}
       {busy && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">AI đang đọc nội dung và ảnh, dựng 3 phương án…</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Thường mất 20–60 giây. Kết quả là block Phloem thật, không phải ảnh mockup.</div></div>}
       {variants.length > 0 && (
         <>

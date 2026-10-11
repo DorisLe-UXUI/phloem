@@ -4,7 +4,7 @@ import type { Brand } from '../model/types';
 import { FONTS } from '../model/types';
 import { assets } from '../storage/assets';
 import { get } from '../store';
-import { getSession } from '../auth/core';
+import { getSession, expired } from '../auth/core';
 
 export interface SiteImage { url: string; alt: string; w: number; h: number }
 export interface SiteProfile {
@@ -31,7 +31,7 @@ export async function analyzeSite(site: string): Promise<SiteProfile> {
   try { res = await fetch(`${r.url}/site`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...r.headers }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(30_000) }); }
   catch { throw new Error('Không gọi được relay. Relay có đang chạy không?'); }
   const j = await res.json().catch(() => ({}));
-  if (res.status === 401) throw new Error('Đăng nhập tài khoản relay (hoặc đặt Relay token trong Cài đặt) để AI đọc web.');
+  if (res.status === 401) throw getSession() ? expired() : new Error('Đăng nhập tài khoản relay (hoặc đặt Relay token trong Cài đặt) để AI đọc web.');
   if (!res.ok) throw new Error(j.error || `Relay trả ${res.status}`);
   return j as SiteProfile;
 }

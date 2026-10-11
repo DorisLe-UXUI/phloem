@@ -199,7 +199,15 @@ Xem dữ liệu: `sqlite3 server/data/phloem.db "select id,name,updated_at from 
 
 Trong "Dựng bằng AI", dán link web rồi bấm **AI đọc web**: relay tải trang (`POST /site`), lấy logo, màu (theo tần suất, bỏ xám/trắng/đen), font (kể cả Google Fonts), tiêu đề, menu, nút, đoạn văn, ảnh; ảnh và logo được kéo qua `GET /image?url=` vào thư viện ảnh. Studio suy ra brand kit "Web" (primary, accent, font gần nhất Phloem có) và đưa hồ sơ này vào prompt. Prompt yêu cầu AI nhận ra ngành (game/trẻ em, agency, bán lẻ, giáo dục, SaaS, du lịch…) và dùng công thức bố cục riêng cho ngành, 3 phương án khác nhau về cấu trúc, copy tiếng Việt hoặc English theo lựa chọn.
 
-Relay chỉ tải host công khai (chặn localhost và dải IP nội bộ), chỉ nhận ảnh ≤ 10 MB, trang ≤ 2 MB + 3 stylesheet.
+Cửa hàng Shopify: relay đọc thêm `/products.json` (tên, giá, giá cũ, link, ảnh sản phẩm thật) và AI bắt buộc dùng đúng dữ liệu đó cho block sản phẩm. Ảnh lấy bản lớn nhất trong `srcset`. Nếu bạn dán link rồi bấm "Dựng" luôn, Studio tự đọc web trước.
+
+Bảo mật relay: `/ai`, `/site`, `/image` chỉ phục vụ người đã đăng nhập tài khoản relay (hoặc có `RELAY_TOKEN`); relay chỉ tải host công khai, kiểm tra lại từng bước redirect, kết nối đúng địa chỉ đã kiểm tra (chống DNS rebinding), giới hạn trang 2 MB, ảnh 10 MB, 3 stylesheet; mật khẩu băm scrypt bất đồng bộ; hạn mức lưu trữ `USER_QUOTA_MB` (500) và `TOTAL_QUOTA_MB` (5000).
+
+## Thiết kế: vibe, font, hiệu ứng
+
+Brand kit có **Vibe** (clean / playful / bold / luxury / editorial): quyết định bo góc, nút pill phát sáng, bóng đổ card, hình tròn trang trí trên dải màu, cỡ tiêu đề. 45 Google Fonts (sans, display, serif, bo tròn, viết tay, mono) với cờ hỗ trợ tiếng Việt. AI chọn vibe + font tiêu đề/nội dung cho từng phương án theo ngành. Email là ảnh cắt lát nên mọi hiệu ứng (gradient, glow, bóng, chữ display) hiển thị đúng ở mọi hộp thư.
+
+Ảnh: dán Ctrl+V vào editor (thay vào layer ảnh đang chọn hoặc thêm layer mới), kéo file từ máy vào canvas, kéo ảnh từ thư viện (tab Ảnh) vào email; trong "Dựng bằng AI" cũng dán hoặc kéo thả được.
 
 ## Import từ Figma
 

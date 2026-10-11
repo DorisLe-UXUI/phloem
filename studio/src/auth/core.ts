@@ -5,7 +5,7 @@ export interface User { id: string; name: string; email: string; brand: string; 
 export interface Session { token: string; user: User; mode: 'local' | 'relay'; relayUrl?: string }
 export interface AuthOpts { relayUrl?: string; relayToken?: string }
 export interface Credentials { name?: string; email: string; password: string; brand?: string }
-export type AuthCode = 'name' | 'email' | 'password' | 'exists' | 'notfound' | 'badpass' | 'network' | 'secure' | 'storage' | 'server';
+export type AuthCode = 'name' | 'email' | 'password' | 'exists' | 'notfound' | 'badpass' | 'network' | 'secure' | 'storage' | 'server' | 'expired';
 
 export class AuthError extends Error {
   code: AuthCode;
@@ -23,6 +23,7 @@ const MSG: Record<AuthCode, string> = {
   secure: 'Trình duyệt chặn mã hoá mật khẩu trên trang không https.',
   storage: 'Trình duyệt không cho lưu dữ liệu (chế độ riêng tư?).',
   server: 'Relay trả lỗi không rõ.',
+  expired: 'Phiên đăng nhập hết hạn. Đăng nhập lại.',
 };
 const fail = (code: AuthCode, message?: string) => new AuthError(code, message || MSG[code]);
 
@@ -142,7 +143,12 @@ export async function restore(opts: AuthOpts = readStudioRelay()): Promise<Sessi
     const u = await tx<LocalUser | undefined>('readonly', (st) => st.get(s.user.id));
     if (!u) { setSession(null); return null; }
     return s;
-  } catch (e) { return (e as AuthError).code === 'network' ? s : null; }
+  } catch (e) {
+    if ((e as AuthError).code === 'network') return s; // relay unreachable: keep the session, retry later
+    setSession(null); return null; // expired or revoked on the relay: forget it so the UI asks to sign in again
+  }
 }
+/** A relay route answered 401: the session is dead. Drop it and explain. */
+export function expired(): Error { setSession(null); return new AuthError('expired' as AuthCode, 'Phiên đăng nhập relay đã hết hạn hoặc chưa đăng nhập. Bấm Đăng nhập để dùng AI.'); }
 export function logout(): void { setSession(null); }
 export const messages = MSG;
