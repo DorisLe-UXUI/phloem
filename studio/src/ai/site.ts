@@ -88,15 +88,39 @@ async function svgToPng(svg: Blob): Promise<Blob> {
   } finally { URL.revokeObjectURL(u); }
 }
 
+/** A white copy of a dark, transparent logo (for dark bands). null when the logo has a solid background or is already light. */
+export async function lightVersionOf(blob: Blob): Promise<Blob | null> {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+    const g = c.getContext('2d')!; g.drawImage(bmp, 0, 0); bmp.close();
+    const d = g.getImageData(0, 0, c.width, c.height); const px = d.data;
+    let opaque = 0, transparent = 0, dark = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3];
+      if (a < 24) { transparent++; continue; }
+      opaque++;
+      const l = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255;
+      if (l < 0.45) dark++;
+    }
+    if (!opaque || transparent / (opaque + transparent) < 0.08 || dark / opaque < 0.6) return null; // solid background or already light
+    for (let i = 0; i < px.length; i += 4) { if (px[i + 3] >= 24) { px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; } }
+    g.putImageData(d, 0, 0);
+    return await new Promise<Blob | null>((ok) => c.toBlob((b) => ok(b), 'image/png'));
+  } catch { return null; }
+}
+
 /** Pull the logo and up to `max` images through the relay into the asset library. */
-export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (done: number, total: number) => void, skipLogo = false): Promise<{ logoId: string | null; imageIds: string[] }> {
-  const r = relay(); if (!r) return { logoId: null, imageIds: [] };
+export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (done: number, total: number) => void, skipLogo = false): Promise<{ logoId: string | null; logoLightId: string | null; imageIds: string[] }> {
+  const r = relay(); if (!r) return { logoId: null, logoLightId: null, imageIds: [] };
+  let logoLightId: string | null = null;
   const grab = async (url: string, name: string) => {
     try {
       const res = await fetch(`${r.url}/image?url=${encodeURIComponent(url)}`, { headers: r.headers, signal: AbortSignal.timeout(20_000) });
       if (!res.ok) return null;
       const blob = await res.blob(); if (!blob.type.startsWith('image/') || blob.size < 600) return null;
       const file = blob.type === 'image/svg+xml' ? await svgToPng(blob) : blob;
+      if (name === 'logo') { const light = await lightVersionOf(file); if (light) logoLightId = (await assets.add(light, 'logo-light.png')).id; }
       return (await assets.add(file, name)).id;
     } catch { return null; }
   };
@@ -112,7 +136,13 @@ export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (d
   const wantLogo = !skipLogo && !!(p.logo || p.logoSvg || p.icon);
   const total = list.length + (wantLogo ? 1 : 0);
   let done = 0;
-  const grabSvg = async (svg: string) => { try { const png = await svgToPng(new Blob([svg], { type: 'image/svg+xml' })); return (await assets.add(png, 'logo.png')).id; } catch { return null; } };
+  const grabSvg = async (svg: string) => {
+    try {
+      const png = await svgToPng(new Blob([svg], { type: 'image/svg+xml' }));
+      try { const white = await svgToPng(new Blob([svg.replace(/#111111/gi, '#FFFFFF').replace(/#000000|black/gi, '#FFFFFF')], { type: 'image/svg+xml' })); logoLightId = (await assets.add(white, 'logo-light.png')).id; } catch { /* no light version */ }
+      return (await assets.add(png, 'logo.png')).id;
+    } catch { return null; }
+  };
   // Order: the site's own <img> logo → inline header SVG → the largest icon as a last resort.
   const logoId = !wantLogo ? null : (p.logo ? await grab(p.logo, 'logo') : null) || (p.logoSvg ? await grabSvg(p.logoSvg) : null) || (p.icon && !p.logo && !p.logoSvg ? await grab(p.icon, 'logo') : null);
   if (wantLogo) { done++; onProgress?.(done, total); }
@@ -124,7 +154,7 @@ export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (d
     ids.forEach((id, k) => { done++; onProgress?.(done, total); if (id) { imageIds.push(id); byUrl.set(batch[k].url, id); } });
   }
   for (const pr of p.products || []) pr.assetId = byUrl.get(pr.image) ?? null;
-  return { logoId, imageIds };
+  return { logoId, logoLightId: logoId ? logoLightId : null, imageIds };
 }
 
 /** Compact text for the prompt: what the site is, how it speaks, what it looks like. */

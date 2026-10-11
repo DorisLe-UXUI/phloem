@@ -19,6 +19,7 @@ export interface GenInput {
   site?: SiteProfile | null;
   webBrand?: Partial<Brand> | null;
   logoAssetId?: string | null;
+  logoLightAssetId?: string | null;
   language?: 'auto' | 'vi' | 'en';
   /** Products from Kho hàng (or the site) with imported imageIds. */
   products?: SiteProduct[];
@@ -221,7 +222,7 @@ export async function generateVariants(inp: GenInput, onStage?: (s: string) => v
 }
 
 export function brandForPalette(name: string, base: Brand = DEFAULT_BRAND, web?: Partial<Brand> | null): Brand {
-  if (name === 'Web' && web) return { ...base, ...web, name: base.name || web.name || 'BRAND', logoAssetId: base.logoAssetId ?? null };
+  if (name === 'Web' && web) return { ...base, ...web, name: base.name || web.name || 'BRAND', logoAssetId: base.logoAssetId ?? null, logoLightAssetId: base.logoLightAssetId ?? null };
   const p = BRAND_PRESETS.find((x) => x.name === name);
   return { ...base, ...(p ? p.brand : {}) };
 }

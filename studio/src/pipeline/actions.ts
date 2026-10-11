@@ -3,10 +3,10 @@ import type { BlockKind, Check, NNode, SlicePlan, Suggestion, SuggestionAction, 
 import { planSlices } from '../../../src/shared/slicer';
 import { runChecks } from '../../../src/shared/checks';
 import { suggest } from '../../../src/shared/suggestions';
-import type { Brand, Doc, Node, Project, TextNode } from '../model/types';
+import type { Brand, Color, Doc, Node, Project, RectNode, TextNode } from '../model/types';
 import { DEFAULT_BRAND, uid } from '../model/types';
 import * as ops from '../model/ops';
-import { makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
+import { contrastToken, logoAssetFor, makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
 import type { DraftRecord } from '../../../src/shared/types';
 import { docToNNode } from '../model/toNNode';
 import { textHeight } from '../render/textLayout';
@@ -298,7 +298,7 @@ export function applyBrand(b: Partial<Brand>) {
     const d = doc(); const next = fn(d); if (next !== d) commit(next);
     const od = get().project![other]; if (od) { const on = fn(od); if (on !== od) patchProject({ [other]: on } as Partial<Project>); }
   };
-  if (nb.logoAssetId !== p.brand.logoAssetId || nb.name !== p.brand.name) both((d) => swapLogos(d, nb));
+  if (nb.logoAssetId !== p.brand.logoAssetId || (nb.logoLightAssetId ?? null) !== (p.brand.logoLightAssetId ?? null) || nb.name !== p.brand.name) both((d) => swapLogos(d, nb));
   if ((nb.gradient?.angle ?? null) !== (p.brand.gradient?.angle ?? null)) {
     const isBrandGrad = (n: Node) => n.type === 'rect' && !!n.gradient && typeof n.gradient.from === 'object' && n.gradient.from.token === 'primary' && typeof n.gradient.to === 'object' && n.gradient.to.token === 'accent';
     // Only full-width bands (hero band, dark band, CTA strips): buttons, pills and badges keep their flat fill.
@@ -315,22 +315,31 @@ export function applyBrand(b: Partial<Brand>) {
 
 /** Replace every "Logo" layer (nav/footer) with the brand's logo image, or back to the wordmark. */
 function swapLogos(d: Doc, b: Brand): Doc {
-  return ops.mapNodes(d, (n) => {
+  // The band behind a logo decides the variant: the light logo (and light wordmark) on dark bands.
+  const fix = (n: Node, behind: Color | null): Node => {
     if (n.name !== 'Logo' || (n.type !== 'text' && n.type !== 'image')) return n;
+    const asset = logoAssetFor(b, behind);
     const cy = n.y + n.h / 2;
     const isCenter = n.type === 'text' ? n.align === 'center' : Math.abs(n.x + n.w / 2 - d.width / 2) < 4;
-    if (b.logoAssetId) {
-      if (n.type === 'image' && n.assetId === b.logoAssetId) return n;
-      const meta = assets.get(b.logoAssetId); const ratio = meta ? meta.w / Math.max(1, meta.h) : 3.2;
+    if (asset) {
+      if (n.type === 'image' && n.assetId === asset) return n;
+      const meta = assets.get(asset); const ratio = meta ? meta.w / Math.max(1, meta.h) : 3.2;
       const h = n.type === 'image' ? n.h : (n.fontSize >= 16 ? 30 : 24); const w = Math.max(40, Math.min(220, Math.round(h * ratio)));
       const x = isCenter ? Math.round((d.width - w) / 2) : n.x;
-      return { id: n.id, type: 'image', name: 'Logo', x, y: Math.round(cy - h / 2), w, h, visible: n.visible, locked: n.locked, opacity: 1, link: n.link, alt: b.name, assetId: b.logoAssetId, fit: 'contain', radius: 0, fill: null, overlay: null } as Node;
+      return { id: n.id, type: 'image', name: 'Logo', x, y: Math.round(cy - h / 2), w, h, visible: n.visible, locked: n.locked, opacity: 1, link: n.link, alt: b.name, assetId: asset, fit: 'contain', radius: 0, fill: null, overlay: null } as Node;
     }
-    if (n.type === 'text') return n.text === b.name.toUpperCase() ? n : A_fixText({ ...n, text: b.name.toUpperCase() });
-    const t = mkText(b, b.name.toUpperCase(), { x: isCenter ? 24 : n.x, y: 0, w: isCenter ? d.width - 48 : 260, fontSize: n.h >= 28 ? 18 : 13, fontWeight: 800, letterSpacing: 1.5, name: 'Logo', link: n.link, align: isCenter ? 'center' : 'left' });
+    const color = { token: contrastToken(b, behind) } as const;
+    if (n.type === 'text') return n.text === b.name.toUpperCase() ? { ...n, color } : A_fixText({ ...n, text: b.name.toUpperCase(), color });
+    const t = mkText(b, b.name.toUpperCase(), { x: isCenter ? 24 : n.x, y: 0, w: isCenter ? d.width - 48 : 260, fontSize: n.h >= 28 ? 18 : 13, fontWeight: 800, letterSpacing: 1.5, name: 'Logo', link: n.link, align: isCenter ? 'center' : 'left', color });
     t.id = n.id; t.y = Math.round(cy - t.h / 2);
     return t;
+  };
+  const walk = (list: Node[], behind: Color | null): Node[] => list.map((n) => {
+    if (n.type !== 'group') return fix(n, behind);
+    const band = n.children.find((k) => k.type === 'rect' && k.w >= d.width * 0.9) as RectNode | undefined;
+    return ops.syncGroup({ ...n, children: walk(n.children, band?.fill ?? behind) });
   });
+  return { ...d, nodes: walk(d.nodes, d.bg) };
 }
 const A_fixText = (n: Node): Node => fixTextHeight(n);
 

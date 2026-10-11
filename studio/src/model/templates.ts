@@ -2,8 +2,8 @@
 // the whole email (bands, cards, eyebrows, prices, buttons, footer). Blocks take optional content so templates and
 // the AI composer can fill real copy, products, images and links.
 import type { BlockKind, TemplateKind } from '../../../src/shared/types';
-import type { Brand, Doc, EmailFields, GroupNode, ImageNode, Node, RectNode, Shadow, TextNode, Vibe } from './types';
-import { uid } from './types';
+import type { Brand, Color, Doc, EmailFields, GroupNode, ImageNode, Node, RectNode, Shadow, TextNode, Vibe } from './types';
+import { isDarkColor, luminance, resolveColor, uid } from './types';
 import { layoutText, textHeight } from '../render/textLayout';
 import { syncGroup } from './ops';
 import { assets } from '../storage/assets';
@@ -183,14 +183,27 @@ const up = (s: string) => s.toUpperCase();
 const B0 = 'https://example.com';
 
 /** Brand logo slot: the uploaded logo image when the brand has one, otherwise the wordmark text. */
-export function logoNode(brand: Brand, c: BlockContent, x: number, cy: number, h: number, align: 'left' | 'center', link: string, color: TextNode['color'] = { token: 'ink' }): Node {
-  if (brand.logoAssetId) {
-    const meta = assets.get(brand.logoAssetId);
+/** Which brand token reads on a given background: the lighter of ink/bg on dark bands, the darker on light ones. */
+export function contrastToken(brand: Brand, behind: Color | null | undefined): 'ink' | 'bg' {
+  const dark = isDarkColor(resolveColor(behind, brand) ?? brand.bg);
+  const inkLighter = luminance(brand.ink) > luminance(brand.bg);
+  return dark ? (inkLighter ? 'ink' : 'bg') : (inkLighter ? 'bg' : 'ink');
+}
+/** The logo asset to show on a band: the light version on dark backgrounds when the brand has one. */
+export function logoAssetFor(brand: Brand, behind: Color | null | undefined): string | null {
+  const dark = isDarkColor(resolveColor(behind, brand) ?? brand.bg);
+  return (dark && brand.logoLightAssetId) || brand.logoAssetId || null;
+}
+export function logoNode(brand: Brand, c: BlockContent, x: number, cy: number, h: number, align: 'left' | 'center', link: string, behind: Color = { token: 'bg' }): Node {
+  const asset = logoAssetFor(brand, behind);
+  if (asset) {
+    const meta = assets.get(asset);
     const ratio = meta ? meta.w / Math.max(1, meta.h) : 3.2;
     const w = Math.max(40, Math.min(220, Math.round(h * ratio)));
     const xx = align === 'center' ? Math.round((W - w) / 2) : x;
-    return image({ x: xx, y: Math.round(cy - h / 2), w, h, assetId: brand.logoAssetId, fit: 'contain', name: 'Logo', alt: brand.name, link });
+    return image({ x: xx, y: Math.round(cy - h / 2), w, h, assetId: asset, fit: 'contain', name: 'Logo', alt: brand.name, link });
   }
+  const color: TextNode['color'] = { token: contrastToken(brand, behind) };
   const t = text(brand, up(c.brand || brand.name || 'BRAND'), { x: align === 'center' ? PAD : x, y: 0, w: align === 'center' ? W - PAD * 2 : 260, fontSize: h >= 28 ? 18 : 13, fontWeight: 800, letterSpacing: 1.5, name: 'Logo', link, align: align === 'center' ? 'center' : 'left', color });
   t.y = Math.round(cy - t.h / 2);
   return t;
@@ -236,11 +249,11 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       h = 72;
       kids.push(band(h, dark ? { token: 'ink' } : { token: 'bg' }));
       kids.push(rect({ x: 0, y, w: W, h: 4, fill: { token: 'primary' }, name: 'Accent bar' }));
-      kids.push(logoNode(brand, c, PAD, y + 38, 30, 'left', c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com', dark ? { token: 'bg' } : { token: 'ink' }));
+      kids.push(logoNode(brand, c, PAD, y + 38, 30, 'left', c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com', dark ? { token: 'ink' } : { token: 'bg' }));
       const links = (c.links && c.links.length ? c.links : DEF.links).slice(0, 4);
       let x = W - PAD;
       for (let i = links.length - 1; i >= 0; i--) {
-        const t = text(brand, links[i].label, { x: 0, y: y + 30, w: 120, fontSize: 13, fontWeight: 600, color: dark ? { token: 'bg' } : { token: 'muted' }, align: 'right', name: links[i].label, link: links[i].url, opacity: dark ? 0.78 : 1 });
+        const t = text(brand, links[i].label, { x: 0, y: y + 30, w: 120, fontSize: 13, fontWeight: 600, color: dark ? { token: contrastToken(brand, { token: 'ink' }) } : { token: 'muted' }, align: 'right', name: links[i].label, link: links[i].url, opacity: dark ? 0.78 : 1 });
         const tw = Math.ceil(measureWidth(brand, t)) + 2; t.w = tw; t.x = x - tw; x -= tw + 24;
         kids.push(t);
       }
@@ -827,7 +840,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'footer': {
       const d = DEF.footer;
-      const brandT = logoNode(brand, c, PAD, y + 40, 24, 'center', c.links?.[0]?.url || 'https://example.com');
+      const brandT = logoNode(brand, c, PAD, y + 40, 24, 'center', c.links?.[0]?.url || 'https://example.com', { token: 'soft' });
       const addr = text(brand, c.address || d.address, { x: PAD, y: brandT.y + brandT.h + 10, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Address' });
       const unsub = text(brand, c.unsubscribeLabel || 'Huỷ đăng ký', { x: 0, y: addr.y + addr.h + 12, w: 90, fontSize: 12, color: { token: 'muted' }, align: 'right', underline: true, name: 'Unsubscribe', link: c.unsubscribeUrl || d.unsubscribeUrl });
       const prefs = text(brand, c.preferencesLabel || 'Cập nhật thông tin', { x: 0, y: unsub.y, w: 120, fontSize: 12, color: { token: 'muted' }, align: 'left', underline: true, name: 'Preferences', link: c.preferencesUrl || d.preferencesUrl });

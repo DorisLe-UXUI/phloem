@@ -210,6 +210,8 @@ Xem dữ liệu: `sqlite3 server/data/phloem.db "select id,name,updated_at from 
 
 Trong "Dựng bằng AI", dán link web rồi bấm **AI đọc web**: relay tải trang (`POST /site`), lấy logo, màu (theo tần suất, bỏ xám/trắng/đen), font (kể cả Google Fonts), tiêu đề, menu, nút, đoạn văn, ảnh; ảnh và logo được kéo qua `GET /image?url=` vào thư viện ảnh. Studio suy ra brand kit "Web" (primary, accent, font gần nhất Phloem có) và đưa hồ sơ này vào prompt. Prompt yêu cầu AI nhận ra ngành (game/trẻ em, agency, bán lẻ, giáo dục, SaaS, du lịch…) và dùng công thức bố cục riêng cho ngành, 3 phương án khác nhau về cấu trúc, copy tiếng Việt hoặc English theo lựa chọn.
 
+Logo: relay ưu tiên ảnh trong header hoặc link về trang chủ, lấy cả SVG inline trong header (chuyển thành PNG), và bỏ qua "logo wall" khách hàng/đối tác/báo chí (những ảnh này cũng không bao giờ thành ảnh nội dung). Logo tối trên nền trong suốt được tạo thêm bản trắng (`logoLightAssetId`) để dùng trên nav/footer tối. Hồ sơ web nói rõ với AI: thương hiệu gửi là chính website; ảnh có alt mang tên thương hiệu khác chỉ là case study / khách hàng tiêu biểu. Loại email "Giới thiệu dịch vụ / thương hiệu" dành cho email đầu tiên tới khách tiềm năng.
+
 Cửa hàng Shopify: relay đọc thêm `/products.json` (tên, giá, giá cũ, link, ảnh sản phẩm thật) và AI bắt buộc dùng đúng dữ liệu đó cho block sản phẩm. Ảnh lấy bản lớn nhất trong `srcset`. Nếu bạn dán link rồi bấm "Dựng" luôn, Studio tự đọc web trước.
 
 Bảo mật relay: `/ai`, `/site`, `/image` chỉ phục vụ người đã đăng nhập tài khoản relay (hoặc có `RELAY_TOKEN`); relay chỉ tải host công khai, kiểm tra lại từng bước redirect, kết nối đúng địa chỉ đã kiểm tra (chống DNS rebinding), giới hạn trang 2 MB, ảnh 10 MB, 3 stylesheet; mật khẩu băm scrypt bất đồng bộ; hạn mức lưu trữ `USER_QUOTA_MB` (500) và `TOTAL_QUOTA_MB` (5000).
@@ -218,7 +220,9 @@ Bảo mật relay: `/ai`, `/site`, `/image` chỉ phục vụ người đã đă
 
 Brand kit có **Vibe** (clean / playful / bold / luxury / editorial): quyết định bo góc, nút pill phát sáng, bóng đổ card, hình tròn trang trí trên dải màu, cỡ tiêu đề. 45 Google Fonts (sans, display, serif, bo tròn, viết tay, mono) với cờ hỗ trợ tiếng Việt. AI chọn vibe + font tiêu đề/nội dung cho từng phương án theo ngành. Email là ảnh cắt lát nên mọi hiệu ứng (gradient, glow, bóng, chữ display) hiển thị đúng ở mọi hộp thư.
 
-Ảnh: dán Ctrl+V vào editor (thay vào layer ảnh đang chọn hoặc thêm layer mới), kéo file từ máy vào canvas, kéo ảnh từ thư viện (tab Ảnh) vào email; trong "Dựng bằng AI" cũng dán hoặc kéo thả được.
+Hệ thiết kế v3 (10/2026): cỡ chữ display lớn với tracking âm theo vibe (`Theme.track`), nhịp khoảng trắng theo vibe (`Theme.space`); hero-band và hero-center kiểu **poster** (ảnh thành card nổi tràn khỏi mép dải màu); **hero-product** (sân khấu tối, chữ khổng lồ, sản phẩm nổi trong vầng sáng); stats số khổng lồ (có `style: "dark"`); steps 4 bước thành lưới 2×2 với số 01·02; card sản phẩm có tiêu đề mục, link "Xem tất cả →", giá cũ gạch ngang cùng dòng, đĩa mờ sau ảnh; block mới **ticker**, **offer** (số ưu đãi trên gradient), **reviews** (card sao), **overlap** (ảnh + card đè); nav/cta có `style: "dark"`, feature-row có `style: "right"`. AI được dạy 7 công thức bố cục theo ngành (poster, dải màu, editorial, luxury, agency, SaaS, game) và bắt buộc có một dải tối/gradient mỗi email (trừ luxury); block text đứng trước block danh sách được gộp thành heading của block đó.
+
+Ảnh: dán Ctrl+V ở bất cứ đâu trong editor (ảnh từ clipboard, ảnh copy từ web, link ảnh): ảnh rơi ra **pasteboard** cạnh artboard, kéo vào email khi cần (thả lên layer ảnh để thay, thả chỗ trống để thêm layer); kéo file từ máy thả ngoài artboard cũng xếp tạm ở đó; kéo ảnh từ thư viện (tab Ảnh) vào email; trong "Dựng bằng AI" cũng dán hoặc kéo thả được. Artboard tự ôm đúng chiều cao nội dung sau mỗi thao tác (gõ H thủ công thì giữ nguyên; "Khớp nội dung" bật lại tự động).
 
 ## Kho hàng và gợi ý nên đẩy gì
 

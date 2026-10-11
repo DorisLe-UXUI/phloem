@@ -8,6 +8,7 @@ import { makeTemplate, TEMPLATES, templateBrand } from '../model/templates';
 import { thumbnail } from '../render/renderer';
 import { ensureFonts } from '../render/fonts';
 import { assets } from '../storage/assets';
+import { lightVersionOf } from '../ai/site';
 import { db } from '../storage/idb';
 import { get, set, toast, useStore } from '../store';
 import * as A from '../pipeline/actions';
@@ -128,8 +129,8 @@ function BrandModal({ onClose }: { onClose: () => void }) {
         <div class="col grow">
           <Field label="Tên thương hiệu" hint="dùng khi chưa có logo"><TextInput value={b.name} onCommit={(v) => up({ name: v.trim() || 'BRAND' })} /></Field>
           <div class="row">
-            <Btn sm icon="upload" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/png,image/svg+xml,image/jpeg,image/webp'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { const a = await assets.add(f); up({ logoAssetId: a.id }); toast('Đã thay logo trong nav và footer.', 'ok'); } catch { toast('Không đọc được ảnh logo.', 'err'); } }; i.click(); }}>Tải logo</Btn>
-            {b.logoAssetId && <Btn sm kind="ghost" onClick={() => up({ logoAssetId: null })}>Dùng chữ</Btn>}
+            <Btn sm icon="upload" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/png,image/svg+xml,image/jpeg,image/webp'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { const a = await assets.add(f); const light = await lightVersionOf(f); const l = light ? await assets.add(light, 'logo-light.png') : null; up({ logoAssetId: a.id, logoLightAssetId: l ? l.id : null }); toast(l ? 'Đã thay logo; bản trắng sẽ dùng trên dải tối.' : 'Đã thay logo trong nav và footer.', 'ok'); } catch { toast('Không đọc được ảnh logo.', 'err'); } }; i.click(); }}>Tải logo</Btn>
+            {b.logoAssetId && <Btn sm kind="ghost" onClick={() => up({ logoAssetId: null, logoLightAssetId: null })}>Dùng chữ</Btn>}
             <span class="dim small">PNG nền trong suốt, cao ≥ 120px. Logo thay vào mọi block nav/footer.</span>
           </div>
         </div>

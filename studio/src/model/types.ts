@@ -21,6 +21,8 @@ export interface Brand {
   name: string;
   /** Asset id of the brand logo; nav/footer blocks show it instead of the wordmark. */
   logoAssetId: string | null;
+  /** White/light version of the logo for dark bands (made automatically from SVG or transparent dark logos). */
+  logoLightAssetId?: string | null;
   /** Brand gradient (primary → accent) on every primary-coloured band; null/undefined = flat. */
   gradient?: { angle: number } | null;
   /** Design personality for blocks built from now on: radii, shadows, pills, decorative shapes, headline scale. */
@@ -236,6 +238,14 @@ export function uid(prefix = 'n'): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/** Relative luminance 0..1 of a #rrggbb colour (sRGB). */
+export function luminance(hex: string | null | undefined): number {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '')); if (!m) return 1;
+  const n = parseInt(m[1], 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+export const isDarkColor = (hex: string | null | undefined) => luminance(hex) < 0.35;
 export function resolveColor(c: Color | null | undefined, brand: Brand): string | null {
   if (c == null) return null;
   if (typeof c === 'string') return c;

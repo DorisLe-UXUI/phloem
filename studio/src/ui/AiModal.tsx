@@ -9,7 +9,7 @@ import * as A from '../pipeline/actions';
 import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type GenInput, type Variant } from '../ai/generate';
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
-import { analyzeSite, brandFromSite, importSiteImages, type SiteProduct, type SiteProfile } from '../ai/site';
+import { analyzeSite, brandFromSite, importSiteImages, lightVersionOf, type SiteProduct, type SiteProfile } from '../ai/site';
 import { Btn, Eyebrow, Field, Modal, Seg, Select, TextArea, TextInput } from './components';
 import { Icon } from './icons';
 import { ask } from './confirm';
@@ -26,8 +26,8 @@ const LS = 'phloem.ai.form';
 export function AiModal({ onClose }: { onClose: () => void }) {
   const s = useStore();
   const [form, setForm] = useState<GenInput>(() => {
-    const base: GenInput = { goal: 'promo', brandName: '', brief: '', content: '', tone: TONES[0].v, imageIds: [], palette: 'auto', website: '', site: null, webBrand: null, logoAssetId: null, language: 'auto', products: [] };
-    try { const saved = JSON.parse(localStorage.getItem(LS) || '{}') as Partial<GenInput>; return { ...base, ...saved, imageIds: [], site: null, logoAssetId: null, products: [], palette: saved.palette === 'Web' ? 'auto' : (saved.palette ?? 'auto') }; } catch { return base; }
+    const base: GenInput = { goal: 'promo', brandName: '', brief: '', content: '', tone: TONES[0].v, imageIds: [], palette: 'auto', website: '', site: null, webBrand: null, logoAssetId: null, logoLightAssetId: null, language: 'auto', products: [] };
+    try { const saved = JSON.parse(localStorage.getItem(LS) || '{}') as Partial<GenInput>; return { ...base, ...saved, imageIds: [], site: null, logoAssetId: null, logoLightAssetId: null, products: [], palette: saved.palette === 'Web' ? 'auto' : (saved.palette ?? 'auto') }; } catch { return base; }
   });
   const [transport, setTransport] = useState<AiTransport | 'checking'>('checking');
   const [busy, setBusy] = useState(false);
@@ -84,8 +84,8 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     const h = (e: ClipboardEvent) => { const t = e.target as HTMLElement | null; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return; const files = Array.from(e.clipboardData?.files || []); if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); void addFiles(files); } };
     window.addEventListener('paste', h); return () => window.removeEventListener('paste', h);
   }, []);
-  const upd = (patch: Partial<GenInput> | ((f: GenInput) => Partial<GenInput>)) => setForm((f) => { const n = { ...f, ...(typeof patch === 'function' ? patch(f) : patch) }; try { localStorage.setItem(LS, JSON.stringify({ ...n, imageIds: [], site: null, logoAssetId: null, products: [] })); } catch { /* ignore */ } return n; });
-  const baseBrand = (): Brand => ({ ...DEFAULT_BRAND, ...(form.webBrand || {}), name: form.brandName || form.webBrand?.name || DEFAULT_BRAND.name, logoAssetId: form.logoAssetId ?? null });
+  const upd = (patch: Partial<GenInput> | ((f: GenInput) => Partial<GenInput>)) => setForm((f) => { const n = { ...f, ...(typeof patch === 'function' ? patch(f) : patch) }; try { localStorage.setItem(LS, JSON.stringify({ ...n, imageIds: [], site: null, logoAssetId: null, logoLightAssetId: null, products: [] })); } catch { /* ignore */ } return n; });
+  const baseBrand = (): Brand => ({ ...DEFAULT_BRAND, ...(form.webBrand || {}), name: form.brandName || form.webBrand?.name || DEFAULT_BRAND.name, logoAssetId: form.logoAssetId ?? null, logoLightAssetId: form.logoLightAssetId ?? null });
   /** Read the website, import its images, update the form. Returns the updated form (or null on error). */
   const analyzeNow = async (): Promise<GenInput | null> => {
     setSiteErr(''); setSiteBusy('AI đang đọc trang…');
@@ -95,14 +95,14 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       setSiteBusy('Đang tải logo và ảnh…');
       const got = await importSiteImages(p, 10, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), !!form.logoAssetId);
       let next: GenInput | null = null;
-      upd((f) => { next = { ...f, site: p, webBrand: wb, brandName: f.brandName || wb.name || '', logoAssetId: f.logoAssetId ?? got.logoId ?? null, imageIds: [...new Set([...f.imageIds, ...got.imageIds])], palette: 'Web' }; return next; });
+      upd((f) => { next = { ...f, site: p, webBrand: wb, brandName: f.brandName || wb.name || '', logoAssetId: f.logoAssetId ?? got.logoId ?? null, logoLightAssetId: f.logoAssetId ? f.logoLightAssetId ?? null : got.logoLightId ?? null, imageIds: [...new Set([...f.imageIds, ...got.imageIds])], palette: 'Web' }; return next; });
       toast(`Đã đọc ${p.siteName || p.title}: ${p.colors.length} màu, ${p.fonts.length} font, ${got.imageIds.length} ảnh${got.logoId ? ', logo' : ''}${p.products?.length ? `, ${p.products.length} sản phẩm` : ''}.`, 'ok');
       return next;
     } catch (e) { setSiteErr((e as Error).message); return null; }
     finally { setSiteBusy(''); }
   };
   const analyze = () => { void analyzeNow(); };
-  const pickLogo = async (f: File) => { try { const a = await assets.add(f, f.name || 'logo'); upd({ logoAssetId: a.id }); } catch (e) { toast((e as Error).message, 'err'); } };
+  const pickLogo = async (f: File) => { try { const a = await assets.add(f, f.name || 'logo'); const light = await lightVersionOf(f); const l = light ? await assets.add(light, 'logo-light.png') : null; upd({ logoAssetId: a.id, logoLightAssetId: l ? l.id : null }); } catch (e) { toast((e as Error).message, 'err'); } };
   const toggleImg = (id: string) => upd({ imageIds: form.imageIds.includes(id) ? form.imageIds.filter((x) => x !== id) : [...form.imageIds, id] });
 
   const run = async () => {
@@ -180,7 +180,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
               {form.logoAssetId && assets.url(form.logoAssetId) ? <img src={assets.url(form.logoAssetId)} alt="" style={{ maxWidth: '90%', maxHeight: '80%', objectFit: 'contain' }} /> : <span class="dim" style={{ fontSize: 10 }}>chữ</span>}
             </div>
             <Btn sm icon="upload" onClick={() => logoFile.current?.click()}>Tải logo</Btn>
-            {form.logoAssetId && <Btn sm kind="ghost" onClick={() => upd({ logoAssetId: null })}>Bỏ</Btn>}
+            {form.logoAssetId && <Btn sm kind="ghost" onClick={() => upd({ logoAssetId: null, logoLightAssetId: null })}>Bỏ</Btn>}
             <input ref={logoFile} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" style={{ display: 'none' }} onChange={(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void pickLogo(f); (e.target as HTMLInputElement).value = ''; }} />
           </div>
         </Field>
