@@ -177,6 +177,30 @@ Landing có mục **Đăng ký** (`#signup`); Studio có nút Đăng nhập / Đ
 
 Mã dùng chung: `studio/src/auth/core.ts`; landing nạp bản build `studio/dist/auth.js` (`window.PhloemAuth`). Relay không gửi email xác nhận và không có quên mật khẩu; muốn thêm thì nối vào `server/src/auth.mjs`.
 
+## Database (relay)
+
+Relay dùng SQLite qua `node:sqlite` (Node ≥ 22.13), một file `server/data/phloem.db` (WAL), không cần cài gì thêm. Thư mục `server/data/` không lên repo.
+
+| Bảng | Nội dung |
+| --- | --- |
+| `users` | id, tên, email, brand, mật khẩu băm scrypt |
+| `sessions` | token đã băm, user, thiết bị, lần dùng cuối. Đăng xuất là xoá dòng → token bị thu hồi ngay |
+| `projects` | JSON toàn bộ email (desktop + mobile + brand + fields + drafts), thumb, theo `owner` |
+| `assets` | ảnh (bytes nằm trong DB), kích thước, mime, theo `owner` |
+| `profiles` | client Mailchimp/Klaviyo của mỗi user, mã hoá AES-256-GCM bằng khoá dẫn từ `AUTH_SECRET` |
+
+API (cần `Authorization: Bearer <token>`): `GET/PUT/DELETE /db/projects[/:id]`, `GET/PUT/DELETE /db/assets[/:id]` (PUT gửi bytes thô, header `Content-Type`, `X-Asset-Name`, `X-Asset-W/H`), `GET/PUT /db/profiles`, `GET /db/stats`, `GET/DELETE /db/sessions`.
+
+Studio đồng bộ tự động khi tài khoản là tài khoản relay: IndexedDB vẫn là bản làm việc (không chờ mạng), mỗi lần lưu đẩy lên relay sau 1,5 giây, đăng nhập máy khác là kéo về (so `updatedAt`, bản mới hơn thắng). Ảnh tải lên được đẩy lên relay và tải về khi máy khác cần. Chip "Đồng bộ ✓" trên trang chủ Studio; bấm để đồng bộ lại.
+
+Xem dữ liệu: `sqlite3 server/data/phloem.db "select id,name,updated_at from projects"` hoặc mở bằng DB Browser for SQLite. Sao lưu: copy file `.db` (và `.db-wal` nếu đang chạy).
+
+## AI đọc website
+
+Trong "Dựng bằng AI", dán link web rồi bấm **AI đọc web**: relay tải trang (`POST /site`), lấy logo, màu (theo tần suất, bỏ xám/trắng/đen), font (kể cả Google Fonts), tiêu đề, menu, nút, đoạn văn, ảnh; ảnh và logo được kéo qua `GET /image?url=` vào thư viện ảnh. Studio suy ra brand kit "Web" (primary, accent, font gần nhất Phloem có) và đưa hồ sơ này vào prompt. Prompt yêu cầu AI nhận ra ngành (game/trẻ em, agency, bán lẻ, giáo dục, SaaS, du lịch…) và dùng công thức bố cục riêng cho ngành, 3 phương án khác nhau về cấu trúc, copy tiếng Việt hoặc English theo lựa chọn.
+
+Relay chỉ tải host công khai (chặn localhost và dải IP nội bộ), chỉ nhận ảnh ≤ 10 MB, trang ≤ 2 MB + 3 stylesheet.
+
 ## Import từ Figma
 
 Studio → Import Figma cần Personal access token có quyền **File content: Read** (tuỳ chọn thêm Dev resources: Read). Token thiếu quyền này bị Figma trả `403 Invalid scope(s)`; tạo token mới trong Figma → Settings → Security → Personal access tokens và tick quyền đó.

@@ -21,6 +21,8 @@ export interface Brand {
   name: string;
   /** Asset id of the brand logo; nav/footer blocks show it instead of the wordmark. */
   logoAssetId: string | null;
+  /** Brand gradient (primary → accent) on every primary-coloured band; null/undefined = flat. */
+  gradient?: { angle: number } | null;
 }
 
 export interface BaseNode {

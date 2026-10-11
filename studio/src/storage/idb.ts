@@ -38,6 +38,7 @@ export const db = {
     const all = await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll());
     return all.filter((p) => (p.owner || '') === owner).map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, thumb: p.thumb, thumbMobile: p.thumbMobile, provider: p.provider })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   },
+  allProjects: async (owner = ''): Promise<StoredProject[]> => (await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll())).filter((p) => (p.owner || '') === owner),
   countProjects: async (owner = ''): Promise<number> => (await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll())).filter((p) => (p.owner || '') === owner).length,
   /** Move every project of `from` (default: guest) to `to`. Returns how many moved. */
   claimProjects: async (to: string, from = ''): Promise<number> => {

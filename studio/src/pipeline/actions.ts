@@ -17,8 +17,11 @@ import { assets } from '../storage/assets';
 import { get, history, set, toast, type Variant } from '../store';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import * as auth from '../auth/core';
+import { cloud } from '../storage/sync';
 
 const ownerId = () => get().user?.id || '';
+/** Relay settings from the Studio store (the landing reads the same values from localStorage). */
+export const authOpts = () => ({ relayUrl: (get().settings.relayUrl || '').replace(/\/$/, ''), relayToken: get().settings.relayToken || '' });
 
 // ---------- document access ----------
 export function doc(): Doc {
@@ -63,7 +66,9 @@ export async function saveProject(): Promise<void> {
   try { thumb = thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); } catch { /* fonts/images not ready */ }
   const provider = (Object.values(p.drafts || {})[0] as DraftRecord | undefined)?.provider;
   try {
-    await db.putProject({ ...p, thumb, thumbMobile, provider, owner: ownerId() });
+    const stored = { ...p, thumb, thumbMobile, provider, owner: ownerId() };
+    await db.putProject(stored);
+    cloud.pushProjectSoon(stored);
     set({ project: p, dirty: false, savedAt: p.updatedAt });
     void refreshProjects();
   } catch (e) { toast(`Không lưu được: ${(e as Error).message}`, 'err'); }
@@ -221,6 +226,17 @@ export function applyBrand(b: Partial<Brand>) {
     const next = swapLogos(d, nb);
     if (next !== d) commit(next);
   }
+  if ((nb.gradient?.angle ?? null) !== (p.brand.gradient?.angle ?? null)) {
+    const d = doc();
+    const isBrandGrad = (n: Node) => n.type === 'rect' && !!n.gradient && typeof n.gradient.from === 'object' && n.gradient.from.token === 'primary' && typeof n.gradient.to === 'object' && n.gradient.to.token === 'accent';
+    const next = ops.mapNodes(d, (n) => {
+      if (n.type !== 'rect') return n;
+      const tok = n.fill && typeof n.fill === 'object' ? n.fill.token : null;
+      if (nb.gradient) return tok === 'primary' && (!n.gradient || isBrandGrad(n)) ? { ...n, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: nb.gradient.angle } } : n;
+      return isBrandGrad(n) ? { ...n, gradient: null } : n;
+    });
+    if (next !== d) commit(next);
+  }
   remeasureAll();
 }
 
@@ -302,7 +318,7 @@ export async function newProject(kind: TemplateKind, brandOverride?: Partial<Bra
   await saveProject();
 }
 
-export async function deleteProject(id: string) { try { await db.deleteProject(id); await refreshProjects(); } catch (e) { toast((e as Error).message, 'err'); } }
+export async function deleteProject(id: string) { try { await db.deleteProject(id); await cloud.deleteProject(id); await refreshProjects(); } catch (e) { toast((e as Error).message, 'err'); } }
 export async function duplicateProject(id: string) {
   const p = await db.getProject(id); if (!p) return;
   const now = new Date().toISOString();
@@ -338,31 +354,41 @@ export async function importProjectJson(file: File) {
 }
 
 // ---------- accounts ----------
+/** Mirror this account with the relay database (no-op for local accounts). */
+export async function syncNow() {
+  const r = await cloud.syncAll(ownerId());
+  if (r.assets.length) assets.registerRemote(r.assets);
+  if (r.profiles.length) set({ profiles: r.profiles });
+  await refreshProjects();
+}
 export async function signUp(input: auth.Credentials) {
-  const s = await auth.register(input);
+  const s = await auth.register(input, authOpts());
   set({ user: s.user, modal: null });
   toast(`Chào ${s.user.name}. Tài khoản ${s.mode === 'relay' ? 'đã tạo trên relay' : 'lưu trên trình duyệt này'}.`, 'ok');
   await refreshProjects();
+  await syncNow();
 }
 export async function signIn(input: auth.Credentials) {
   if (get().dirty) await saveProject();
-  const s = await auth.login(input);
+  const s = await auth.login(input, authOpts());
   set({ user: s.user, modal: null, route: { name: 'home' }, project: null, selection: [] });
   toast(`Đã đăng nhập: ${s.user.name}.`, 'ok');
   await refreshProjects();
+  await syncNow();
 }
 export async function signOut() {
   if (get().dirty) await saveProject();
   auth.logout();
-  set({ user: null, route: { name: 'home' }, project: null, selection: [], modal: null });
+  set({ user: null, route: { name: 'home' }, project: null, selection: [], modal: null, sync: { state: 'off' } });
   toast('Đã đăng xuất.', 'ok');
   await refreshProjects();
 }
 /** Re-validate the stored session on boot and follow sign-in changes made in another tab or on the landing page. */
 export async function restoreSession() {
-  const s = await auth.restore();
+  const s = await auth.restore(authOpts());
   set({ user: s?.user ?? null });
-  auth.onAuthChange((n) => { if ((n?.user.id || '') !== (get().user?.id || '')) { set({ user: n?.user ?? null }); void refreshProjects(); } });
+  if (s) void syncNow();
+  auth.onAuthChange((n) => { if ((n?.user.id || '') !== (get().user?.id || '')) { set({ user: n?.user ?? null }); void syncNow(); } });
   addEventListener('storage', (e) => { if (e.key === 'phloem.session') { const n = auth.getSession(); if ((n?.user.id || '') !== (get().user?.id || '')) { set({ user: n?.user ?? null }); void refreshProjects(); } } });
 }
 export async function claimGuestProjects() {
@@ -370,6 +396,7 @@ export async function claimGuestProjects() {
   const n = await db.claimProjects(id);
   toast(n ? `Đã chuyển ${n} email vào tài khoản.` : 'Không có email nào của khách.', 'ok');
   await refreshProjects();
+  await syncNow();
 }
 
 function blobToDataUrl(b: Blob): Promise<string> { return new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(b); }); }

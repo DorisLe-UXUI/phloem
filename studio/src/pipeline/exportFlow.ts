@@ -1,4 +1,5 @@
 // Export pipeline for Studio: draft (Mailchimp/Klaviyo) · copy HTML · zip. Mirrors the plugin flow, minus Figma.
+import { cloud } from '../storage/sync';
 import type { DraftFile, DraftRecord, ExportedSlice, Profile, Provider, SlicePlan } from '../../../src/shared/types';
 import { buildEmailHtml, htmlSizeBytes } from '../../../src/shared/html';
 import { GMAIL_CLIP_BYTES, WEIGHT_ERROR, WEIGHT_WARN } from '../../../src/shared/checks';
@@ -49,8 +50,9 @@ export function saveProfile(p: Profile) {
   const profiles = s.profiles.slice();
   if (i >= 0) profiles[i] = p; else profiles.push(p);
   set({ profiles, settings: !s.settings.activeProfileId ? { ...s.settings, activeProfileId: p.id } : s.settings });
+  void cloud.pushProfiles(profiles);
 }
-export function removeProfile(id: string) { const s = get(); set({ profiles: s.profiles.filter((p) => p.id !== id), settings: s.settings.activeProfileId === id ? { ...s.settings, activeProfileId: null } : s.settings }); }
+export function removeProfile(id: string) { const s = get(); const profiles = s.profiles.filter((p) => p.id !== id); set({ profiles, settings: s.settings.activeProfileId === id ? { ...s.settings, activeProfileId: null } : s.settings }); void cloud.pushProfiles(profiles); }
 
 function clientFor(p: Profile) {
   const call = makeCaller(get().settings, p.provider, p.auth);

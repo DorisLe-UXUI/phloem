@@ -3,6 +3,7 @@ import type { Asset } from '../model/types';
 import { uid } from '../model/types';
 import { db } from './idb';
 import type { ImageSource } from '../render/renderer';
+import { cloud, type RemoteAsset } from './sync';
 
 type Listener = () => void;
 
@@ -37,6 +38,7 @@ export class AssetStore implements ImageSource {
     this.blobs.set(a.id, file);
     try { await db.putAsset(a, file); } catch { /* keep in memory */ }
     this.emit();
+    void cloud.pushAsset(a, file).catch(() => { /* offline: the next full sync retries */ });
     return a;
   }
 
@@ -51,11 +53,22 @@ export class AssetStore implements ImageSource {
     const u = this.urls.get(id); if (u) URL.revokeObjectURL(u); this.urls.delete(id);
     try { await db.deleteAsset(id); } catch { /* ignore */ }
     this.emit();
+    void cloud.deleteAsset(id);
+  }
+
+  /** Register assets that exist on the relay but not here; bytes are fetched lazily on first use. */
+  registerRemote(list: RemoteAsset[]) {
+    let added = 0;
+    for (const r of list) if (!this.meta.has(r.id)) { this.meta.set(r.id, { id: r.id, name: r.name, mime: r.mime, w: r.w, h: r.h, bytes: r.bytes }); added++; }
+    if (added) this.emit();
   }
 
   async blob(id: string): Promise<Blob | undefined> {
     if (this.blobs.has(id)) return this.blobs.get(id);
-    try { const b = await db.getBlob(id); if (b) this.blobs.set(id, b); return b; } catch { return undefined; }
+    try { const b = await db.getBlob(id); if (b) { this.blobs.set(id, b); return b; } } catch { /* fall through to the cloud */ }
+    const cb = await cloud.fetchAssetBlob(id);
+    if (cb) { this.blobs.set(id, cb); const m = this.meta.get(id); if (m) { try { await db.putAsset(m, cb); } catch { /* ignore */ } } }
+    return cb || undefined;
   }
 
   /** Object URL for <img>/preview use. */

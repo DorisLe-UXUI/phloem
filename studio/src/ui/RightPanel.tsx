@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Check, Suggestion } from '../../../src/shared/types';
-import type { ImageNode, Node, RectNode, TextNode } from '../model/types';
+import type { ImageNode, Node, RectNode, TextNode, GroupNode } from '../model/types';
 import { FONTS } from '../model/types';
 import * as ops from '../model/ops';
 import { assets } from '../storage/assets';
@@ -121,6 +121,7 @@ function NodeProps({ n }: { n: Node }) {
           <Btn sm icon="group" onClick={() => A.ungroupSelection()}>Bỏ nhóm (⇧⌘G)</Btn>
         </div>
       )}
+      {n.type === 'group' && <BlockBg g={n} />}
       <Eyebrow>Email</Eyebrow>
       <Field label="Link" hint={n.link ? 'cả vùng này là 1 link' : 'https:// · mailto: · *|UNSUB|*'}><TextInput value={n.link || ''} mono placeholder="https://…" onCommit={(v) => up({ link: v.trim() || null })} /></Field>
       <Field label="Alt text" hint="hiện khi ảnh bị chặn"><TextInput value={n.alt} placeholder={n.type === 'text' ? 'mặc định: nội dung chữ' : 'mô tả ảnh'} onCommit={(v) => up({ alt: v })} /></Field>
@@ -171,6 +172,7 @@ function RectProps({ n }: { n: RectNode }) {
       <Field label="Nền"><ColorInput value={n.fill} brand={b} allowNone onChange={(c) => up({ fill: c })} /></Field>
       <Toggle checked={!!n.gradient} onChange={(v) => up({ gradient: v ? { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 } : null })} label="Gradient primary → accent" sub="Đổi hai màu trong Brand kit" />
       {n.gradient && <div class="grid2"><Field label="Từ"><ColorInput value={n.gradient.from} brand={b} onChange={(c) => up({ gradient: { ...n.gradient!, from: c || '#000000' } })} /></Field><Field label="Đến"><ColorInput value={n.gradient.to} brand={b} onChange={(c) => up({ gradient: { ...n.gradient!, to: c || '#000000' } })} /></Field></div>}
+      {n.gradient && <Num label="Góc gradient" value={n.gradient.angle} min={0} max={360} suffix="°" onChange={(v) => up({ gradient: { ...n.gradient!, angle: Math.round(v) } })} />}
       <Field label="Viền">
         <div class="row">
           <div class="grow"><ColorInput value={n.stroke?.color ?? null} brand={b} allowNone onChange={(c) => up({ stroke: c ? { color: c, width: n.stroke?.width || 1 } : null })} /></div>
@@ -308,6 +310,28 @@ function ExportTab() {
       <Eyebrow>Cách hoạt động</Eyebrow>
       <div class="small muted">Email được cắt thành lát ảnh theo vùng link, upload lên {prof ? providerName(prof.provider) : 'nền tảng'}, rồi ghép thành HTML bảng chuẩn mọi hộp thư. Bấm lại sau khi sửa: cập nhật đúng draft cũ, ảnh không đổi không upload lại.</div>
       <div class="small muted" style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--neon)', boxShadow: '0 0 8px var(--neon)', display: 'inline-block' }} />Phloem không bao giờ tự gửi. Bạn duyệt và bấm gửi trong {prof ? providerName(prof.provider) : 'Mailchimp / Klaviyo'}.</div>
+    </div>
+  );
+}
+
+
+/** Background of a block group: the full-width band rect inside it. Lets spacers, dividers and any band change colour,
+ *  gradient and opacity without entering the group. */
+function BlockBg({ g }: { g: GroupNode }) {
+  const s = useStore(); const b = s.project!.brand;
+  const band = g.children.find((c): c is RectNode => c.type === 'rect' && c.w >= g.w - 2) ?? null;
+  if (!band) return null;
+  const up = (patch: Partial<RectNode>) => A.updateNode(band.id, patch as Partial<Node>);
+  return (
+    <div class="section">
+      <Eyebrow>Nền block</Eyebrow>
+      <Field label="Màu nền" hint={g.block === 'spacer' ? 'khoảng trống: đổi màu hoặc để trong suốt' : 'dải nền của block'}><ColorInput value={band.fill} brand={b} allowNone onChange={(c) => up({ fill: c })} /></Field>
+      <Toggle checked={!!band.gradient} onChange={(v) => up({ gradient: v ? { from: { token: 'primary' }, to: { token: 'accent' }, angle: b.gradient?.angle ?? 135 } : null })} label="Gradient" sub="primary → accent, đổi được hai đầu" />
+      {band.gradient && <div class="grid2"><Field label="Từ"><ColorInput value={band.gradient.from} brand={b} onChange={(c) => up({ gradient: { ...band.gradient!, from: c || '#000000' } })} /></Field><Field label="Đến"><ColorInput value={band.gradient.to} brand={b} onChange={(c) => up({ gradient: { ...band.gradient!, to: c || '#000000' } })} /></Field></div>}
+      <div class="grid2">
+        {band.gradient ? <Num label="Góc" value={band.gradient.angle} min={0} max={360} suffix="°" onChange={(v) => up({ gradient: { ...band.gradient!, angle: Math.round(v) } })} /> : <div />}
+        <Num label="Mờ nền" value={Math.round(band.opacity * 100)} min={0} max={100} suffix="%" onChange={(v) => up({ opacity: v / 100 })} />
+      </div>
     </div>
   );
 }

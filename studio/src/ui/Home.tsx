@@ -67,6 +67,9 @@ export function Home() {
         <Logo size={20} onClick={isArtifact() ? undefined : () => { location.href = '../'; }} />
         {!isArtifact() && <a class="btn ghost sm" href="../" title="Về trang giới thiệu"><Icon name="external" /> Trang giới thiệu</a>}
         <span class="grow" />
+        {s.user && (s.sync.state === 'off'
+          ? <span class="chip" title="Tài khoản trên trình duyệt này. Chạy relay để đồng bộ nhiều máy.">Trên máy này</span>
+          : <span class={`chip ${s.sync.state === 'error' ? 'err' : s.sync.state === 'idle' ? 'on' : ''}`} title={s.sync.msg || 'Đồng bộ với relay'} onClick={() => void A.syncNow()} style={{ cursor: 'pointer' }}>{s.sync.state === 'syncing' ? 'Đang đồng bộ…' : s.sync.state === 'error' ? 'Lỗi đồng bộ · thử lại' : `Đồng bộ ✓ ${s.sync.at ? new Date(s.sync.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}`}</span>)}
         {s.user ? (
           <div class="acct" title={s.user.email}>
             <div class="avatar">{(s.user.name || '?').trim().slice(0, 1).toUpperCase()}</div>

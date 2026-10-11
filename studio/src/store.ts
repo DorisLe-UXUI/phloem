@@ -48,6 +48,8 @@ export interface State {
   authTab: 'login' | 'register';
   /** Projects created while signed out, offered for claiming after sign-in. */
   guestProjects: number;
+  /** Cloud sync status (relay accounts only). */
+  sync: { state: 'off' | 'idle' | 'syncing' | 'error'; at?: string; msg?: string };
 }
 
 const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings';
@@ -70,6 +72,7 @@ export const initialState: State = {
   user: getSession()?.user ?? null,
   authTab: 'login',
   guestProjects: 0,
+  sync: { state: 'off' },
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),

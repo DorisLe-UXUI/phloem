@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { createAuth } from './auth.mjs';
+import { siteProfile, fetchImage } from './site.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -23,6 +24,7 @@ const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', import.meta.url).pathname);
 const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '' });
+const DB = AUTH.db;
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 const OAUTH = {
@@ -72,6 +74,8 @@ const server = createServer(async (req, res) => {
         klaviyoRevision: KLAVIYO_REVISION,
         ai: !!anthropic,
         auth: true,
+        db: true,
+        site: true,
         users: AUTH.count(),
       });
     }
@@ -79,6 +83,9 @@ const server = createServer(async (req, res) => {
     if (RELAY_TOKEN && req.headers['x-phloem-token'] !== RELAY_TOKEN) return json(res, 401, { error: 'relay token sai hoặc thiếu' });
 
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
+    if (url.pathname.startsWith('/db/')) return await dbRoute(url, req, res);
+    if (url.pathname === '/site' && req.method === 'POST') return await siteRoute(await body(req), res);
+    if (url.pathname === '/image' && req.method === 'GET') return await imageRoute(url.searchParams.get('url') || '', res);
     if (url.pathname === '/proxy' && req.method === 'POST') return await proxy(await body(req), res);
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
     if (url.pathname === '/ai' && req.method === 'POST') return await ai(await body(req), res);
@@ -273,22 +280,80 @@ async function oauthRefresh(p, res) {
 // Accounts: register / login / me / logout. Tokens are HMAC-signed, users live in DATA_DIR/users.json.
 async function authRoute(action, req, res) {
   try {
-    if (action === 'register' && req.method === 'POST') return json(res, 200, AUTH.register(await body(req)));
-    if (action === 'login' && req.method === 'POST') return json(res, 200, AUTH.login(await body(req)));
+    const agent = String(req.headers['user-agent'] || '');
+    if (action === 'register' && req.method === 'POST') return json(res, 200, AUTH.register(await body(req), agent));
+    if (action === 'login' && req.method === 'POST') return json(res, 200, AUTH.login(await body(req), agent));
     if (action === 'me' && req.method === 'GET') {
       const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
       const user = m ? AUTH.me(m[1]) : null;
       return json(res, user ? 200 : 401, user ? { user } : { error: 'Phiên đăng nhập hết hạn.', code: 'expired' });
     }
-    if (action === 'logout' && req.method === 'POST') return json(res, 200, { ok: true });
+    if (action === 'logout' && req.method === 'POST') { AUTH.logout(bearer(req)); return json(res, 200, { ok: true }); }
     return json(res, 404, { error: 'không có route auth này' });
   } catch (e) { return json(res, e.status || 500, { error: e.message, code: e.code || 'server' }); }
 }
 
+const bearer = (req) => { const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || ''); return m ? m[1] : ''; };
+function requireUser(req, res) { const u = AUTH.me(bearer(req)); if (!u) json(res, 401, { error: 'Cần đăng nhập.', code: 'expired' }); return u; }
+function raw(req, limit) {
+  return new Promise((resolve, reject) => {
+    const chunks = []; let size = 0;
+    req.on('data', (c) => { size += c.length; if (size > limit) { reject(Object.assign(new Error(`body quá lớn (>${Math.round(limit / 1048576)}MB)`), { status: 413 })); req.destroy(); } chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+// The app database, scoped to the signed-in user: projects, assets (bytes), client profiles (encrypted), stats, sessions.
+async function dbRoute(url, req, res) {
+  const u = requireUser(req, res); if (!u) return;
+  const [, kind, id] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  const m = req.method;
+  try {
+    if (kind === 'projects') {
+      if (m === 'GET' && !id) return json(res, 200, { projects: DB.projects.list(u.id) });
+      if (m === 'GET') { const p = DB.projects.get(u.id, id); return p ? json(res, 200, { project: p }) : json(res, 404, { error: 'không có project này' }); }
+      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); return json(res, 200, DB.projects.put(u.id, p)); }
+      if (m === 'DELETE' && id) { DB.projects.remove(u.id, id); return json(res, 200, { ok: true }); }
+    }
+    if (kind === 'assets') {
+      if (m === 'GET' && !id) return json(res, 200, { assets: DB.assets.list(u.id) });
+      if (m === 'GET') { const a = DB.assets.get(u.id, id); if (!a) return json(res, 404, { error: 'không có ảnh này' }); res.statusCode = 200; res.setHeader('Content-Type', a.mime); res.setHeader('Content-Length', a.data.length); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable'); return res.end(a.data); }
+      if (m === 'PUT' && id) {
+        const data = await raw(req, 15 * 1024 * 1024);
+        const meta = { id, name: decodeURIComponent(String(req.headers['x-asset-name'] || 'image')), mime: String(req.headers['content-type'] || 'application/octet-stream').split(';')[0], w: Number(req.headers['x-asset-w'] || 0), h: Number(req.headers['x-asset-h'] || 0) };
+        if (!meta.mime.startsWith('image/')) return json(res, 415, { error: 'chỉ nhận ảnh' });
+        return json(res, 200, { asset: DB.assets.put(u.id, meta, data) });
+      }
+      if (m === 'DELETE' && id) { DB.assets.remove(u.id, id); return json(res, 200, { ok: true }); }
+    }
+    if (kind === 'profiles') {
+      if (m === 'GET') return json(res, 200, DB.profiles.get(u.id, AUTH.secret));
+      if (m === 'PUT') { const p = await body(req); if (!Array.isArray(p?.profiles)) return json(res, 400, { error: 'profiles phải là mảng' }); return json(res, 200, DB.profiles.put(u.id, AUTH.secret, p.profiles)); }
+    }
+    if (kind === 'sessions') {
+      if (m === 'GET') return json(res, 200, { sessions: DB.sessions.list(u.id) });
+      if (m === 'DELETE') { AUTH.logoutAll(u.id); return json(res, 200, { ok: true }); }
+    }
+    if (kind === 'stats' && m === 'GET') return json(res, 200, DB.stats(u.id));
+    return json(res, 404, { error: 'không có route db này' });
+  } catch (e) { return json(res, e.status || 500, { error: e.message }); }
+}
+
+// Website brand profile for the AI composer (logo, colours, fonts, headings, images) + image proxy for those images.
+async function siteRoute(p, res) {
+  try { return json(res, 200, await siteProfile(p?.url)); }
+  catch (e) { return json(res, e.status || 502, { error: `Không đọc được trang: ${e.message}` }); }
+}
+async function imageRoute(target, res) {
+  try { const { type, buf } = await fetchImage(target); res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Cache-Control', 'public, max-age=3600'); return res.end(buf); }
+  catch (e) { return json(res, e.status || 502, { error: e.message }); }
+}
+
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Phloem-Token, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Phloem-Token, Authorization, X-Asset-Name, X-Asset-W, X-Asset-H');
   res.setHeader('Access-Control-Max-Age', '600');
 }
 function end(res, code) { res.statusCode = code; res.end(); }

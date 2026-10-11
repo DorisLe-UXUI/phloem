@@ -3,10 +3,11 @@ import { App } from './ui/App';
 import { ensureFonts } from './render/fonts';
 import { assets } from './storage/assets';
 import { refreshProjects, restoreSession } from './pipeline/actions';
-import { set } from './store';
+import { get, set } from './store';
 
 ensureFonts(['Inter']);
 void assets.ready.then(async () => {
+  set({ settings: get().settings }); // persist defaults so the landing page sees the relay URL
   await restoreSession();
   await refreshProjects();
   const params = new URLSearchParams(location.search);

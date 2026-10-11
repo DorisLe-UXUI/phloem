@@ -4,6 +4,7 @@ import { BRAND_PRESETS, DEFAULT_BRAND } from '../model/types';
 import { buildDoc, type BlockSpec } from '../model/templates';
 import { assets } from '../storage/assets';
 import { askClaude, extractJson, type AiImage } from './client';
+import { siteSummary, type SiteProfile } from './site';
 
 export interface GenInput {
   goal: string;        // promo | newsletter | launch | welcome | event | cart | digest | other
@@ -13,6 +14,12 @@ export interface GenInput {
   tone: string;        // thân thiện | sang trọng | tối giản | sôi nổi
   imageIds: string[];
   palette: string | 'auto';
+  /** Website the AI read (relay /site): drives industry, tone, colours, fonts and real images. */
+  website?: string;
+  site?: SiteProfile | null;
+  webBrand?: Partial<Brand> | null;
+  logoAssetId?: string | null;
+  language?: 'auto' | 'vi' | 'en';
 }
 
 export interface Variant { name: string; why: string; palette: string; fields: EmailFields; blocks: BlockSpec[] }
@@ -48,8 +55,19 @@ const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - divider: {} · spacer: {}
 - footer: {brand, address, unsubscribeUrl, preferencesUrl}`;
 
+const INDUSTRY_DOC = `Trước khi dựng, XÁC ĐỊNH NGÀNH và cá tính thương hiệu từ website/nội dung/ảnh (game & trẻ em, giáo dục, agency/studio sáng tạo, SaaS/app, bán lẻ thời trang, F&B, làm đẹp, du lịch, bất động sản, tổ chức…). Mỗi ngành có công thức riêng, KHÔNG dùng một bố cục cho mọi ngành:
+- Game / trẻ em / giải trí: hero-overlay với ảnh nhân vật hoặc thế giới game (ảnh thật từ web), headline ngắn vui; icon-row 4–5 hoạt động/tính năng (body là 1 emoji); categories hoặc gallery các "vùng đất"/hoạt động; code + badges cho quà tặng; cta-wide "Vào chơi ngay"; palette tươi (Candy, Sky, Sunset, Web). Giọng hào hứng, câu ngắn.
+- Agency / studio / dịch vụ sáng tạo: hero-band tối hoặc hero-center gradient, headline mạnh ≤ 7 từ; stat-tiles kết quả (+320% doanh thu…); articles 3 case study/bài viết; quote khách hàng; icon-row dịch vụ; cta "Đặt lịch tư vấn". Palette Midnight/Neon/Web. Giọng tự tin, chuyên nghiệp.
+- Bán lẻ / thời trang / F&B / làm đẹp: hero ảnh sản phẩm, hoặc dark-band cho sale lớn; products-3 có price, oldPrice, badge; countdown + code khi có khuyến mãi; checklist chính sách (freeship, đổi trả); social; cta-wide. Giọng cụ thể, số liệu rõ, kêu gọi hành động.
+- Giáo dục / media / khoá học: hero-center light hoặc hero ảnh lớp học; articles (tập/bài học, badge EP01…); checklist "bạn sẽ học được"; feature-row giảng viên; cta "Đăng ký". Giọng ấm, rõ ràng, khích lệ.
+- SaaS / app / công nghệ: hero-center gradient hoặc hero-band; feature-row ×2 với ảnh UI thật; stat-tiles; checklist; cta "Dùng thử miễn phí". Giọng ngắn gọn, lợi ích trước tính năng.
+- Du lịch / lifestyle / sự kiện: hero-overlay ảnh toàn khung; split; gallery; countdown cho sự kiện; cta. Giọng gợi cảm xúc.
+Ba phương án phải khác nhau về CẤU TRÚC và CẢM XÚC (ví dụ "Chào mừng" / "Khuyến mãi" / "Kể chuyện", hay "Hero ảnh" / "Dải màu" / "Tối giản"), không chỉ khác màu. Mỗi phương án có một block anchor khác loại.`;
+
 function systemPrompt(presetNames: string[]): string {
-  return `Bạn là art director email cho Phloem Studio. Nhiệm vụ: từ nội dung và ảnh người dùng đưa, dựng 3 phương án email marketing KHÁC NHAU RÕ RỆT về cấu trúc và nhịp điệu, mỗi phương án 6–9 block, luôn bắt đầu bằng nav và kết thúc bằng footer.
+  return `Bạn là art director email cho Phloem Studio. Nhiệm vụ: từ website, nội dung và ảnh người dùng đưa, dựng 3 phương án email marketing KHÁC NHAU RÕ RỆT về cấu trúc và nhịp điệu, mỗi phương án 7–10 block, luôn bắt đầu bằng nav và kết thúc bằng footer.
+
+${INDUSTRY_DOC}
 
 ${BLOCK_DOC}
 
@@ -58,7 +76,7 @@ Quy tắc:
 - Chỉ dùng imageId có trong danh sách ảnh được cung cấp, đúng chuỗi id. Mỗi ảnh dùng tối đa 2 lần. Nếu không có ảnh phù hợp, để image: null (Phloem tự vẽ placeholder).
 - Lấy URL từ nội dung nếu có; nếu không, dùng https://example.com/… có nghĩa.
 - Mỗi phương án đặt tên ngắn (ví dụ "Tối giản", "Dải màu nổi bật", "Kể chuyện") và một câu "why" giải thích chọn cấu trúc đó cho mục tiêu nào.
-- Chọn palette cho mỗi phương án từ: ${presetNames.join(', ')}. Ưu tiên khác nhau giữa các phương án trừ khi người dùng đã chọn.
+- Chọn palette cho mỗi phương án từ: ${presetNames.join(', ')}. Ưu tiên khác nhau giữa các phương án trừ khi người dùng đã chọn. Palette "Web" (nếu có) là màu lấy từ chính website: dùng cho ít nhất 2 trong 3 phương án.
 - Thiết kế theo xu hướng hiện nay: một block "anchor" khổ lớn (hero-overlay / dark-band / hero-band / hero-center), hàng icon hoặc badges ngay dưới hero, khoảng trắng rộng, 1 CTA chính lặp lại ở cuối bằng cta-wide, social proof ngắn, footer có social, không quá 2 block chữ dài. Khuyến mãi: thêm code + countdown + giá cũ/mới.
 - fields: campaignName (ngắn), subject (30–55 ký tự, nói thẳng lợi ích), preheader (40–90 ký tự, nối tiếp subject, không lặp).
 
@@ -83,7 +101,7 @@ async function thumbOf(assetId: string): Promise<AiImage | null> {
 }
 
 export async function generateVariants(inp: GenInput): Promise<Variant[]> {
-  const presets = BRAND_PRESETS.map((p) => p.name);
+  const presets = [...(inp.webBrand ? ['Web'] : []), ...BRAND_PRESETS.map((p) => p.name)];
   const images: AiImage[] = [];
   const imageLines: string[] = [];
   for (const id of inp.imageIds) {
@@ -91,7 +109,10 @@ export async function generateVariants(inp: GenInput): Promise<Variant[]> {
     const meta = assets.get(id);
     if (t && meta) { images.push(t); imageLines.push(`- imageId "${id}": file "${meta.name}", ${meta.w}×${meta.h}px (ảnh kèm theo thứ tự)`); }
   }
+  const lang = inp.language && inp.language !== 'auto' ? inp.language : (inp.site?.lang || '').toLowerCase().startsWith('en') ? 'en' : 'vi';
   const prompt = [
+    inp.site ? `Hồ sơ website (AI đã đọc trang này):\n${siteSummary(inp.site, inp.webBrand || {})}\n→ Dùng đúng giọng văn, danh mục, tên nút và ngôn ngữ của website. Ảnh từ web nằm trong danh sách ảnh bên dưới (tên/alt mô tả nội dung): ưu tiên ảnh thật, chọn đúng ngữ cảnh (hero: ảnh ngang lớn hoặc og-image; sản phẩm/bài viết: ảnh tương ứng). Logo đã được gắn vào nav/footer tự động.` : '',
+    `Ngôn ngữ copy: ${lang === 'en' ? 'English (natural, concise marketing English)' : 'tiếng Việt'}`,
     `Loại email: ${inp.goal}`,
     `Thương hiệu: ${inp.brandName || '(chưa đặt tên — dùng "BRAND")'}`,
     `Giọng điệu: ${inp.tone}`,
@@ -99,7 +120,7 @@ export async function generateVariants(inp: GenInput): Promise<Variant[]> {
     `Mục tiêu / brief:\n${inp.brief || '(không có)'}`,
     `Nội dung thô (tiêu đề, sản phẩm, giá, link, ngày…):\n${inp.content || '(không có — hãy viết copy mẫu hợp lý cho loại email này)'}`,
     imageLines.length ? `Ảnh có sẵn (${imageLines.length}):\n${imageLines.join('\n')}` : 'Ảnh: không có — dùng image: null.',
-  ].join('\n\n');
+  ].filter(Boolean).join('\n\n');
   const text = await askClaude({ system: systemPrompt(presets), turns: [{ role: 'user', text: prompt, images }], maxTokens: 16000, effort: 'medium' });
   const parsed = extractJson<{ variants?: Variant[] }>(text);
   const variants = (parsed.variants || []).filter((v) => v && Array.isArray(v.blocks) && v.blocks.length).slice(0, 3);
@@ -118,7 +139,8 @@ export async function generateVariants(inp: GenInput): Promise<Variant[]> {
   return variants;
 }
 
-export function brandForPalette(name: string, base: Brand = DEFAULT_BRAND): Brand {
+export function brandForPalette(name: string, base: Brand = DEFAULT_BRAND, web?: Partial<Brand> | null): Brand {
+  if (name === 'Web' && web) return { ...base, ...web, name: base.name || web.name || 'BRAND', logoAssetId: base.logoAssetId ?? null };
   const p = BRAND_PRESETS.find((x) => x.name === name);
   return { ...base, ...(p ? p.brand : {}) };
 }

@@ -110,6 +110,9 @@ function BrandModal({ onClose }: { onClose: () => void }) {
           </Field>
         ))}
       </div>
+      <Eyebrow>Gradient</Eyebrow>
+      <Toggle checked={!!b.gradient} onChange={(v) => up({ gradient: v ? { angle: b.gradient?.angle ?? 135 } : null })} label="Dải màu dùng gradient primary → accent" sub="Áp cho mọi dải nền màu primary: hero band, dark band, CTA to. Tắt là về màu phẳng." />
+      {b.gradient && <div class="grid2"><Num label="Góc" value={b.gradient.angle} min={0} max={360} suffix="°" onChange={(v) => up({ gradient: { angle: Math.round(v) } })} /><div class="small muted" style={{ alignSelf: 'end' }}>135° = chéo, 90° = dọc, 0° = ngang</div></div>}
       <Eyebrow>Logo & tên</Eyebrow>
       <div class="row" style={{ alignItems: 'stretch' }}>
         <div style={{ width: 120, height: 64, borderRadius: 8, border: '1px solid var(--line-2)', background: 'repeating-conic-gradient(#1a2a1e 0 25%, #0c120e 0 50%) 0 0 / 14px 14px', display: 'grid', placeItems: 'center', flex: 'none', overflow: 'hidden' }}>
@@ -351,7 +354,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [mode, setMode] = useState<'local' | 'relay' | 'checking'>('checking');
-  useEffect(() => { void auth.detectMode().then(setMode); }, [s.settings.relayUrl]);
+  useEffect(() => { void auth.detectMode(A.authOpts()).then(setMode); }, [s.settings.relayUrl]);
   const up = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
   const submit = async () => {
     setErr(''); setBusy(true);
