@@ -72,6 +72,7 @@ const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - statement: {headline:"-50%" hoặc "FREESHIP" (≤ 12 ký tự), eyebrow:"MEMBER ONLY", body, button, style:"light"|"dark"} một dòng chữ khổng lồ căn giữa.
 - menu: {eyebrow, heading, items:[{name, body, price, url, image}], button:{label}} 2–4 hàng card: chữ trái, ảnh TRÒN phải, giá + nút nhỏ. Món ăn, đồ uống, dịch vụ spa, gói.
 - hero-product nhận style:"soft" (nền pastel nhạt của thương hiệu, chữ tối: F&B, mỹ phẩm, trẻ em) và badge:"-30%" (badge tròn đè góc ảnh).
+- HIỆU ỨNG 3D: hero-product / dark-band / hero-band / hero-center / statement nhận effect:"extrude" (chữ đùn khối 3D, rất hợp bold/playful, đồ uống, game, streetwear) | "neon" (chữ phát sáng, tech/nightlife) | "outline" (chữ rỗng viền, thời trang) | "shadow" (bóng dài phẳng). hero-product nhận tilt: 14 (ảnh sản phẩm nghiêng phối cảnh 3D, −30..30) và items:[{name, image}] = 2–6 ẢNH PHỤ KIỆN tách nền (trái cây, đá, lá, splash, nguyên liệu, phụ kiện) xếp quanh sản phẩm theo ô cố định, hơi nghiêng, có bóng nổi: dùng khi thư viện có ảnh phụ kiện như vậy (tên ảnh gợi ý: ice, lime, leaf, splash, strawberry…). Chỉ dùng 1 hiệu ứng chữ mỗi email.
 - gallery nhận 2 / 4 / 6 ảnh (lưới 2 cột) và caption: items có price thì hiện tên + giá dưới ảnh.
 - quote nhận style:"center" (không card: dấu ngoặc lớn, chữ căn giữa, kẻ mảnh trên dưới, tên khách IN HOA giãn chữ). text nhận style:"center" (căn giữa + kẻ ngắn màu brand).
 - nav nhận style:"menu" (logo giữa, hàng link IN HOA có kẻ mảnh: boutique, thời trang) — nav tự đổi màu theo hero ngay dưới, không cần đặt.
@@ -176,6 +177,8 @@ function normalizeVariants(parsed: { variants?: Variant[] } | null, inp: GenInpu
       if (c.image && !validIds.has(String(c.image))) c.image = null;
       if (c.items) for (const it of c.items) if (it.image && !validIds.has(String(it.image))) it.image = null;
       if (c.style && !['light', 'band', 'gradient', 'ink', 'dark', 'card', 'right', 'soft', 'menu', 'center', 'plain'].includes(String(c.style))) delete c.style;
+      if (c.effect && !['extrude', 'neon', 'outline', 'shadow'].includes(String(c.effect))) delete c.effect;
+      if (c.tilt !== undefined) { const t = Number(c.tilt); if (!Number.isFinite(t) || !t) delete c.tilt; else c.tilt = Math.max(-30, Math.min(30, t)); }
     }
     // A text block right before a list block becomes that block's heading (one idea, one block).
     const HEADED = new Set(['products-2', 'products-3', 'articles', 'steps', 'reviews', 'stat-tiles', 'stats', 'bento', 'categories', 'gallery', 'collage', 'zigzag', 'menu']);

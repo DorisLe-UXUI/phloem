@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Doc, GroupNode, Node, TextNode } from '../model/types';
 import { resolveColor } from '../model/types';
 import * as ops from '../model/ops';
-import { renderDoc } from '../render/renderer';
+import { imageDrawRect, renderDoc } from '../render/renderer';
 import { fontString } from '../render/textLayout';
 import { assets } from '../storage/assets';
 import { get, history, set, subscribe, toast, useStore } from '../store';
@@ -13,7 +13,9 @@ import { Icon } from './icons';
 
 type Mode = { kind: 'idle' } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } }
   // dragging a pasteboard image; `inside` = pointer over the artboard, `over` = image layer that would be replaced
-  | { kind: 'scrap'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; inside: boolean; over: string | null };
+  | { kind: 'scrap'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; inside: boolean; over: string | null }
+  // crop mode: dragging pans the photo inside its frame
+  | { kind: 'crop'; id: string; sx: number; sy: number; fx: number; fy: number; base: Doc; moved: boolean };
 
 function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -71,6 +73,26 @@ export function CanvasView() {
     // label
     ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = '#5d7265'; ctx.textBaseline = 'bottom';
     ctx.fillText(`${st.variant === 'mobile' ? 'Mobile' : 'Desktop'} · ${doc.width} × ${doc.height}`, px, py - 6);
+    // crop mode: ghost the parts of the photo that fall outside the frame
+    if (st.cropping) {
+      const n = ops.findNode(doc, st.cropping);
+      if (n && n.type === 'image' && n.assetId) {
+        const img = assets.image(n.assetId);
+        const r = { x: px + n.x * z, y: py + n.y * z, w: n.w * z, h: n.h * z };
+        if (img && img.width) {
+          const d = imageDrawRect(n, img.width, img.height);
+          ctx.save(); ctx.globalAlpha = 0.35;
+          ctx.beginPath(); ctx.rect(px - 4000, py - 4000, 8000, 8000); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip('evenodd');
+          ctx.drawImage(img, r.x + d.dx * z, r.y + d.dy * z, d.dw * z, d.dh * z);
+          ctx.restore();
+          ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(57,255,20,0.7)'; ctx.lineWidth = 1; ctx.strokeRect(r.x + d.dx * z + 0.5, r.y + d.dy * z + 0.5, d.dw * z, d.dh * z); ctx.restore();
+        }
+        ctx.save(); ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2); ctx.restore();
+        const hint = `Cắt ảnh · kéo để dời · lăn chuột để zoom (${Math.round((n.crop?.zoom ?? 1) * 100)}%) · Esc xong`;
+        ctx.font = '600 11px JetBrains Mono, monospace'; const tw = ctx.measureText(hint).width + 16;
+        ctx.fillStyle = '#39ff14'; ctx.fillRect(r.x + r.w / 2 - tw / 2, r.y - 26, tw, 20); ctx.fillStyle = '#04140a'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.fillText(hint, r.x + r.w / 2, r.y - 16); ctx.textAlign = 'left';
+      }
+    }
     // pasteboard: images parked beside the artboard
     const mm = mode.current;
     if (st.scraps.length) {
@@ -230,6 +252,11 @@ export function CanvasView() {
     // select tool
     const hIdx = handleAt(d.x, d.y);
     if (hIdx >= 0) { const sel = ops.selectionBounds(docOf(), st.selection)!; mode.current = { kind: 'resize', handle: hIdx, base: docOf(), ids: st.selection.slice(), start: sel, sx: d.x, sy: d.y }; return; }
+    if (st.cropping) {
+      const cn = ops.findNode(docOf(), st.cropping);
+      if (cn && cn.type === 'image' && ops.containsPt(ops.bounds(cn), d.x, d.y)) { mode.current = { kind: 'crop', id: cn.id, sx: d.x, sy: d.y, fx: cn.crop?.fx ?? 0.5, fy: cn.crop?.fy ?? 0.5, base: docOf(), moved: false }; return; }
+      set({ cropping: null }); // clicked elsewhere: leave crop mode and continue as a normal click
+    }
     const sc = hitScrap(d.x, d.y);
     if (sc) { set({ scrapSel: sc.id, selection: [], hover: null }); mode.current = { kind: 'scrap', id: sc.id, sx: d.x, sy: d.y, ox: sc.x, oy: sc.y, moved: false, inside: false, over: null }; return; }
     if (st.scrapSel) set({ scrapSel: null });
@@ -258,6 +285,22 @@ export function CanvasView() {
       return;
     }
     if (m.kind === 'pan') { set({ pan: { x: m.px + (p.x - m.sx), y: m.py + (p.y - m.sy) } }); return; }
+    if (m.kind === 'crop') {
+      const n = ops.findNode(m.base, m.id);
+      if (!n || n.type !== 'image' || !n.assetId) return;
+      const img = assets.image(n.assetId); if (!img || !img.width) return;
+      const r = imageDrawRect(n, img.width, img.height);
+      const dx = d.x - m.sx, dy = d.y - m.sy;
+      if (!m.moved && Math.hypot(dx * st.zoom, dy * st.zoom) < 2) return;
+      if (!m.moved) { m.moved = true; history.push(m.base); }
+      // moving the photo by dx means the focal point shifts by dx / (slack); when the photo is smaller than the frame it slides freely
+      const slackX = n.w - r.dw, slackY = n.h - r.dh;
+      const fx = slackX ? Math.max(0, Math.min(1, m.fx + dx / slackX)) : m.fx;
+      const fy = slackY ? Math.max(0, Math.min(1, m.fy + dy / slackY)) : m.fy;
+      A.commit(ops.updateNode(m.base, m.id, { crop: { zoom: n.crop?.zoom ?? 1, fx, fy } } as Partial<Node>), false);
+      wrap.current!.style.cursor = 'grabbing';
+      return;
+    }
     if (m.kind === 'scrap') {
       const dx = d.x - m.sx, dy = d.y - m.sy;
       if (!m.moved && Math.hypot(dx * st.zoom, dy * st.zoom) < 3) return;
@@ -320,6 +363,8 @@ export function CanvasView() {
     } else if (m.kind === 'scrap' && m.moved) {
       wrap.current!.style.cursor = '';
       if (insideArtboard(d.x, d.y)) { const t = hit(d.x, d.y, true); A.scrapIntoDoc(m.id, t && t.type === 'image' ? t.id : undefined); }
+    } else if (m.kind === 'crop') {
+      wrap.current!.style.cursor = '';
     }
     mode.current = { kind: 'idle' };
     set({});
@@ -330,12 +375,14 @@ export function CanvasView() {
     const n = hit(d.x, d.y, false);
     if (n && n.type === 'group') { const inner = ops.hitTest(docOf(), d.x, d.y, n, false); set({ enteredGroup: n.id, selection: inner ? [inner.id] : [n.id] }); return; }
     if (n && n.type === 'text') { if (!st.selection.includes(n.id)) A.select([n.id]); history.push(docOf()); set({ editingText: n.id }); return; }
+    if (n && n.type === 'image' && n.assetId) { A.select([n.id]); set({ cropping: n.id }); return; }
     if (!n) set({ enteredGroup: null });
   };
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     const st = get(); const p = local(e);
+    if (st.cropping && !(e.ctrlKey || e.metaKey)) { A.zoomCrop(st.cropping, Math.exp(-e.deltaY * 0.004)); return; }
     if (e.ctrlKey || e.metaKey) { const z = Math.min(8, Math.max(0.1, st.zoom * Math.exp(-e.deltaY * 0.0022))); zoomAt(z, p.x, p.y); }
     else set({ pan: { x: st.pan.x - e.deltaX, y: st.pan.y - e.deltaY } });
   };
@@ -396,6 +443,17 @@ export function CanvasView() {
         </div></div>
       )}
       <input ref={fileInput} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => { const files = Array.from((e.target as HTMLInputElement).files || []); const at = pendingPoint.current || undefined; for (const f of files) await A.addImageFile(f, at); (e.target as HTMLInputElement).value = ''; pendingPoint.current = null; }} />
+      {s.cropping && (() => { const n = ops.findNode(doc, s.cropping); if (!n || n.type !== 'image') return null; return (
+        <div class="crop-bar" style={{ left: s.pan.x + (n.x + n.w / 2) * s.zoom, top: s.pan.y + (n.y + n.h) * s.zoom + 10 }} onPointerDown={(e) => e.stopPropagation()}>
+          <Btn xs onClick={() => A.zoomCrop(n.id, 1 / 1.2)} title="Thu nhỏ">−</Btn>
+          <span class="mono small" style={{ minWidth: 44, textAlign: 'center' }}>{Math.round((n.crop?.zoom ?? 1) * 100)}%</span>
+          <Btn xs onClick={() => A.zoomCrop(n.id, 1.2)} title="Phóng to">+</Btn>
+          <Btn xs onClick={() => A.updateNode(n.id, { crop: null } as Partial<Node>)}>Vừa khung</Btn>
+          <Btn xs onClick={() => A.updateNode(n.id, { flipX: !n.flipX } as Partial<Node>)}>Lật ↔</Btn>
+          <Btn xs onClick={() => A.updateNode(n.id, { flipY: !n.flipY } as Partial<Node>)}>Lật ↕</Btn>
+          <Btn xs kind="primary" onClick={() => set({ cropping: null })}>Xong</Btn>
+        </div>
+      ); })()}
       {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} />}
       {s.busy && <div class="busy-overlay"><div class="box"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{s.busy.label}</b><span class="mono dim small">{s.busy.total ? `${s.busy.done}/${s.busy.total}` : ''}</span></div><div class="progress"><i class={s.busy.total ? '' : 'indet'} style={{ width: s.busy.total ? `${Math.round((s.busy.done / s.busy.total) * 100)}%` : '30%' }} /></div></div></div>}
     </div>

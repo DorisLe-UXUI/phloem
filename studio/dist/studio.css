@@ -2567,3 +2567,17 @@ select.in {
   border-radius: 6px;
   background: #fff;
 }
+.crop-bar {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--neon-line);
+  border-radius: 8px;
+  box-shadow: var(--glow);
+  white-space: nowrap;
+}

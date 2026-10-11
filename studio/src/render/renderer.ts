@@ -39,8 +39,14 @@ function withShadow(ctx: CanvasRenderingContext2D, sh: { blur: number; y: number
   ctx.restore();
 }
 
+function rotated(ctx: CanvasRenderingContext2D, deg: number | undefined, cx: number, cy: number, draw: () => void) {
+  if (!deg) { draw(); return; }
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate((deg * Math.PI) / 180); ctx.translate(-cx, -cy); draw(); ctx.restore();
+}
+
 function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: number) {
   const x = n.x * s, y = n.y * s, w = n.w * s, h = n.h * s;
+  if (n.rotate) { rotated(ctx, n.rotate, x + w / 2, y + h / 2, () => drawRect(ctx, { ...n, rotate: 0 }, brand, s)); return; }
   const fill = col(n.fill, brand);
   if (fill) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = fill; ctx.fill(); });
   else if (n.shadow && n.gradient) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.gradient!.from, brand) || '#000'; ctx.fill(); });
@@ -76,6 +82,12 @@ function mix(a: string, b: string, t: number): string {
   const A = hexRgb(a), B = hexRgb(b);
   const c = A.map((v, i) => Math.round(v + (B[i] - v) * t));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+/** Darken an rgb/hex colour by t (0..1) for extrusion sides. */
+function shade(c: string, t: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(c); if (m) { const [r, g, b] = hexRgb(c).map((v) => Math.round(v * (1 - t))); return `rgb(${r},${g},${b})`; }
+  const mm = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c); if (mm) return `rgb(${Math.round(+mm[1] * (1 - t))},${Math.round(+mm[2] * (1 - t))},${Math.round(+mm[3] * (1 - t))})`;
+  return c;
 }
 function seedOf(id: string): number { let h = 2166136261; for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; }
 
@@ -148,9 +160,67 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, x: number, y: number, w:
   ctx.restore();
 }
 
+/** Where the photo lands inside its frame (crop zoom + focal point). Returns frame-relative draw rect. */
+export function imageDrawRect(n: ImageNode, iw: number, ih: number): { dx: number; dy: number; dw: number; dh: number } {
+  const w = n.w, h = n.h;
+  if (n.fit === 'fill') return { dx: 0, dy: 0, dw: w, dh: h };
+  const zoom = Math.max(1, Math.min(6, n.crop?.zoom ?? 1));
+  const r = (n.fit === 'cover' ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih)) * zoom;
+  const dw = iw * r, dh = ih * r;
+  const fx = n.crop?.fx ?? 0.5, fy = n.crop?.fy ?? 0.5;
+  return { dx: (w - dw) * fx, dy: (h - dh) * fy, dw, dh };
+}
+
+/** Draw the photo (with crop, flips, overlay) into its frame at scale s; used directly and for the tilt warp. */
+function paintImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s: number, img: CanvasImageSource & { width: number; height: number }, x: number, y: number, w: number, h: number) {
+  const { dx, dy, dw, dh } = imageDrawRect(n, img.width, img.height);
+  ctx.save();
+  if (n.flipX || n.flipY) { ctx.translate(x + w / 2, y + h / 2); ctx.scale(n.flipX ? -1 : 1, n.flipY ? -1 : 1); ctx.translate(-(x + w / 2), -(y + h / 2)); }
+  ctx.drawImage(img, x + dx * s, y + dy * s, dw * s, dh * s);
+  ctx.restore();
+}
+
+/** Pseudo-3D: paint the finished frame to an offscreen canvas, then redraw it in strips whose height follows the tilt. */
+function drawTilted(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s: number, src: ImageSource, editor: boolean, x: number, y: number, w: number, h: number) {
+  const off = document.createElement('canvas'); off.width = Math.max(1, Math.round(w)); off.height = Math.max(1, Math.round(h));
+  const oc = off.getContext('2d')!;
+  oc.translate(-x, -y);
+  drawImage(oc, { ...n, tilt: null, shadow: null, rotate: 0 }, brand, s, src, editor);
+  const ry = n.tilt?.ry || 0, rx = n.tilt?.rx || 0;
+  const N = 48;
+  if (Math.abs(ry) >= Math.abs(rx)) {
+    const k = Math.sin((ry * Math.PI) / 180) * 0.38, cw = Math.cos((ry * Math.PI) / 180);
+    const tw = w * (0.86 + 0.14 * cw), x0 = x + (w - tw) / 2, cy = y + h / 2;
+    for (let i = 0; i < N; i++) {
+      const u = i / N, sw = off.width / N, sx = i * sw;
+      const scale = 1 + (u - 0.5) * 2 * k;
+      const dh = h * scale, dx = x0 + u * tw;
+      ctx.drawImage(off, sx, 0, sw, off.height, dx, cy - dh / 2, tw / N + 1, dh);
+    }
+  } else {
+    const k = Math.sin((rx * Math.PI) / 180) * 0.38, ch = Math.cos((rx * Math.PI) / 180);
+    const th = h * (0.86 + 0.14 * ch), y0 = y + (h - th) / 2, cx = x + w / 2;
+    for (let i = 0; i < N; i++) {
+      const u = i / N, sh = off.height / N, sy = i * sh;
+      const scale = 1 - (u - 0.5) * 2 * k;
+      const dw = w * scale, dy = y0 + u * th;
+      ctx.drawImage(off, 0, sy, off.width, sh, cx - dw / 2, dy, dw, th / N + 1);
+    }
+  }
+}
+
 function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s: number, src: ImageSource, editor: boolean) {
   const x = n.x * s, y = n.y * s, w = n.w * s, h = n.h * s;
+  if (n.rotate) { rotated(ctx, n.rotate, x + w / 2, y + h / 2, () => drawImage(ctx, { ...n, rotate: 0 }, brand, s, src, editor)); return; }
   const img = n.assetId ? src.image(n.assetId) : undefined;
+  if (n.floatShadow) {
+    // elliptical pool of shadow under the frame: a floating cut-out product
+    const ew = w * 0.7, eh = Math.max(8 * s, h * 0.11), ecx = x + w / 2, ecy = y + h - eh * 0.25;
+    ctx.save(); ctx.translate(ecx, ecy); ctx.scale(1, eh / ew);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ew / 2); g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.16)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, ew / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  if (n.tilt && (n.tilt.rx || n.tilt.ry) && img && (img as HTMLImageElement).width) { if (n.shadow) withShadow(ctx, n.shadow, s, () => drawTilted(ctx, n, brand, s, src, editor, x, y, w, h)); else drawTilted(ctx, n, brand, s, src, editor, x, y, w, h); return; }
   if (n.shadow) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.fill, brand) || '#ffffff'; ctx.fill(); });
   ctx.save();
   rr(ctx, x, y, w, h, n.radius * s);
@@ -158,13 +228,7 @@ function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s:
   const fill = col(n.fill, brand);
   if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
   if (img && (img as HTMLImageElement).width) {
-    const iw = img.width, ih = img.height;
-    let dw = w, dh = h, dx = x, dy = y;
-    if (n.fit !== 'fill') {
-      const r = n.fit === 'cover' ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih);
-      dw = iw * r; dh = ih * r; dx = x + (w - dw) / 2; dy = y + (h - dh) / 2;
-    }
-    ctx.drawImage(img as CanvasImageSource, dx, dy, dw, dh);
+    paintImage(ctx, n, brand, s, img as CanvasImageSource & { width: number; height: number }, x, y, w, h);
   } else if (!fill) {
     drawArt(ctx, x, y, w, h, s, brand, seedOf(n.id), editor);
   } else if (editor && h > 40 * s && w > 80 * s) {
@@ -196,12 +260,24 @@ function drawText(ctx: CanvasRenderingContext2D, n: TextNode, brand: Brand, s: n
   }
   const ascent = n.fontSize * s * 0.78; // approximate cap baseline inside the line box
   const pad = (lay.lineHeight - n.fontSize * s) / 2;
+  const fx = n.effect && n.effect.kind ? n.effect : null;
+  const fxColor = fx ? (col(fx.color, brand) || (fx.kind === 'neon' ? color : shade(color, fx.kind === 'extrude' ? 0.45 : 0.25))) : '';
+  const depth = fx ? Math.max(1, Math.round((fx.depth ?? (fx.kind === 'shadow' ? 18 : 7)) * s)) : 0;
+  const ang = ((fx?.angle ?? 50) * Math.PI) / 180;
   lay.lines.forEach((ln, i) => {
     let lx = x;
     if (n.align === 'center') lx = x + (w - ln.width) / 2;
     else if (n.align === 'right') lx = x + w - ln.width;
     const ly = y0 + i * lay.lineHeight + pad + ascent;
-    ctx.fillText(ln.text, lx, ly);
+    if (fx?.kind === 'extrude' || fx?.kind === 'shadow') {
+      // stacked offset copies read as an extruded block (or one long flat shadow)
+      ctx.save(); ctx.fillStyle = fxColor; if (fx.kind === 'shadow') ctx.globalAlpha *= 0.35;
+      for (let d = depth; d >= 1; d--) ctx.fillText(ln.text, lx + Math.cos(ang) * d, ly + Math.sin(ang) * d);
+      ctx.restore();
+    }
+    if (fx?.kind === 'neon') { ctx.save(); ctx.shadowColor = fxColor; ctx.shadowBlur = 26 * s; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.fillText(ln.text, lx, ly); ctx.fillText(ln.text, lx, ly); ctx.restore(); }
+    if (fx?.kind === 'outline') { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, 1.6 * s); ctx.lineJoin = 'round'; ctx.strokeText(ln.text, lx, ly); ctx.restore(); }
+    else ctx.fillText(ln.text, lx, ly);
     if (n.underline && ln.width) { ctx.fillRect(lx, ly + 2 * s, ln.width, Math.max(1, s)); }
     if (n.strike && ln.width) { ctx.fillRect(lx, ly - n.fontSize * s * 0.3, ln.width, Math.max(1, 1.2 * s)); }
   });

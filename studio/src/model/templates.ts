@@ -129,6 +129,10 @@ export interface BlockContent {
   style?: 'light' | 'band' | 'gradient' | 'ink' | 'dark' | 'card' | 'right' | 'soft' | 'menu' | 'center' | 'plain';
   /** Round badge on the hero/spotlight photo ("-30%", "NEW"). */
   badge?: string;
+  /** Headline treatment: 'extrude' (3D block), 'neon' (glow), 'outline' (hollow), 'shadow' (long flat shadow). */
+  effect?: 'extrude' | 'neon' | 'outline' | 'shadow';
+  /** Pseudo-3D tilt of the hero product image in degrees (-30..30). */
+  tilt?: number;
   /** Set by buildDoc: this block sits on a soft tinted band (alternating rhythm). */
   tint?: boolean;
 }
@@ -232,6 +236,23 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
   const S = (px: number) => Math.round(px * T.space);
   /** Display headline: heading font, heavy, tight leading and tracking from the theme. */
   const H = (t: string, o: Partial<TextNode> & { x: number; y: number; w: number }) => text(brand, t, { fontFamily: 'heading', fontWeight: 800, lineHeight: 1.06, letterSpacing: T.track, ...o });
+  /** Headline effect requested by the block content, with a colour that works on the band. */
+  const fxFor = (onDark: boolean): TextNode['effect'] => {
+    if (!c.effect) return null;
+    if (c.effect === 'extrude') return { kind: 'extrude', depth: Math.round(hs(7)), angle: 52, color: onDark ? { token: 'primary' } : { token: 'ink', alpha: 0.5 } };
+    if (c.effect === 'neon') return { kind: 'neon', color: { token: onDark ? 'primary' : 'accent' } };
+    if (c.effect === 'shadow') return { kind: 'shadow', depth: 20, angle: 50, color: onDark ? { token: 'primary' } : { token: 'ink' } };
+    return { kind: 'outline' };
+  };
+  /** Cut-out props (fruit, ice, leaves…) scattered around a hero product: fixed slots, slight rotation, floating shadow. */
+  const propsAround = (ix: number, iy: number, iw: number, ih: number): Node[] => {
+    const list = (c.items || []).filter((it) => it.image).slice(0, 6);
+    const slots = [
+      { x: -0.08, y: 0.55, w: 0.34, r: -12 }, { x: 0.74, y: 0.5, w: 0.34, r: 14 }, { x: 0.02, y: 0.02, w: 0.26, r: 10 },
+      { x: 0.72, y: -0.02, w: 0.26, r: -8 }, { x: 0.3, y: 0.74, w: 0.24, r: 6 }, { x: 0.46, y: 0.8, w: 0.22, r: -6 },
+    ];
+    return list.map((it, i) => { const sl = slots[i]; const w = Math.round(iw * sl.w); return image({ x: Math.round(ix + iw * sl.x), y: Math.round(iy + ih * sl.y), w, h: w, assetId: it.image!, fit: 'contain', fill: null, rotate: sl.r, name: `Prop · ${it.name || i + 1}`, alt: it.alt || it.name || '' }); });
+  };
   const centerBtn = (btn: GroupNode) => { const nx = Math.round((W - btn.w) / 2); const dx = nx - btn.children[0].x; btn.children.forEach((k) => { k.x += dx; }); return syncGroup(btn); };
   /** Section header used by list blocks: small-caps eyebrow, big heading, optional "see all" link on the right. Returns the y where content starts. */
   const sectionHead = (yy: number, opts: { eyebrow?: string; heading?: string; link?: LinkC; align?: 'left' | 'center'; onDark?: boolean }): { nodes: Node[]; bottom: number } => {
@@ -304,7 +325,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const d = DEF.band;
       const btnC = c.button ?? d.button;
       const eb = eyebrowNodes(c.eyebrow || d.eyebrow, PAD, y + S(46), true);
-      const head = H(c.headline || d.headline, { x: PAD, y: eb.bottom + 16, w: inner, fontSize: hs(46), lineHeight: 1.02, color: { token: 'onPrimary' }, name: 'Headline' });
+      const head = H(c.headline || d.headline, { x: PAD, y: eb.bottom + 16, w: inner, fontSize: hs(46), lineHeight: 1.02, color: { token: 'onPrimary' }, name: 'Headline', effect: fxFor(true) });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 16, w: inner - 40, fontSize: 17, color: { token: 'onPrimary' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.85 });
       const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + S(26), { inverse: true });
       const img = image({ x: PAD, y: btn.y + btn.h + S(36), w: inner, h: 320, radius: Math.max(R, 10), name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, shadow: posterShadow(T) });
@@ -518,7 +539,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     case 'dark-band': {
       const d = DEF.band; const btnC = c.button ?? d.button;
       const eyebrow = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: y + S(52), w: inner, fontSize: 11, fontWeight: 800, letterSpacing: 2, color: { token: 'primary' }, name: 'Eyebrow' });
-      const head = H(c.headline || d.headline, { x: PAD, y: eyebrow.y + eyebrow.h + 16, w: inner, fontSize: hs(54), lineHeight: 0.98, color: { token: 'bg' }, name: 'Headline' });
+      const head = H(c.headline || d.headline, { x: PAD, y: eyebrow.y + eyebrow.h + 16, w: inner, fontSize: hs(54), lineHeight: 0.98, color: { token: 'bg' }, name: 'Headline', effect: fxFor(true) });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 18, w: inner - 80, fontSize: 16, color: { token: 'bg' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.72 });
       const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + S(28));
       const img = c.image ? image({ x: PAD, y: btn.y + btn.h + S(32), w: inner, h: 300, radius: Math.max(R, 10), name: 'Band image', alt: c.imageAlt || '', assetId: c.image, link: btnC.url, shadow: posterShadow(T) }) : null;
@@ -589,7 +610,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const pw = Math.ceil(measureWidth(brand, pillT)) + 28;
       const pill = rect({ x: Math.round((W - pw) / 2), y: y + S(44), w: pw, h: 28, fill: onBand ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
       pillT.x = pill.x; pillT.w = pw; pillT.y = pill.y + Math.round((28 - pillT.h) / 2);
-      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 20, w: inner, fontSize: hs(50), lineHeight: 1.0, color: fg, align: 'center', name: 'Headline' });
+      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 20, w: inner, fontSize: hs(50), lineHeight: 1.0, color: fg, align: 'center', name: 'Headline', effect: fxFor(onBand) });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD + 36, y: head.y + head.h + 16, w: inner - 72, fontSize: 17, color: onBand ? { token: 'onPrimary' } : { token: 'muted' }, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: onBand ? 0.85 : 1 });
       const btn = centerBtn(button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + S(26), { inverse: onBand }));
       const hasImg = !(c.image === null && !c.imageAlt);
@@ -791,11 +812,12 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const pw = Math.ceil(measureWidth(brand, pillT)) + 28;
       const pill = rect({ x: Math.round((W - pw) / 2), y: y + S(46), w: pw, h: 28, fill: onPrimary ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
       pillT.x = pill.x; pillT.w = pw; pillT.y = pill.y + Math.round((28 - pillT.h) / 2);
-      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 22, w: inner, fontSize: hs(50), lineHeight: 0.98, color: fg, align: 'center', name: 'Headline' });
+      const head = H(c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 22, w: inner, fontSize: hs(50), lineHeight: 0.98, color: fg, align: 'center', name: 'Headline', effect: fxFor(!soft) });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD + 40, y: head.y + head.h + 16, w: inner - 80, fontSize: 17, color: soft ? { token: 'muted' } : fg, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: soft ? 1 : 0.78 });
       const btn = centerBtn(button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + S(26), { inverse: onPrimary }));
       const iw = inner - 60, ih = 330;
-      const img = image({ x: PAD + 30, y: btn.y + btn.h + S(30), w: iw, h: ih, name: 'Product image', alt: c.imageAlt || 'Sản phẩm', link: btnC.url, assetId: c.image ?? null, fit: 'contain', fill: null });
+      const img = image({ x: PAD + 30, y: btn.y + btn.h + S(30), w: iw, h: ih, name: 'Product image', alt: c.imageAlt || 'Sản phẩm', link: btnC.url, assetId: c.image ?? null, fit: 'contain', fill: null, floatShadow: !!c.image, tilt: c.tilt ? { rx: 0, ry: Math.max(-30, Math.min(30, c.tilt)) } : null });
+      const props = propsAround(img.x, img.y, iw, ih);
       const cx = W / 2, cy = img.y + Math.round(ih * 0.5);
       h = img.y + ih + S(26) - y;
       const r1 = Math.min(240, y + h - cy - 6, cy - y - 6), r2 = Math.round(r1 * 0.62);
@@ -807,7 +829,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const bandH = img.y + Math.round(ih * 0.66) - y;
       const bg = style === 'gradient' ? rect({ x: 0, y, w: W, h: bandH, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 }, name: 'Band' }) : rect({ x: 0, y, w: W, h: bandH, fill: style === 'band' ? { token: 'primary' } : soft ? { token: 'soft' } : { token: 'ink' }, name: 'Band' });
       const badge = c.badge ? badgeCircle(brand, c.badge, img.x + iw - 54, img.y + 36, 88, soft || onPrimary) : [];
-      kids.push(band(h), bg, ...(soft ? [] : blobs(T, y, bandH, true)), pill, pillT, head, sub, btn, ...glow, img, ...badge);
+      kids.push(band(h), bg, ...(soft ? [] : blobs(T, y, bandH, true)), pill, pillT, head, sub, btn, ...glow, ...props.slice(0, 2), img, ...props.slice(2), ...badge);
       break;
     }
     case 'ticker': {
@@ -929,7 +951,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       // One giant line of type, tracked label under it: "-50%" / "MEMBER ONLY".
       const dark = c.style === 'dark';
       const fg = dark ? { token: 'bg' as const } : { token: 'ink' as const };
-      const big = H(c.headline || '-50%', { x: PAD, y: y + S(52), w: inner, fontSize: hs(76), lineHeight: 0.95, letterSpacing: T.track * 2, color: dark ? { token: 'bg' } : { token: 'primary' }, align: 'center', name: 'Statement' });
+      const big = H(c.headline || '-50%', { x: PAD, y: y + S(52), w: inner, fontSize: hs(76), lineHeight: 0.95, letterSpacing: T.track * 2, color: dark ? { token: 'bg' } : { token: 'primary' }, align: 'center', name: 'Statement', effect: fxFor(dark) });
       const lbl = text(brand, up(c.eyebrow || c.heading || 'Member only'), { x: PAD, y: big.y + big.h + 14, w: inner, fontSize: 13, fontWeight: 800, letterSpacing: 5, color: fg, align: 'center', name: 'Label' });
       const body = c.body || c.subhead ? text(brand, c.body || c.subhead || '', { x: PAD + 60, y: lbl.y + lbl.h + 14, w: inner - 120, fontSize: 14, lineHeight: 1.55, color: dark ? { token: 'bg' } : { token: 'muted' }, align: 'center', name: 'Body', opacity: dark ? 0.75 : 1 }) : null;
       const btn = c.button ? centerBtn(button(brand, c.button.label, c.button.url, 0, (body ? body.y + body.h : lbl.y + lbl.h) + S(22), { inverse: dark })) : null;
@@ -1127,7 +1149,7 @@ export const TEMPLATES: TemplateDef[] = [
     fields: { campaignName: 'Ra mắt Terra Thermo', subject: 'Ra mắt: Bình giữ nhiệt Terra Thermo 500ml', preheader: 'Giữ nóng 12 giờ, đặt trước giảm 20% đến 25/10' },
     blocks: [
       { kind: 'nav', content: { brand: sampleBrand, links: navLinks } },
-      { kind: 'hero-product', content: { style: 'ink', eyebrow: 'Sản phẩm mới', headline: 'Terra Thermo.', subhead: 'Bình giữ nhiệt 500ml đầu tiên của Terra. Giữ nóng 12 giờ, lạnh 24 giờ. Đặt trước giảm 20%.', button: { label: 'Đặt trước', url: `${B}/thermo` }, imageAlt: 'Bình giữ nhiệt Terra Thermo màu đất' } },
+      { kind: 'hero-product', content: { style: 'ink', effect: 'extrude', tilt: 14, eyebrow: 'Sản phẩm mới', headline: 'Terra Thermo.', subhead: 'Bình giữ nhiệt 500ml đầu tiên của Terra. Giữ nóng 12 giờ, lạnh 24 giờ. Đặt trước giảm 20%.', button: { label: 'Đặt trước', url: `${B}/thermo` }, imageAlt: 'Bình giữ nhiệt Terra Thermo màu đất' } },
       { kind: 'feature-row', content: { heading: 'Vỏ gốm nung 1.250°C', body: 'Cầm ấm tay như cốc gốm, không bị trơn như kim loại.', link: { label: 'Xem chất liệu →', url: `${B}/thermo#material` }, imageAlt: 'Cận cảnh vỏ gốm' } },
       { kind: 'feature-row', content: { style: 'right', heading: 'Lõi thép 316 hai lớp', body: 'Chân không giữa hai lớp. Không ám mùi, rửa máy được.', link: { label: 'Xem cấu tạo →', url: `${B}/thermo#core` }, imageAlt: 'Mặt cắt lõi thép' } },
       { kind: 'feature-row', content: { heading: 'Nắp xoay kín, một tay mở', body: 'Thử 2.000 lần đóng mở, không rò.', link: { label: 'Xem video →', url: `${B}/thermo#lid` }, imageAlt: 'Nắp bình đang mở' } },

@@ -459,3 +459,5 @@ select.in { appearance: none; background-image: linear-gradient(45deg, transpare
 .pv-foot { border-bottom: 0; border-top: 1px solid var(--line); }
 .pv-body { flex: 1; overflow: auto; background: #1a1d1b; display: flex; justify-content: center; align-items: flex-start; padding: 24px; }
 .pv-body img { height: auto; box-shadow: 0 30px 80px -20px #000; border-radius: 6px; background: #fff; }
+
+.crop-bar { position: absolute; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--panel-2); border: 1px solid var(--neon-line); border-radius: 8px; box-shadow: var(--glow); white-space: nowrap; }

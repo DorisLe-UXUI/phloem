@@ -159,6 +159,12 @@ function TextProps({ n }: { n: TextNode }) {
       <Field label="Màu chữ"><ColorInput value={n.color} brand={b} onChange={(c) => up({ color: c || '#000000' })} /></Field>
       <Toggle checked={n.autoHeight} onChange={(v) => up({ autoHeight: v })} label="Chiều cao tự theo nội dung" />
       {!n.autoHeight && <Seg block value={n.vAlign} options={[{ v: 'top', label: 'Trên' }, { v: 'middle', label: 'Giữa' }, { v: 'bottom', label: 'Dưới' }]} onChange={(v) => up({ vAlign: v })} />}
+      <Eyebrow>Hiệu ứng 3D</Eyebrow>
+      <div class="row">
+        <div class="grow"><Select value={(n.effect?.kind || 'none') as 'none' | 'extrude' | 'neon' | 'outline' | 'shadow'} options={[{ v: 'none', label: 'Không' }, { v: 'extrude', label: 'Đùn khối 3D' }, { v: 'neon', label: 'Neon phát sáng' }, { v: 'outline', label: 'Chữ rỗng viền' }, { v: 'shadow', label: 'Bóng dài' }]} onChange={(v) => up({ effect: v === 'none' ? null : { kind: v, depth: n.effect?.depth, angle: n.effect?.angle, color: n.effect?.color } })} /></div>
+        {n.effect && (n.effect.kind === 'extrude' || n.effect.kind === 'shadow') && <div style={{ width: 86 }}><Num label="Sâu" value={n.effect.depth ?? (n.effect.kind === 'shadow' ? 18 : 7)} min={1} max={40} suffix="px" onChange={(v) => up({ effect: { ...n.effect!, depth: v } })} /></div>}
+      </div>
+      {n.effect && <Field label="Màu hiệu ứng" hint="trống = tự đậm hơn chữ"><ColorInput value={n.effect.color ?? null} brand={b} allowNone onChange={(c) => up({ effect: { ...n.effect!, color: c ?? undefined } })} /></Field>}
     </div>
   );
 }
@@ -211,6 +217,26 @@ function ImageProps({ n }: { n: ImageNode }) {
           <div style={{ width: 80 }}><Num label="%" value={Math.round((n.overlay?.opacity ?? 0) * 100)} min={0} max={100} onChange={(v) => up({ overlay: { color: n.overlay?.color || '#000000', opacity: v / 100 } })} /></div>
         </div>
       </Field>
+      <Eyebrow action={{ label: s.cropping === n.id ? 'Đang cắt · Esc' : 'Cắt ảnh', onClick: () => set({ cropping: s.cropping === n.id ? null : n.id }) }}>Khung & vị trí</Eyebrow>
+      <div class="row">
+        <div class="grow"><Num label="Zoom" value={Math.round((n.crop?.zoom ?? 1) * 100)} min={100} max={600} step={5} suffix="%" onChange={(v) => up({ crop: { zoom: Math.max(1, v / 100), fx: n.crop?.fx ?? 0.5, fy: n.crop?.fy ?? 0.5 } })} /></div>
+        <div class="grow"><Num label="Xoay" value={n.rotate ?? 0} min={-180} max={180} suffix="°" onChange={(v) => up({ rotate: v || 0 })} /></div>
+      </div>
+      <div class="row" style={{ gap: 6 }}>
+        <div class="grid3" style={{ gap: 3, width: 78, flex: 'none' }}>
+          {[0, 0.5, 1].flatMap((fy) => [0, 0.5, 1].map((fx) => <button key={`${fx}${fy}`} class={`btn xs ${(n.crop?.fx ?? 0.5) === fx && (n.crop?.fy ?? 0.5) === fy ? 'on' : ''}`} style={{ height: 22, padding: 0 }} title="Điểm nhìn" onClick={() => up({ crop: { zoom: n.crop?.zoom ?? 1, fx, fy } })}>·</button>))}
+        </div>
+        <div class="col grow" style={{ gap: 4 }}>
+          <div class="row"><Btn xs onClick={() => up({ flipX: !n.flipX })} title="Lật ngang">Lật ↔</Btn><Btn xs onClick={() => up({ flipY: !n.flipY })} title="Lật dọc">Lật ↕</Btn><Btn xs kind="ghost" onClick={() => up({ crop: null, flipX: false, flipY: false, rotate: 0 })}>Đặt lại</Btn></div>
+          <div class="dim small">Double-click ảnh trên canvas: kéo để dời, lăn chuột để zoom.</div>
+        </div>
+      </div>
+      <Eyebrow>Hiệu ứng 3D</Eyebrow>
+      <div class="row">
+        <div class="grow"><Num label="Nghiêng ↔" value={n.tilt?.ry ?? 0} min={-30} max={30} suffix="°" onChange={(v) => up({ tilt: v || n.tilt?.rx ? { rx: n.tilt?.rx ?? 0, ry: v } : null })} /></div>
+        <div class="grow"><Num label="Nghiêng ↕" value={n.tilt?.rx ?? 0} min={-30} max={30} suffix="°" onChange={(v) => up({ tilt: v || n.tilt?.ry ? { rx: v, ry: n.tilt?.ry ?? 0 } : null })} /></div>
+      </div>
+      <Toggle checked={!!n.floatShadow} onChange={(v) => up({ floatShadow: v })} label="Bóng nổi dưới ảnh" sub="cho ảnh tách nền trông như đang bay" />
       {a && (a.w < n.w * 2 || a.h < n.h * 2) && <div class="check warn"><span class="lv">CHÚ Ý</span><span class="m">Ảnh gốc {a.w}×{a.h} nhỏ hơn 2× khung ({n.w * 2}×{n.h * 2}) — có thể mờ trên màn Retina.</span></div>}
     </div>
   );

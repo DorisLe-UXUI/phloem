@@ -31,7 +31,7 @@ export function Editor() {
         const txt = (cd.getData('text/plain') || '').trim();
         if (!urls.length && /^https?:\/\/\S+\.(png|jpe?g|gif|webp|avif|svg)(\?\S*)?$/i.test(txt)) urls.push(txt);
       }
-      if (!files.length && !urls.length) return;
+      if (!files.length && !urls.length) { if (get().clipboard) { e.preventDefault(); A.pasteClipboard(); } return; }
       e.preventDefault();
       const sel = get().selection; const d = A.doc();
       const target = sel.length === 1 ? ops.findNode(d, sel[0]) : null;
@@ -125,7 +125,7 @@ function keys(e: KeyboardEvent) {
   if (mod && k === 'a') { stop(); A.selectAll(); return; }
   if (mod && k === 'c') { stop(); A.copySelection(); return; }
   if (mod && k === 'x') { stop(); A.cutSelection(); return; }
-  if (mod && k === 'v') { stop(); A.pasteClipboard(); return; }
+  if (mod && k === 'v') return; // handled by the window 'paste' event (images from anywhere, else internal layers)
   if (mod && k === ']') { stop(); A.reorderSelection(e.altKey ? 'top' : 'up'); return; }
   if (mod && k === '[') { stop(); A.reorderSelection(e.altKey ? 'bottom' : 'down'); return; }
   if (mod && e.shiftKey && k === 'l') { stop(); st.selection.forEach(A.toggleLocked); return; }
@@ -137,7 +137,7 @@ function keys(e: KeyboardEvent) {
   if (mod && k === 'enter') { stop(); set({ rightTab: 'export' }); return; }
   if (mod) return;
   if (k === 'delete' || k === 'backspace') { stop(); A.deleteSelection(); return; }
-  if (k === 'escape') { stop(); if (st.editingText) set({ editingText: null }); else if (st.scrapSel) set({ scrapSel: null }); else if (st.selection.length) A.clearSelection(); else if (st.enteredGroup) set({ enteredGroup: null }); else set({ tool: 'select' }); return; }
+  if (k === 'escape') { stop(); if (st.editingText) set({ editingText: null }); else if (st.cropping) set({ cropping: null }); else if (st.scrapSel) set({ scrapSel: null }); else if (st.selection.length) A.clearSelection(); else if (st.enteredGroup) set({ enteredGroup: null }); else set({ tool: 'select' }); return; }
   if (k.startsWith('arrow')) { stop(); const d = e.shiftKey ? 10 : 1; A.nudge(k === 'arrowleft' ? -d : k === 'arrowright' ? d : 0, k === 'arrowup' ? -d : k === 'arrowdown' ? d : 0); return; }
   if (k === 'v') set({ tool: 'select' }); else if (k === 'r') set({ tool: 'rect' }); else if (k === 't') set({ tool: 'text' }); else if (k === 'i') set({ tool: 'image' }); else if (k === 'h') set({ tool: 'hand' });
   else if (k === '?') set({ modal: 'shortcuts' });

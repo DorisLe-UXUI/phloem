@@ -213,6 +213,10 @@ export async function addImageFile(file: File, at?: { x: number; y: number }, in
   return n.id;
 }
 
+/** Multiply the crop zoom of an image layer (1..6), keeping its focal point. */
+export function zoomCrop(id: string, factor: number) {
+  updateNode(id, (n) => { if (n.type !== 'image') return n; const z = Math.max(1, Math.min(6, (n.crop?.zoom ?? 1) * factor)); return { ...n, crop: { zoom: Math.round(z * 100) / 100, fx: n.crop?.fx ?? 0.5, fy: n.crop?.fy ?? 0.5 } }; });
+}
 export function setImageAsset(id: string, assetId: string | null) { updateNode(id, (n) => (n.type === 'image' ? { ...n, assetId } : n)); }
 
 export function setDocHeightToContent() { const d = doc(); commit({ ...d, autoHeight: true, height: Math.max(ops.contentHeight(d), 100) }); }

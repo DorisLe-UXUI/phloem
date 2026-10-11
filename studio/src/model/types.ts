@@ -67,6 +67,7 @@ export interface RectNode extends BaseNode {
   stroke: { color: Color; width: number } | null;
   radius: number;
   shadow?: Shadow | null;
+  rotate?: number;
 }
 
 export interface TextNode extends BaseNode {
@@ -85,6 +86,7 @@ export interface TextNode extends BaseNode {
   autoHeight: boolean;
   /** Vertical alignment inside the box when autoHeight is off. */
   vAlign: 'top' | 'middle' | 'bottom';
+  effect?: TextEffect | null;
 }
 
 export interface ImageNode extends BaseNode {
@@ -97,7 +99,19 @@ export interface ImageNode extends BaseNode {
   /** Colour overlay (e.g. darken photo behind text). `gradient` fades from transparent at the top to the colour at the bottom. */
   overlay: { color: string; opacity: number; gradient?: boolean } | null;
   shadow?: Shadow | null;
+  /** Figma-style crop: zoom (1..4) and focal point (0..1) of the photo inside its frame. */
+  crop?: { zoom: number; fx: number; fy: number } | null;
+  flipX?: boolean;
+  flipY?: boolean;
+  /** Rotation in degrees around the centre (props, stickers). */
+  rotate?: number;
+  /** Pseudo-3D tilt in degrees: ry turns the card around its vertical axis, rx around the horizontal one. */
+  tilt?: { rx: number; ry: number } | null;
+  /** Soft elliptical shadow under the image, so a cut-out product looks like it floats. */
+  floatShadow?: boolean;
 }
+/** 3D-ish text treatments drawn by the renderer. */
+export interface TextEffect { kind: 'extrude' | 'neon' | 'outline' | 'shadow'; color?: Color; depth?: number; angle?: number }
 
 export interface GroupNode extends BaseNode {
   type: 'group';
