@@ -181,6 +181,17 @@ export function addRect(r: ops.Rect) {
   return n.id;
 }
 
+/** Place an asset that is already in the library: onto an image node (replace) or as a new image node. */
+export function placeAsset(id: string, at?: { x: number; y: number }, into?: string): string | null {
+  const a = assets.get(id); if (!a) return null;
+  const d = doc();
+  if (into) { commit(ops.updateNode(d, into, (n) => (n.type === 'image' ? { ...n, assetId: a.id, name: n.name === 'Image' ? a.name : n.name } : n))); return into; }
+  const w = Math.min(d.width, a.w), h = Math.round(w * (a.h / a.w));
+  const n = mkImage({ x: Math.round(at ? at.x - w / 2 : (d.width - w) / 2), y: Math.round(at ? at.y - h / 2 : ops.contentHeight(d)), w, h, assetId: a.id, name: a.name, alt: a.name.replace(/\.[a-z0-9]+$/i, '') });
+  commit({ ...ops.insertNodes(d, [n]), height: Math.max(d.height, n.y + n.h) }); set({ selection: [n.id], tool: 'select' });
+  return n.id;
+}
+
 export async function addImageFile(file: File, at?: { x: number; y: number }, into?: string) {
   const a = await assets.add(file);
   const d = doc();

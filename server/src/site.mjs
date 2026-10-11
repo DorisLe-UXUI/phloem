@@ -81,7 +81,11 @@ export async function fetchText(url, { limit = 2_000_000, timeout = 10_000 } = {
 }
 
 const decode = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-const attr = (tag, name) => { const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag); return m ? (m[2] ?? m[3] ?? m[4] ?? '') : ''; };
+const unent = (s) => String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+const attr = (tag, name) => { const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag); return m ? unent(m[2] ?? m[3] ?? m[4] ?? '') : ''; };
+/** Largest candidate of a srcset ("url 320w, url 1400w" or "url 1x, url 2x"); Shopify-style ?width= params are bumped to a usable size. */
+const bestSrc = (srcset) => { let best = '', bw = -1; for (const part of String(srcset || '').split(',')) { const [u, d] = part.trim().split(/\s+/); if (!u) continue; const n = d ? parseFloat(d) * (d.endsWith('x') ? 1000 : 1) : 0; if (n > bw) { bw = n; best = u; } } return best; };
+const upsize = (u) => u.replace(/([?&])width=\d+/i, '$1width=1400').replace(/_(\d{2,4})x(\d{2,4})?(_crop_\w+)?\.(jpg|jpeg|png|webp)/i, '.$4');
 const abs = (href, base) => { try { return new URL(href, base).href; } catch { return ''; } };
 
 function hexOf(c) {
@@ -131,7 +135,9 @@ export function extractStyle(css, googleFamilies = []) {
 
 /** Structural facts from one HTML document. No network. */
 export function analyzeHtml(html, baseUrl) {
-  const h = String(html);
+  const raw = String(html);
+  // Scripts, styles, noscript and inline svg never carry copy; drop them before reading text, headings and nav.
+  const h = raw.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ').replace(/<svg[\s\S]*?<\/svg>/gi, ' ');
   const head = h.slice(0, 200_000);
   const meta = (name) => { const m = new RegExp(`<meta[^>]+(?:property|name)\\s*=\\s*["']${name}["'][^>]*>`, 'i').exec(head); return m ? decode(attr(m[0], 'content')) : ''; };
   const title = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(head) || [])[1] || '');
@@ -142,13 +148,13 @@ export function analyzeHtml(html, baseUrl) {
   for (const t of links) { const href = attr(t, 'href'); if (/fonts\.googleapis\.com/.test(href)) for (const m of href.matchAll(/family=([^&:]+)/g)) googleFamilies.push(decodeURIComponent(m[1]).replace(/\+/g, ' ').split('|')[0]); }
   const icons = links.filter((t) => /rel\s*=\s*["'][^"']*(apple-touch-icon|icon)/i.test(t)).map((t) => ({ href: abs(attr(t, 'href'), baseUrl), sizes: attr(t, 'sizes') })).filter((i) => i.href);
   icons.sort((a, b) => (parseInt(b.sizes) || 0) - (parseInt(a.sizes) || 0));
-  const inlineCss = [...h.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n') + '\n' + [...h.matchAll(/style\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(';');
+  const inlineCss = [...raw.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n') + '\n' + [...raw.matchAll(/style\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(';');
   const imgTags = [...h.matchAll(/<img[^>]+>/gi)].map((m) => m[0]);
   const images = [], seen = new Set(); let logo = '';
   for (const t of imgTags) {
-    let src = attr(t, 'src') || attr(t, 'data-src') || (attr(t, 'srcset') || attr(t, 'data-srcset')).split(',')[0].trim().split(' ')[0];
+    let src = bestSrc(attr(t, 'srcset') || attr(t, 'data-srcset')) || attr(t, 'data-src') || attr(t, 'src');
     if (!src || src.startsWith('data:')) continue;
-    src = abs(src, baseUrl); if (!src || seen.has(src)) continue; seen.add(src);
+    src = abs(upsize(src), baseUrl); if (!src || seen.has(src)) continue; seen.add(src);
     const alt = decode(attr(t, 'alt')), w = parseInt(attr(t, 'width')) || 0, hh = parseInt(attr(t, 'height')) || 0;
     const isLogo = /logo/i.test(t) && !/sponsor|partner|client/i.test(t);
     if (isLogo && !logo) { logo = src; continue; }
@@ -156,7 +162,8 @@ export function analyzeHtml(html, baseUrl) {
     images.push({ url: src, alt, w, h: hh });
     if (images.length >= 16) break;
   }
-  const ogImage = abs(meta('og:image') || meta('twitter:image'), baseUrl);
+  const ogRaw = meta('og:image') || meta('twitter:image');
+  const ogImage = ogRaw ? abs(ogRaw, baseUrl) : '';
   const headings = [...h.matchAll(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/gi)].map((m) => decode(m[1])).filter((t) => t.length > 2 && t.length < 140).slice(0, 10);
   const navHtml = (/<nav[\s\S]*?<\/nav>/i.exec(h) || (/<header[\s\S]*?<\/header>/i.exec(h)) || [''])[0];
   const nav = [...navHtml.matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)].map((m) => decode(m[1])).filter((t) => t && t.length <= 24 && !/logo/i.test(t));
@@ -167,7 +174,19 @@ export function analyzeHtml(html, baseUrl) {
     title, lang: lang || '', siteName: meta('og:site_name') || '', description: meta('description') || meta('og:description') || '', themeColor: hexOf(meta('theme-color')) || '',
     logo, icon: icons[0]?.href || '', ogImage, images, headings, nav: navUnique, buttons, text,
     _styles: styles, _inlineCss: inlineCss, _googleFamilies: [...new Set(googleFamilies)],
+    _shopify: /cdn\/shop\/|cdn\.shopify\.com|Shopify\.theme/i.test(raw),
   };
+}
+
+/** Shopify stores expose /products.json publicly: real names, prices and product photos. */
+export async function shopifyProducts(origin, limit = 12) {
+  try {
+    const j = JSON.parse(await fetchText(`${origin}/products.json?limit=${limit}`, { limit: 1_500_000, timeout: 8000 }));
+    return (j.products || []).filter((p) => p && p.title).slice(0, limit).map((p) => {
+      const v = (p.variants || [])[0] || {};
+      return { name: String(p.title).slice(0, 80), price: v.price ? String(v.price) : '', compareAt: v.compare_at_price ? String(v.compare_at_price) : '', type: p.product_type || '', url: `${origin}/products/${p.handle}`, image: (p.images || [])[0]?.src || '' };
+    });
+  } catch { return []; }
 }
 
 /** Fetch the page (+ up to 3 stylesheets) and return the brand profile. */
@@ -182,8 +201,9 @@ export async function siteProfile(rawUrl) {
   const style = extractStyle(css, a._googleFamilies);
   const tc = a.themeColor ? hsl(a.themeColor) : null;
   if (tc && tc.s >= 0.25 && tc.l >= 0.12 && tc.l <= 0.9 && !style.colors.some((c) => c.hex === a.themeColor)) style.colors.unshift({ hex: a.themeColor, n: 999 });
-  const { _styles, _inlineCss, _googleFamilies, ...pub } = a;
-  return { url: u.href, ...pub, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts };
+  const { _styles, _inlineCss, _googleFamilies, _shopify, ...pub } = a;
+  const products = _shopify ? await shopifyProducts(u.origin) : [];
+  return { url: u.href, ...pub, platform: _shopify ? 'shopify' : '', products, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts };
 }
 
 /** Image proxy for the Studio: only public hosts, only image/* bodies, ≤ 10 MB. */

@@ -2441,3 +2441,9 @@ select.in {
     display: none;
   }
 }
+.asset[draggable] {
+  cursor: grab;
+}
+.asset[draggable]:active {
+  cursor: grabbing;
+}

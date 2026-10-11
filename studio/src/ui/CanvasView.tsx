@@ -299,10 +299,12 @@ export function CanvasView() {
   // ----- drop files -----
   const onDrop = async (e: DragEvent) => {
     e.preventDefault(); setDropping(false);
-    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
-    if (!files.length) return;
     const p = local(e); const d = toDoc(p.x, p.y);
     const target = hit(d.x, d.y, true);
+    const assetId = e.dataTransfer?.getData('text/phloem-asset');
+    if (assetId) { A.placeAsset(assetId, d, target && target.type === 'image' ? target.id : undefined); return; }
+    const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
     for (const f of files) await A.addImageFile(f, d, target && target.type === 'image' ? target.id : undefined);
   };
 

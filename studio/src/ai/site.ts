@@ -11,7 +11,10 @@ export interface SiteProfile {
   url: string; title: string; lang: string; siteName: string; description: string; themeColor: string;
   logo: string; icon: string; ogImage: string; images: SiteImage[]; headings: string[]; nav: string[]; buttons: string[]; text: string;
   colors: { hex: string; n: number }[]; darks: string[]; lights: string[]; fonts: { name: string; n: number }[];
+  platform?: string;
+  products?: SiteProduct[];
 }
+export interface SiteProduct { name: string; price: string; compareAt: string; type: string; url: string; image: string; assetId?: string | null }
 
 function relay(): { url: string; headers: Record<string, string> } | null {
   const s = get().settings; const url = (s.relayUrl || '').replace(/\/$/, '');
@@ -84,7 +87,7 @@ async function svgToPng(svg: Blob): Promise<Blob> {
 }
 
 /** Pull the logo and up to `max` images through the relay into the asset library. */
-export async function importSiteImages(p: SiteProfile, max = 8, onProgress?: (done: number, total: number) => void, skipLogo = false): Promise<{ logoId: string | null; imageIds: string[] }> {
+export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (done: number, total: number) => void, skipLogo = false): Promise<{ logoId: string | null; imageIds: string[] }> {
   const r = relay(); if (!r) return { logoId: null, imageIds: [] };
   const grab = async (url: string, name: string) => {
     try {
@@ -100,6 +103,7 @@ export async function importSiteImages(p: SiteProfile, max = 8, onProgress?: (do
   const push = (url: string, name: string) => { if (url && !seen.has(url)) { seen.add(url); urls.push({ url, name }); } };
   if (p.ogImage) push(p.ogImage, 'og-image');
   for (const im of p.images) push(im.url, im.alt || im.url.split('/').pop()?.split('?')[0] || 'image');
+  for (const pr of p.products || []) if (pr.image) push(pr.image, pr.name);
   const list = urls.slice(0, max);
   const wantLogo = !skipLogo && !!(p.logo || p.icon);
   const total = list.length + (wantLogo ? 1 : 0);
@@ -107,10 +111,13 @@ export async function importSiteImages(p: SiteProfile, max = 8, onProgress?: (do
   const logoId = wantLogo ? await grab(p.logo || p.icon, 'logo') : null;
   if (wantLogo) { done++; onProgress?.(done, total); }
   const imageIds: string[] = [];
+  const byUrl = new Map<string, string>();
   for (let i = 0; i < list.length; i += 3) {
-    const ids = await Promise.all(list.slice(i, i + 3).map((x) => grab(x.url, x.name)));
-    for (const id of ids) { done++; onProgress?.(done, total); if (id) imageIds.push(id); }
+    const batch = list.slice(i, i + 3);
+    const ids = await Promise.all(batch.map((x) => grab(x.url, x.name)));
+    ids.forEach((id, k) => { done++; onProgress?.(done, total); if (id) { imageIds.push(id); byUrl.set(batch[k].url, id); } });
   }
+  for (const pr of p.products || []) pr.assetId = byUrl.get(pr.image) ?? null;
   return { logoId, imageIds };
 }
 
@@ -127,5 +134,6 @@ export function siteSummary(p: SiteProfile, brand: Partial<Brand>): string {
     p.text ? `Trích văn bản: ${p.text.slice(0, 600)}` : '',
     `Màu thương hiệu (theo tần suất): ${p.colors.map((c) => c.hex).join(', ') || '(không rõ)'} → primary ${brand.primary}, accent ${brand.accent}`,
     `Font trên web: ${p.fonts.map((f) => f.name).join(', ') || '(không rõ)'} → Phloem dùng ${brand.headingFamily || 'mặc định'} / ${brand.fontFamily || 'mặc định'}`,
+    p.products && p.products.length ? `Sản phẩm thật trên web (${p.platform || 'cửa hàng'}), dùng đúng tên/giá/link/ảnh:\n${p.products.map((pr) => `- ${pr.name}${pr.type ? ` (${pr.type})` : ''}${pr.price ? ` · giá ${pr.price}` : ''}${pr.compareAt ? ` (giá cũ ${pr.compareAt})` : ''} · ${pr.url}${pr.assetId ? ` · imageId "${pr.assetId}"` : ''}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }

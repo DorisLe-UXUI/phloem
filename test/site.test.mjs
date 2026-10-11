@@ -24,6 +24,8 @@ test('analyzeHtml pulls title, lang, meta, logo, icons, images, headings, nav, b
   assert.equal(a.logo, 'https://terra.example/logo.svg');
   assert.equal(a.icon, 'https://terra.example/apple.png', 'largest icon first');
   assert.equal(a.ogImage, 'https://terra.example/img/og.jpg');
+  assert.equal(analyzeHtml('<html><head><title>x</title></head><body></body></html>', 'https://x.example/').ogImage, '', 'no og:image → empty, not the page URL');
+  assert.equal(analyzeHtml('<img srcset="/a.jpg?width=44 44w, /a.jpg?width=600 600w" alt=""/>', 'https://x.example/').images[0].url, 'https://x.example/a.jpg?width=1400', 'largest srcset candidate, Shopify width bumped');
   assert.deepEqual(a.images.map((i) => i.url), ['https://terra.example/img/hero.jpg', 'https://terra.example/img/cup.jpg'], 'tiny icons skipped, data-src honoured');
   assert.deepEqual(a.headings, ['Gốm bền ngoài, đẹp bên trong', 'Bộ sưu tập Thu 2026']);
   assert.deepEqual(a.nav, ['Trang chủ', 'Cửa hàng', 'Về Terra']);

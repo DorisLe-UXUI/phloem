@@ -1,5 +1,6 @@
 import { useEffect } from 'preact/hooks';
-import { get, set, useStore, type Tool } from '../store';
+import { get, set, toast, useStore, type Tool } from '../store';
+import * as ops from '../model/ops';
 import * as A from '../pipeline/actions';
 import { activeProfile, providerName } from '../pipeline/exportFlow';
 import { CanvasView } from './CanvasView';
@@ -15,6 +16,22 @@ export function Editor() {
   useEffect(() => { const h = (e: KeyboardEvent) => keys(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
   useEffect(() => { const h = (e: BeforeUnloadEvent) => { if (get().dirty) { e.preventDefault(); e.returnValue = ''; } }; window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h); }, []);
   useEffect(() => { if (get().project) A.remeasureAll(); }, [s.fontsLoaded]);
+  // Paste an image from the clipboard (screenshot, copied photo): onto the selected image layer, else as a new layer.
+  useEffect(() => {
+    const h = async (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
+      if (!files.length) return;
+      e.preventDefault();
+      const sel = get().selection; const d = A.doc();
+      const target = sel.length === 1 ? ops.findNode(d, sel[0]) : null;
+      for (const f of files) await A.addImageFile(f, undefined, target && target.type === 'image' ? target.id : undefined);
+      toast(files.length === 1 ? 'Đã dán ảnh.' : `Đã dán ${files.length} ảnh.`, 'ok');
+    };
+    window.addEventListener('paste', h);
+    return () => window.removeEventListener('paste', h);
+  }, []);
   if (!s.project) return null;
   const p = s.project;
   return (

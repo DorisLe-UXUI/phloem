@@ -39,28 +39,41 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const [siteBusy, setSiteBusy] = useState('');
   const [siteErr, setSiteErr] = useState('');
   useEffect(() => { void aiTransport().then(setTransport); return assets.onChange(() => bump((n) => n + 1)); }, []);
+  const addFiles = async (list: FileList | File[]) => { const ids: string[] = []; for (const f of Array.from(list)) { if (!f.type.startsWith('image/')) continue; try { ids.push((await assets.add(f)).id); } catch { /* skip */ } } if (ids.length) { upd((f) => ({ imageIds: [...f.imageIds, ...ids] })); toast(`Đã thêm ${ids.length} ảnh.`, 'ok'); } };
+  useEffect(() => {
+    const h = (e: ClipboardEvent) => { const t = e.target as HTMLElement | null; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return; const files = Array.from(e.clipboardData?.files || []); if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); void addFiles(files); } };
+    window.addEventListener('paste', h); return () => window.removeEventListener('paste', h);
+  }, []);
   const upd = (patch: Partial<GenInput> | ((f: GenInput) => Partial<GenInput>)) => setForm((f) => { const n = { ...f, ...(typeof patch === 'function' ? patch(f) : patch) }; try { localStorage.setItem(LS, JSON.stringify({ ...n, imageIds: [], site: null, logoAssetId: null })); } catch { /* ignore */ } return n; });
   const baseBrand = (): Brand => ({ ...DEFAULT_BRAND, ...(form.webBrand || {}), name: form.brandName || form.webBrand?.name || DEFAULT_BRAND.name, logoAssetId: form.logoAssetId ?? null });
-  const analyze = async () => {
+  /** Read the website, import its images, update the form. Returns the updated form (or null on error). */
+  const analyzeNow = async (): Promise<GenInput | null> => {
     setSiteErr(''); setSiteBusy('AI đang đọc trang…');
     try {
       const p: SiteProfile = await analyzeSite(form.website || '');
       const wb = brandFromSite(p);
       setSiteBusy('Đang tải logo và ảnh…');
-      const got = await importSiteImages(p, 8, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), !!form.logoAssetId);
-      upd((f) => ({ site: p, webBrand: wb, brandName: f.brandName || wb.name || '', logoAssetId: f.logoAssetId ?? got.logoId ?? null, imageIds: [...new Set([...f.imageIds, ...got.imageIds])], palette: 'Web' }));
-      toast(`Đã đọc ${p.siteName || p.title}: ${p.colors.length} màu, ${p.fonts.length} font, ${got.imageIds.length} ảnh${got.logoId ? ', logo' : ''}.`, 'ok');
-    } catch (e) { setSiteErr((e as Error).message); }
+      const got = await importSiteImages(p, 10, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), !!form.logoAssetId);
+      let next: GenInput | null = null;
+      upd((f) => { next = { ...f, site: p, webBrand: wb, brandName: f.brandName || wb.name || '', logoAssetId: f.logoAssetId ?? got.logoId ?? null, imageIds: [...new Set([...f.imageIds, ...got.imageIds])], palette: 'Web' }; return next; });
+      toast(`Đã đọc ${p.siteName || p.title}: ${p.colors.length} màu, ${p.fonts.length} font, ${got.imageIds.length} ảnh${got.logoId ? ', logo' : ''}${p.products?.length ? `, ${p.products.length} sản phẩm` : ''}.`, 'ok');
+      return next;
+    } catch (e) { setSiteErr((e as Error).message); return null; }
     finally { setSiteBusy(''); }
   };
+  const analyze = () => { void analyzeNow(); };
   const pickLogo = async (f: File) => { try { const a = await assets.add(f, f.name || 'logo'); upd({ logoAssetId: a.id }); } catch (e) { toast((e as Error).message, 'err'); } };
   const toggleImg = (id: string) => upd({ imageIds: form.imageIds.includes(id) ? form.imageIds.filter((x) => x !== id) : [...form.imageIds, id] });
 
   const run = async () => {
     setBusy(true); setErr(''); setVariants([]); setThumbs([]);
     try {
+      let input = form;
+      if ((form.website || '').trim() && !form.site) { // typed a website but never pressed "AI đọc web": read it first
+        const r = await analyzeNow(); if (r) input = r;
+      }
       await document.fonts.ready;
-      const vs = await generateVariants(form);
+      const vs = await generateVariants(input);
       setVariants(vs);
       ensureFonts(vs.flatMap((v) => [v.headingFont || '', v.bodyFont || '']).filter(Boolean));
       await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]);
@@ -113,7 +126,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
             {form.logoAssetId && assets.url(form.logoAssetId) ? <img src={assets.url(form.logoAssetId)} alt="" style={{ height: 28, maxWidth: 120, objectFit: 'contain', background: '#fff', borderRadius: 6, padding: '2px 6px' }} /> : null}
             <span class="row" style={{ gap: 4 }}>{form.site.colors.slice(0, 6).map((c) => <i key={c.hex} title={c.hex} style={{ width: 18, height: 18, borderRadius: '50%', background: c.hex, border: '1px solid rgba(255,255,255,.2)', display: 'inline-block' }} />)}</span>
             <span class="small muted">{form.site.fonts.map((f) => f.name).slice(0, 3).join(' · ') || 'font mặc định'}</span>
-            <span class="small muted">· {form.site.images.length} ảnh trên trang · {form.site.headings.length} tiêu đề</span>
+            <span class="small muted">· {form.site.images.length} ảnh · {form.site.headings.length} tiêu đề{form.site.products?.length ? ` · ${form.site.products.length} sản phẩm (${form.site.platform})` : ''}</span>
           </div>
         )}
       </div>
@@ -138,7 +151,8 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       </div>
       <Field label="Email này để làm gì? Gửi cho ai?" hint="brief"><TextArea rows={2} value={form.brief} placeholder="Sale cuối tuần 30% cho khách cũ, muốn họ quay lại mua đồ gốm trước Tết…" onCommit={(v) => upd({ brief: v })} onInput={(v) => upd({ brief: v })} /></Field>
       <Field label="Nội dung thô" hint="tiêu đề, sản phẩm, giá, link, ngày, chính sách… dán thoải mái"><TextArea rows={6} value={form.content} placeholder={'Cốc men tro 300ml 245.000₫ → 171.000₫ https://terra.vn/p/coc\nĐĩa ăn 24cm 320.000₫ → 224.000₫\nFreeship toàn quốc, đổi trả 30 ngày\nMã TERRA30 đến hết Chủ nhật 19/10'} onCommit={(v) => upd({ content: v })} onInput={(v) => upd({ content: v })} /></Field>
-      <Eyebrow action={{ label: '+ Tải ảnh', onClick: () => file.current?.click() }}>Ảnh ({form.imageIds.length} đã chọn)</Eyebrow>
+      <Eyebrow action={{ label: '+ Tải ảnh', onClick: () => file.current?.click() }}>Ảnh ({form.imageIds.length} đã chọn) · dán Ctrl+V hoặc kéo thả vào đây</Eyebrow>
+      <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files); }}>
       <input ref={file} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => { const fs = Array.from((e.target as HTMLInputElement).files || []); const ids: string[] = []; for (const f of fs) { try { ids.push((await assets.add(f)).id); } catch { /* skip */ } } upd((f) => ({ imageIds: [...f.imageIds, ...ids] })); (e.target as HTMLInputElement).value = ''; }} />
       {all.length ? (
         <div class="asset-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
@@ -149,7 +163,8 @@ export function AiModal({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
-      ) : <div class="dropzone" onClick={() => file.current?.click()}><Icon name="upload" /> <div>Chưa có ảnh. Bấm để tải lên, hoặc bỏ qua: AI sẽ để placeholder.</div></div>}
+      ) : <div class="dropzone" onClick={() => file.current?.click()}><Icon name="upload" /> <div>Chưa có ảnh. Dán (Ctrl+V), kéo thả, hoặc bấm để tải lên. Bỏ qua cũng được: AI sẽ để placeholder.</div></div>}
+      </div>
       <Eyebrow>Bảng màu</Eyebrow>
       <div class="presets">
         <button class={`preset ${form.palette === 'auto' ? 'on' : ''}`} onClick={() => upd({ palette: 'auto' })}><Icon name="sparkle" size={14} />AI chọn</button>
