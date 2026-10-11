@@ -150,13 +150,25 @@ function reorderSmart(d: Doc, id: string, dir: 'up' | 'down' | 'top' | 'bottom')
   const n = ops.findNode(d, id); if (!n) return d;
   const parent = ops.findParent(d, id);
   const hits = (a: ops.Rect, b: ops.Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-  if (dir === 'down' && !parent) {
+  if (!parent && (dir === 'down' || dir === 'up')) {
+    // Only layers that overlap matter visually: jump straight to the nearest overlapping one (down enters a block).
     const i = d.nodes.findIndex((x) => x.id === id);
-    const below = d.nodes[i - 1];
-    if (below && below.type === 'group' && hits(ops.bounds(below), ops.bounds(n))) {
-      const without = { ...d, nodes: d.nodes.filter((x) => x.id !== id) };
-      return ops.updateNode(without, below.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children, n] }) : g));
+    const nb = ops.bounds(n);
+    if (dir === 'down') {
+      for (let j = i - 1; j >= 0; j--) {
+        const o = d.nodes[j]; if (!hits(ops.bounds(o), nb)) continue;
+        const without = { ...d, nodes: d.nodes.filter((x) => x.id !== id) };
+        if (o.type === 'group') return ops.updateNode(without, o.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children, n] }) : g));
+        return ops.insertNodes(without, [n], j);
+      }
+      return ops.reorder(d, id, 'bottom');
     }
+    for (let j = i + 1; j < d.nodes.length; j++) {
+      const o = d.nodes[j]; if (!hits(ops.bounds(o), nb)) continue;
+      const without = { ...d, nodes: d.nodes.filter((x) => x.id !== id) };
+      return ops.insertNodes(without, [n], j); // j shifted down by one after removal → lands right above o
+    }
+    return ops.reorder(d, id, 'top');
   }
   if (dir === 'up' && parent) {
     const idx = parent.children.findIndex((x) => x.id === id);
