@@ -382,7 +382,7 @@ export function CanvasView() {
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     const st = get(); const p = local(e);
-    if (st.cropping && !(e.ctrlKey || e.metaKey)) { A.zoomCrop(st.cropping, Math.exp(-e.deltaY * 0.004)); return; }
+    if (st.cropping && !(e.ctrlKey || e.metaKey)) { A.zoomCrop(st.cropping, Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.0012)); return; }
     if (e.ctrlKey || e.metaKey) { const z = Math.min(8, Math.max(0.1, st.zoom * Math.exp(-e.deltaY * 0.0022))); zoomAt(z, p.x, p.y); }
     else set({ pan: { x: st.pan.x - e.deltaX, y: st.pan.y - e.deltaY } });
   };
