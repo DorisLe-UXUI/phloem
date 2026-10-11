@@ -1,6 +1,6 @@
 // Build: dist/code.js (sandbox), dist/ui.html (UI with inlined CSS/JS), dist/shared.mjs (for tests).
 import * as esbuild from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const args = new Set(process.argv.slice(2));
 const studioOnly = args.has('--studio');
