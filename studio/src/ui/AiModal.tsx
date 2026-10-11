@@ -1,7 +1,8 @@
 // "Dựng bằng AI": images + copy in, three rendered variants out, pick one.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { BRAND_PRESETS, DEFAULT_BRAND, type Brand } from '../model/types';
-import { thumbnail } from '../render/renderer';
+import { renderToCanvas, thumbnail } from '../render/renderer';
+import { makeMobile } from '../model/ops';
 import { assets } from '../storage/assets';
 import { get, set, toast, useStore } from '../store';
 import * as A from '../pipeline/actions';
@@ -9,7 +10,7 @@ import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type 
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
 import { analyzeSite, brandFromSite, importSiteImages, type SiteProduct, type SiteProfile } from '../ai/site';
-import { Btn, Eyebrow, Field, Modal, Select, TextArea, TextInput } from './components';
+import { Btn, Eyebrow, Field, Modal, Seg, Select, TextArea, TextInput } from './components';
 import { Icon } from './icons';
 import { ask } from './confirm';
 
@@ -31,6 +32,27 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const [transport, setTransport] = useState<AiTransport | 'checking'>('checking');
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState('');
+  // Full-size preview of one variant before choosing it.
+  const [preview, setPreview] = useState<number | null>(null);
+  const [pvMode, setPvMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [pvUrl, setPvUrl] = useState('');
+  useEffect(() => {
+    if (preview === null || !variants[preview]) { setPvUrl(''); return; }
+    const v = variants[preview];
+    const br = brandForVariant(v, baseBrand(), form.webBrand);
+    ensureFonts([br.headingFamily, br.fontFamily]);
+    let alive = true;
+    const draw = () => { try { const d = variantToDoc(v, br); const doc = pvMode === 'mobile' ? makeMobile(d) : d; const c = renderToCanvas(doc, br, assets, pvMode === 'mobile' ? 2 : 1.5); if (alive) setPvUrl(c.toDataURL('image/jpeg', 0.9)); } catch { /* fonts/images not ready */ } };
+    draw();
+    const t = setTimeout(draw, 1800); // again once web fonts / images are in
+    const off = assets.onChange(draw);
+    return () => { alive = false; clearTimeout(t); off(); };
+  }, [preview, pvMode, variants]);
+  useEffect(() => {
+    if (preview === null) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setPreview(null); } if (e.key === 'ArrowRight') setPreview((p) => (p === null ? p : (p + 1) % variants.length)); if (e.key === 'ArrowLeft') setPreview((p) => (p === null ? p : (p + variants.length - 1) % variants.length)); };
+    window.addEventListener('keydown', k, true); return () => window.removeEventListener('keydown', k, true);
+  }, [preview, variants.length]);
   const [relayUp, setRelayUp] = useState(false);
   useEffect(() => { const u = (get().settings.relayUrl || '').replace(/\/$/, ''); if (!u) return; fetch(u + '/', { signal: AbortSignal.timeout(2500) }).then((r) => r.json()).then((j) => setRelayUp(!!j?.ai && !!j?.auth)).catch(() => setRelayUp(false)); }, [s.settings.relayUrl, s.user?.id]);
   const [variants, setVariants] = useState<Variant[]>([]);
@@ -204,12 +226,31 @@ export function AiModal({ onClose }: { onClose: () => void }) {
                   {(v.headingFont || v.bodyFont) && <div class="ds mono">{[v.headingFont, v.bodyFont].filter(Boolean).join(' + ')}</div>}
                   <div class="ds">{v.why}</div>
                   <div class="ds mono" style={{ marginTop: 4 }}>{v.blocks.map((b) => b.kind).join(' · ')}</div>
-                  <div class="row" style={{ marginTop: 8 }}><Btn sm kind="primary" block onClick={() => use(v)}>{s.project ? 'Dùng, thay nội dung hiện tại' : 'Tạo project từ mẫu này'}</Btn></div>
+                  <div class="row" style={{ marginTop: 8 }}><Btn sm icon="eye" onClick={() => { setPvMode('desktop'); setPreview(i); }}>Xem thử</Btn><Btn sm kind="primary" block onClick={() => use(v)}>{s.project ? 'Dùng, thay nội dung hiện tại' : 'Tạo project từ mẫu này'}</Btn></div>
                 </div>
               </div>
             ))}
           </div>
         </>
+      )}
+      {preview !== null && variants[preview] && (
+        <div class="pv-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setPreview(null); }}>
+          <div class="pv-panel">
+            <div class="pv-head">
+              <Btn sm icon="chevron" title="Phương án trước (←)" onClick={() => setPreview((preview + variants.length - 1) % variants.length)} />
+              <div class="grow"><b>{variants[preview].name}</b> <span class="chip">{preview + 1}/{variants.length}</span> <span class="chip">{variants[preview].palette}</span> {variants[preview].vibe && <span class="chip on">{variants[preview].vibe}</span>}<div class="dim small">{variants[preview].why}</div></div>
+              <Seg value={pvMode} options={[{ v: 'desktop', label: 'Desktop 600' }, { v: 'mobile', label: 'Mobile 375' }]} onChange={(v) => setPvMode(v)} />
+              <Btn sm icon="chevron" title="Phương án sau (→)" onClick={() => setPreview((preview + 1) % variants.length)} />
+              <Btn sm icon="close" title="Đóng (Esc)" onClick={() => setPreview(null)} />
+            </div>
+            <div class="pv-body">{pvUrl ? <img src={pvUrl} alt="" style={{ width: pvMode === 'mobile' ? 375 : 600 }} /> : <div class="dim">Đang vẽ…</div>}</div>
+            <div class="pv-foot">
+              <span class="grow small muted">Subject: <b>{variants[preview].fields.subject || '—'}</b>{variants[preview].fields.preheader ? ` · ${variants[preview].fields.preheader}` : ''}</span>
+              <Btn onClick={() => setPreview(null)}>Đóng</Btn>
+              <Btn kind="primary" icon="check" onClick={() => { const v = variants[preview]; setPreview(null); void use(v); }}>{s.project ? 'Dùng, thay nội dung hiện tại' : 'Dùng mẫu này'}</Btn>
+            </div>
+          </div>
+        </div>
       )}
     </Modal>
   );
