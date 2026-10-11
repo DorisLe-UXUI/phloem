@@ -58,6 +58,15 @@
       hero.addEventListener('pointermove', (e) => { const r = hero.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5; laptop.style.transform = `rotateY(${14 + x * 10}deg) rotateX(${4 - y * 7}deg)`; });
       hero.addEventListener('pointerleave', () => { laptop.style.transform = ''; });
     }
+    const stageWrap = stage.parentElement, heroCopy = $('heroCopy');
+    if (!reduce) {
+      const heroScroll = () => {
+        const r = hero.getBoundingClientRect(); const p = clamp(-r.top / (r.height * 0.85), 0, 1), e = p * p;
+        stageWrap.style.transform = `perspective(1400px) rotateX(${e * 26}deg) translateY(${e * 110}px) scale(${1 - e * 0.14})`; stageWrap.style.opacity = String(1 - e * 0.9);
+        heroCopy.style.transform = `translateY(${-p * 70}px)`; heroCopy.style.opacity = String(1 - e * 0.95);
+      };
+      heroScroll(); addEventListener('scroll', heroScroll, { passive: true });
+    }
     const rel = (el, ax = 0.5, ay = 0.5) => { const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect(); return { x: r.left - s.left + r.width * ax, y: r.top - s.top + r.height * ay }; };
     const moveTo = (el, ax, ay) => { const p = rel(el, ax, ay); cur.style.transform = `translate(${p.x - 4}px, ${p.y - 3}px)`; };
     const click = () => { cur.classList.remove('click'); void cur.offsetWidth; cur.classList.add('click'); };
@@ -126,15 +135,18 @@
     });
     const sizeStrips = () => { const H = sliceEmail.clientHeight; strips.forEach((el) => { el.style.backgroundSize = `100% ${H}px`; el.style.backgroundPosition = `0 ${-Number(el.dataset.off) * H}px`; }); };
     sizeStrips(); addEventListener('resize', sizeStrips);
-    const stageEl = document.getElementById('sliceStage');
+    const stageEl = document.getElementById('sliceStage'), copyEl = document.querySelector('.slice-copy');
     const stacked = window.matchMedia('(max-width: 1024px)');
     const update = () => {
       let q;
       if (stacked.matches && stageEl) { const r = stageEl.getBoundingClientRect(); q = clamp((innerHeight * 0.92 - r.top) / (innerHeight * 0.75), 0, 1); }
       else q = progressOf(sliceTrack);
-      const cutAt = clamp(q / 0.45, 0, 1);              // scan line sweeps during the first 45%
-      const spread = clamp((q - 0.4) / 0.35, 0, 1);      // then strips separate
-      const phone = q > 0.72;
+      const enter = clamp(q / 0.16, 0, 1), ee = 1 - Math.pow(1 - enter, 3);   // email rises from the floor, copy slides in
+      if (stageEl) { stageEl.style.transform = `rotateX(${(1 - ee) * 42}deg) translateY(${(1 - ee) * 140}px) scale(${0.84 + ee * 0.16})`; stageEl.style.opacity = String(0.1 + ee * 0.9); }
+      if (copyEl) { copyEl.style.transform = `translateX(${(1 - ee) * -60}px)`; copyEl.style.opacity = String(ee); }
+      const cutAt = clamp((q - 0.16) / 0.38, 0, 1);      // then the scan line sweeps
+      const spread = clamp((q - 0.5) / 0.3, 0, 1);       // then strips separate
+      const phone = q > 0.78;
       if (scan) { scan.style.opacity = cutAt > 0 && cutAt < 1 ? '1' : '0'; scan.style.top = `${4 + cutAt * 92}%`; }
       strips.forEach((el, i) => {
         const off = Number(el.dataset.off);
@@ -145,7 +157,7 @@
         el.style.transform = `translate3d(${x}px, ${spread * (i - 3) * 7}px, ${z}px) rotateY(${ry}deg)`;
       });
       if (slicePhone) slicePhone.classList.toggle('on', phone);
-      if (sliceBadge) sliceBadge.classList.toggle('on', q > 0.5);
+      if (sliceBadge) sliceBadge.classList.toggle('on', q > 0.58);
     };
     if (reduce) { strips.forEach((el) => el.classList.add('cut')); if (slicePhone) slicePhone.classList.add('on'); if (sliceBadge) sliceBadge.classList.add('on'); }
     else { update(); addEventListener('scroll', update, { passive: true }); }
