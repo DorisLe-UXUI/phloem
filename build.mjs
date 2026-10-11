@@ -70,7 +70,17 @@ const studioCfg = {
 
 const authCfg = { entryPoints: ['studio/src/auth/standalone.ts'], bundle: true, format: 'iife', target: 'es2020', outfile: 'studio/dist/auth.js', minify: true, logLevel: 'info' };
 
+function stampVersion() {
+  const v = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+  for (const f of ['studio/index.html', 'index.html', 'landing/landing.js']) {
+    if (!existsSync(f)) continue;
+    const t = readFileSync(f, 'utf8').replace(/\?v=\d{12}/g, `?v=${v}`);
+    writeFileSync(f, t);
+  }
+}
+
 async function buildStudio() {
+  stampVersion();
   mkdirSync('studio/dist', { recursive: true });
   await esbuild.build(studioCfg);
   await esbuild.build(authCfg);
