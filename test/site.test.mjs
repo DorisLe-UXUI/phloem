@@ -77,6 +77,12 @@ test('extractStyle ranks brand colours (no greys), merges case, finds fonts', ()
   assert.deepEqual(st.fonts.map((f) => f.name).slice(0, 2).sort(), ['Inter', 'Playfair Display']);
 });
 
+test('extractStyle finds named brand tokens and CTA button colours', () => {
+  const st = extractStyle(':root{--color-primary:#1f6feb;--brand-accent:rgb(255,197,61);--text-primary:#111;--primary-bg:#fff}.btn-primary{background:#1f6feb}.btn-primary:hover{background:#0b5ed7}.cta{background-color:#ff4fa3}');
+  assert.deepEqual(st.vars.map((v) => v.hex), ['#1f6feb', '#ffc53d'], 'text/bg tokens ignored, primary before accent');
+  assert.deepEqual(st.buttons.map((b) => b.hex).sort(), ['#1f6feb', '#ff4fa3'], 'hover states ignored');
+});
+
 test('isPublicHost refuses loopback, private ranges and local names', async () => {
   for (const h of ['localhost', '127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.1.1', '::1', 'printer.local', '0.0.0.0']) assert.equal(await isPublicHost(h), false, h);
   assert.equal(await isPublicHost('8.8.8.8'), true);

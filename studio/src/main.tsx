@@ -3,6 +3,7 @@ import { App } from './ui/App';
 import { ensureFonts } from './render/fonts';
 import { assets } from './storage/assets';
 import { refreshProjects, restoreSession } from './pipeline/actions';
+import * as A from './pipeline/actions';
 import { get, set } from './store';
 
 ensureFonts(['Inter']);
@@ -104,3 +105,6 @@ import { makeMobile } from './model/ops';
   }
   return out;
 };
+
+// Dev/testing hook: store + actions + assets, used by browser checks.
+(window as unknown as { __phloemDev?: unknown }).__phloemDev = { get, set, A, assets };

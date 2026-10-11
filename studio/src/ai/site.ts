@@ -14,6 +14,9 @@ export interface SiteProfile {
   /** Inline SVG wordmark from the site header (when the logo is not an <img>). */
   logoSvg?: string;
   colors: { hex: string; n: number }[]; darks: string[]; lights: string[]; fonts: { name: string; n: number }[];
+  /** Named CSS tokens (--brand, --color-primary…) and CTA button colours, most trustworthy first. */
+  vars?: { name: string; hex: string }[];
+  ctaColors?: { hex: string; n: number }[];
   platform?: string;
   products?: SiteProduct[];
   /** Internal pages the relay also read (work, products, about…). */
@@ -62,12 +65,50 @@ export function mapFont(name: string | undefined, kind: 'body' | 'heading'): str
   return kind === 'heading' ? pick(['poppins', 'inter']) : pick(['inter']);
 }
 
-/** Brand tokens from the site's colours and fonts. Primary = most used saturated colour, accent = a different hue. */
-export function brandFromSite(p: SiteProfile): Partial<Brand> {
-  const primary = p.colors[0]?.hex || p.themeColor || '#0F3D2E';
+const satOf = (h: string) => { const [r, g, b] = rgb(h).map((v) => v / 255); const max = Math.max(r, g, b), min = Math.min(r, g, b); const l = (max + min) / 2; return max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1)); };
+const lightOf = (h: string) => { const [r, g, b] = rgb(h).map((v) => v / 255); return (Math.max(r, g, b) + Math.min(r, g, b)) / 2; };
+const usable = (h?: string | null): h is string => !!h && /^#[0-9a-f]{6}$/i.test(h) && satOf(h) >= 0.22 && lightOf(h) >= 0.1 && lightOf(h) <= 0.9;
+
+/** Dominant saturated colours of an image (the logo): quantised buckets, averaged, most frequent first. */
+export async function dominantColors(assetId: string, max = 4): Promise<string[]> {
+  const blob = await assets.blob(assetId); if (!blob) return [];
+  try {
+    const bmp = await createImageBitmap(blob);
+    const sc = Math.min(1, 96 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * sc)); c.height = Math.max(1, Math.round(bmp.height * sc));
+    const g = c.getContext('2d', { willReadFrequently: true })!; g.drawImage(bmp, 0, 0, c.width, c.height); bmp.close();
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    const buckets = new Map<string, { n: number; r: number; g: number; b: number }>();
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 40) continue;
+      const h = hex([d[i], d[i + 1], d[i + 2]]);
+      if (!usable(h)) continue;
+      const key = `${d[i] >> 5}${d[i + 1] >> 5}${d[i + 2] >> 5}`;
+      const b = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 }; b.n++; b.r += d[i]; b.g += d[i + 1]; b.b += d[i + 2]; buckets.set(key, b);
+    }
+    const out: string[] = [];
+    for (const b of [...buckets.values()].sort((a, b2) => b2.n - a.n)) {
+      const h = hex([b.r / b.n, b.g / b.n, b.b / b.n]);
+      if (out.some((o) => { const dd = Math.abs(hue(o) - hue(h)); return Math.min(dd, 360 - dd) < 20 && Math.abs(lightOf(o) - lightOf(h)) < 0.22; })) continue;
+      out.push(h); if (out.length >= max) break;
+    }
+    return out;
+  } catch { return []; }
+}
+
+/**
+ * Brand tokens from the site. Primary, in order of trust: a named CSS token (--brand / --color-primary), the logo's
+ * dominant colour, theme-color, the CTA button colour, then the most used saturated colour in the CSS. Accent: an accent /
+ * secondary token, else the next logo colour or CSS colour with a clearly different hue.
+ */
+export function brandFromSite(p: SiteProfile, extra: { logoColors?: string[] } = {}): Partial<Brand> {
   const dHue = (a: number, b: number) => { const d = Math.abs(a - b); return Math.min(d, 360 - d); };
-  const accentC = p.colors.find((c) => dHue(hue(c.hex), hue(primary)) > 25)?.hex;
-  const accent = accentC || mix(primary, lum(primary) > 0.3 ? '#000000' : '#ffffff', 0.35);
+  const vars = p.vars || [], logo = (extra.logoColors || []).filter(usable), buttons = (p.ctaColors || []).map((b) => b.hex).filter(usable);
+  const isPrimaryName = (n: string) => /primary|brand|main|theme/.test(n), isAccentName = (n: string) => /accent|secondary|cta|highlight/.test(n);
+  // The logo is the brand: its dominant colour wins when it has one; theme-level CSS tokens (often framework defaults) come after.
+  const primary = logo[0] || vars.find((v) => isPrimaryName(v.name) && usable(v.hex))?.hex || (usable(p.themeColor) ? p.themeColor : '') || buttons[0] || p.colors[0]?.hex || p.themeColor || '#0F3D2E';
+  const different = (h: string) => usable(h) && dHue(hue(h), hue(primary)) > 25;
+  const accent = logo.find(different) || vars.find((v) => isAccentName(v.name) && different(v.hex))?.hex || buttons.find(different) || p.colors.map((c) => c.hex).find(different) || mix(primary, lum(primary) > 0.3 ? '#000000' : '#ffffff', 0.35);
   const onPrimary = lum(primary) > 0.45 ? '#111111' : '#FFFFFF';
   const dark = p.darks[0] && lum(p.darks[0]) < 0.08 ? p.darks[0] : '#141414';
   const heading = mapFont(p.fonts[0]?.name, 'heading'), body = mapFont(p.fonts[1]?.name || p.fonts[0]?.name, 'body');
@@ -181,7 +222,7 @@ export function siteSummary(p: SiteProfile, brand: Partial<Brand>): string {
     p.buttons.length ? `Nút trên trang: ${p.buttons.join(' · ')}` : '',
     p.text ? `Trích văn bản: ${p.text.slice(0, 600)}` : '',
     `Thương hiệu GỬI email là ${p.siteName || p.title.split(/[|·•–-]/)[0] || 'website này'}: email nói về chính họ và dịch vụ/sản phẩm của họ. Ảnh có alt mang tên thương hiệu khác (khách hàng, đối tác, case study) chỉ dùng làm "khách hàng tiêu biểu" / dự án đã làm trong articles, gallery, collage, quote; không bao giờ coi thương hiệu đó là người gửi hay chủ đề chính.`,
-    `Màu thương hiệu (theo tần suất): ${p.colors.map((c) => c.hex).join(', ') || '(không rõ)'} → primary ${brand.primary}, accent ${brand.accent}`,
+    `Bộ màu nhận diện (ưu tiên biến CSS đặt tên brand/primary, màu logo, theme-color, màu nút): primary ${brand.primary}, accent ${brand.accent}${p.vars?.length ? ` · token CSS: ${p.vars.map((v) => `${v.name}=${v.hex}`).join(', ')}` : ''}${p.ctaColors?.length ? ` · màu nút: ${p.ctaColors.map((b) => b.hex).join(', ')}` : ''} · màu hay dùng trong CSS: ${p.colors.map((c) => c.hex).join(', ') || '(không rõ)'}. Dùng ĐÚNG primary/accent này, không đổi sang màu khác.`,
     `Font trên web: ${p.fonts.map((f) => f.name).join(', ') || '(không rõ)'} → Phloem dùng ${brand.headingFamily || 'mặc định'} / ${brand.fontFamily || 'mặc định'}`,
     p.pages && p.pages.length ? `Các trang con đã đọc:\n${p.pages.map((pg) => `- ${pg.path}: ${pg.title}${pg.headings.length ? ` — ${pg.headings.slice(0, 4).join(' | ')}` : ''}${pg.text ? ` — ${pg.text.slice(0, 160)}` : ''}`).join('\n')}` : '',
     p.products && p.products.length ? `Sản phẩm thật trên web (${p.platform || 'cửa hàng'}), dùng đúng tên/giá/link/ảnh:\n${p.products.map((pr) => `- ${pr.name}${pr.type ? ` (${pr.type})` : ''}${pr.price ? ` · giá ${pr.price}` : ''}${pr.compareAt ? ` (giá cũ ${pr.compareAt})` : ''} · ${pr.url}${pr.assetId ? ` · imageId "${pr.assetId}"` : ''}`).join('\n')}` : '',

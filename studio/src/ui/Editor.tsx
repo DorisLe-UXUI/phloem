@@ -137,7 +137,7 @@ function keys(e: KeyboardEvent) {
   if (mod && k === 'enter') { stop(); set({ rightTab: 'export' }); return; }
   if (mod) return;
   if (k === 'delete' || k === 'backspace') { stop(); A.deleteSelection(); return; }
-  if (k === 'escape') { stop(); if (st.editingText) set({ editingText: null }); else if (st.cropping) set({ cropping: null }); else if (st.scrapSel) set({ scrapSel: null }); else if (st.selection.length) A.clearSelection(); else if (st.enteredGroup) set({ enteredGroup: null }); else set({ tool: 'select' }); return; }
+  if (k === 'escape') { stop(); if (st.editingText) set({ editingText: null }); else if (st.cropping) set({ cropping: null }); else if (st.cutting) set({ cutting: null }); else if (st.scrapSel) set({ scrapSel: null }); else if (st.selection.length) A.clearSelection(); else if (st.enteredGroup) set({ enteredGroup: null }); else set({ tool: 'select' }); return; }
   if (k.startsWith('arrow')) { stop(); const d = e.shiftKey ? 10 : 1; A.nudge(k === 'arrowleft' ? -d : k === 'arrowright' ? d : 0, k === 'arrowup' ? -d : k === 'arrowdown' ? d : 0); return; }
   if (k === 'v') set({ tool: 'select' }); else if (k === 'r') set({ tool: 'rect' }); else if (k === 't') set({ tool: 'text' }); else if (k === 'i') set({ tool: 'image' }); else if (k === 'h') set({ tool: 'hand' });
   else if (k === '?') set({ modal: 'shortcuts' });

@@ -130,7 +130,26 @@ export function extractStyle(css, googleFamilies = []) {
   }
   for (const g of googleFamilies) fontCounts.set(g, (fontCounts.get(g) || 0) + 5);
   const fonts = [...fontCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([name, n]) => ({ name, n }));
-  return { colors: brand.map((c) => ({ hex: c.hex, n: c.n })), darks, lights, fonts };
+  // Named design tokens are the most trustworthy brand colours: --brand, --color-primary, --accent…
+  const vars = [];
+  const seenVar = new Set();
+  for (const m of String(css).matchAll(/--([a-z0-9_-]*(?:brand|primary|accent|secondary|main|theme|cta|highlight)[a-z0-9_-]*)\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/gi)) {
+    const name = m[1].toLowerCase(); const hex = hexOf(m[2]);
+    if (!hex || seenVar.has(name) || /bg|background|border|text|shadow|muted|disabled|hover|focus|rgb|hsl|light|dark|soft|subtle|contrast|inverse|on-/.test(name)) continue;
+    const c = hsl(hex); if (c.s < 0.2 || c.l < 0.1 || c.l > 0.92) continue;
+    seenVar.add(name); vars.push({ name, hex });
+  }
+  // framework palettes (--wp--preset--color--primary, --bs-primary) are often untouched defaults: rank them last
+  const rank = (n) => (/^(wp--|bs-|mui-|chakra-|tw-)/.test(n) ? 3 : /primary|brand(?!-)|main|theme/.test(n) ? 0 : /accent|secondary|cta|highlight/.test(n) ? 1 : 2);
+  vars.sort((a, b) => rank(a.name) - rank(b.name));
+  // Button / CTA backgrounds: what the brand actually paints its calls to action with.
+  const btn = new Map();
+  for (const m of String(css).matchAll(/([^{}]*(?:btn|button|cta)[^{}]*)\{([^}]*)\}/gi)) {
+    if (/:hover|:focus|:active|disabled|outline|ghost|secondary|link/i.test(m[1])) continue;
+    for (const c of m[2].matchAll(/background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/gi)) { const h = hexOf(c[1]); if (!h) continue; const k = hsl(h); if (k.s < 0.2 || k.l < 0.1 || k.l > 0.92) continue; btn.set(h, (btn.get(h) || 0) + 1); }
+  }
+  const buttons = [...btn.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([hex, n]) => ({ hex, n }));
+  return { colors: brand.map((c) => ({ hex: c.hex, n: c.n })), darks, lights, fonts, vars: vars.slice(0, 6), buttons };
 }
 
 /** Structural facts from one HTML document. No network. */
@@ -295,7 +314,7 @@ export async function siteProfile(rawUrl, { deep = true } = {}) {
   if (tc && tc.s >= 0.25 && tc.l >= 0.12 && tc.l <= 0.9 && !style.colors.some((c) => c.hex === a.themeColor)) style.colors.unshift({ hex: a.themeColor, n: 999 });
   const { _styles, _inlineCss, _googleFamilies, _shopify, ...pub } = a;
   const products = _shopify ? await shopifyProducts(u.origin) : [];
-  return { url: u.href, ...pub, platform: _shopify ? 'shopify' : '', products, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts, pages: pages.map(({ images: _i, ogImage: _o, ...rest }) => rest) };
+  return { url: u.href, ...pub, platform: _shopify ? 'shopify' : '', products, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts, vars: style.vars, ctaColors: style.buttons, pages: pages.map(({ images: _i, ogImage: _o, ...rest }) => rest) };
 }
 
 /** Image proxy for the Studio: only public hosts, only image/* bodies, ≤ 10 MB. */

@@ -9,7 +9,7 @@ import * as A from '../pipeline/actions';
 import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type GenInput, type Variant } from '../ai/generate';
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
-import { analyzeSite, brandFromSite, importSiteImages, lightVersionOf, type SiteProduct, type SiteProfile } from '../ai/site';
+import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, type SiteProduct, type SiteProfile } from '../ai/site';
 import { Btn, Eyebrow, Field, Modal, Seg, Select, TextArea, TextInput } from './components';
 import { groupAssets, pageLabel, usedAssetIds } from '../storage/assetGroups';
 import { Icon } from './icons';
@@ -96,9 +96,12 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       const site = cleanUrl(form.website || '');
       if (site !== form.website) upd({ website: site });
       const p: SiteProfile = await analyzeSite(site);
-      const wb = brandFromSite(p);
       setSiteBusy('Đang tải logo và ảnh…');
       const got = await importSiteImages(p, 80, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), !!form.logoAssetId);
+      // the logo's own colours beat CSS frequency when the site has no named brand tokens
+      const logoId = form.logoAssetId ?? got.logoId ?? null;
+      const logoColors = logoId ? await dominantColors(logoId) : [];
+      const wb = brandFromSite(p, { logoColors });
       let next: GenInput | null = null;
       upd((f) => { next = { ...f, site: p, webBrand: wb, brandName: f.brandName || wb.name || '', logoAssetId: f.logoAssetId ?? got.logoId ?? null, logoLightAssetId: f.logoAssetId ? f.logoLightAssetId ?? null : got.logoLightId ?? null, imageIds: [...new Set([...f.imageIds, ...got.suggested])], palette: 'Web' }; return next; });
       const pagesN = (p.pages || []).length + 1;
@@ -176,7 +179,11 @@ export function AiModal({ onClose }: { onClose: () => void }) {
         {form.site && (
           <div class="row wrap" style={{ alignItems: 'center', gap: 10 }}>
             {form.logoAssetId && assets.url(form.logoAssetId) ? <img src={assets.url(form.logoAssetId)} alt="" style={{ height: 28, maxWidth: 120, objectFit: 'contain', background: '#fff', borderRadius: 6, padding: '2px 6px' }} /> : null}
-            <span class="row" style={{ gap: 4 }}>{form.site.colors.slice(0, 6).map((c) => <i key={c.hex} title={c.hex} style={{ width: 18, height: 18, borderRadius: '50%', background: c.hex, border: '1px solid rgba(255,255,255,.2)', display: 'inline-block' }} />)}</span>
+            <span class="row" style={{ gap: 4 }} title={`Primary ${form.webBrand?.primary} · Accent ${form.webBrand?.accent} (từ token CSS / logo / theme-color / nút) · các màu khác trong CSS`}>
+              {form.webBrand?.primary && <i title={`Primary ${form.webBrand.primary}`} style={{ width: 22, height: 22, borderRadius: '50%', background: form.webBrand.primary, border: '2px solid var(--neon)', display: 'inline-block' }} />}
+              {form.webBrand?.accent && <i title={`Accent ${form.webBrand.accent}`} style={{ width: 22, height: 22, borderRadius: '50%', background: form.webBrand.accent, border: '2px solid var(--neon-line)', display: 'inline-block' }} />}
+              {form.site.colors.filter((c) => c.hex !== form.webBrand?.primary && c.hex !== form.webBrand?.accent).slice(0, 5).map((c) => <i key={c.hex} title={c.hex} style={{ width: 16, height: 16, borderRadius: '50%', background: c.hex, border: '1px solid rgba(255,255,255,.2)', display: 'inline-block', opacity: 0.8 }} />)}
+            </span>
             <span class="small muted">{form.site.fonts.map((f) => f.name).slice(0, 3).join(' · ') || 'font mặc định'}</span>
             <span class="small muted">· {form.site.images.length} ảnh · {form.site.headings.length} tiêu đề{form.site.products?.length ? ` · ${form.site.products.length} sản phẩm (${form.site.platform})` : ''}</span>
           </div>

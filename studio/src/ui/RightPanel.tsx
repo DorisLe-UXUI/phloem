@@ -217,6 +217,17 @@ function ImageProps({ n }: { n: ImageNode }) {
           <div style={{ width: 80 }}><Num label="%" value={Math.round((n.overlay?.opacity ?? 0) * 100)} min={0} max={100} onChange={(v) => up({ overlay: { color: n.overlay?.color || '#000000', opacity: v / 100 } })} /></div>
         </div>
       </Field>
+      {a && (
+        <>
+          <Eyebrow>Tách nền & cắt</Eyebrow>
+          <div class="row wrap" style={{ gap: 4 }}>
+            <Btn xs icon="sparkle" onClick={() => void A.cutoutLayer(n.id, 'auto')} title="Bỏ nền trắng / xám caro / nền phẳng nối với mép ảnh, cắt gọn về vật thể">Xoá nền</Btn>
+            <Btn xs onClick={() => void A.cutoutLayer(n.id, 'ai')} title="Mô hình AI tách vật thể khỏi nền phức tạp (tải ~40 MB lần đầu)">Xoá nền AI</Btn>
+            <Btn xs onClick={() => void A.splitAssetToScraps(a.id)} title="Ảnh gộp nhiều vật thể trên nền trắng → tách thành từng PNG nền trong, xếp cạnh artboard">Tách từng ảnh</Btn>
+            <Btn xs kind={s.cutting === n.id ? 'primary' : undefined} onClick={() => set({ cutting: s.cutting === n.id ? null : n.id, cropping: null })} title="Kéo chọn một vùng trên ảnh để tách thành layer riêng">{s.cutting === n.id ? 'Đang cắt vùng · Esc' : 'Cắt vùng'}</Btn>
+          </div>
+        </>
+      )}
       <Eyebrow action={{ label: s.cropping === n.id ? 'Đang cắt · Esc' : 'Cắt ảnh', onClick: () => set({ cropping: s.cropping === n.id ? null : n.id }) }}>Khung & vị trí</Eyebrow>
       <div class="row">
         <div class="grow"><Num label="Zoom" value={Math.round((n.crop?.zoom ?? 1) * 100)} min={100} max={600} step={5} suffix="%" onChange={(v) => up({ crop: { zoom: Math.max(1, v / 100), fx: n.crop?.fx ?? 0.5, fy: n.crop?.fy ?? 0.5 } })} /></div>

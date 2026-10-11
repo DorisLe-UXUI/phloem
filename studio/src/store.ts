@@ -62,6 +62,8 @@ export interface State {
   scrapSel: string | null;
   /** Image layer in crop mode (double-click): drag pans the photo, wheel zooms. */
   cropping: string | null;
+  /** Image layer in "cut a region" mode: drag a rectangle on it to make a new layer from that part. */
+  cutting: string | null;
 }
 
 export interface Scrap { id: string; assetId: string; x: number; y: number; w: number; h: number }
@@ -93,6 +95,7 @@ export const initialState: State = {
   scraps: [],
   scrapSel: null,
   cropping: null,
+  cutting: null,
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),

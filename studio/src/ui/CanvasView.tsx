@@ -15,7 +15,8 @@ type Mode = { kind: 'idle' } | { kind: 'pan'; sx: number; sy: number; px: number
   // dragging a pasteboard image; `inside` = pointer over the artboard, `over` = image layer that would be replaced
   | { kind: 'scrap'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; inside: boolean; over: string | null }
   // crop mode: dragging pans the photo inside its frame
-  | { kind: 'crop'; id: string; sx: number; sy: number; fx: number; fy: number; base: Doc; moved: boolean };
+  | { kind: 'crop'; id: string; sx: number; sy: number; fx: number; fy: number; base: Doc; moved: boolean }
+  | { kind: 'cut'; id: string; sx: number; sy: number; cur: { x: number; y: number } };
 
 function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -153,11 +154,15 @@ export function CanvasView() {
     for (const gy of guides.current.h) { ctx.beginPath(); ctx.moveTo(0, py + gy * z + 0.5); ctx.lineTo(cw, py + gy * z + 0.5); ctx.stroke(); }
     // marquee / draw preview
     const m = mode.current;
-    if (m.kind === 'marquee' || m.kind === 'draw') {
+    if (st.cutting && m.kind !== 'cut') {
+      const n = ops.findNode(doc, st.cutting);
+      if (n) { const r = rectOf(ops.bounds(n)); ctx.save(); ctx.strokeStyle = '#ffc53d'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2); ctx.setLineDash([]); const hint = 'Cắt vùng · kéo chọn phần ảnh muốn tách · Esc huỷ'; ctx.font = '600 11px JetBrains Mono, monospace'; const tw = ctx.measureText(hint).width + 16; ctx.fillStyle = '#ffc53d'; ctx.fillRect(r.x + r.w / 2 - tw / 2, r.y - 26, tw, 20); ctx.fillStyle = '#1a1200'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.fillText(hint, r.x + r.w / 2, r.y - 16); ctx.textAlign = 'left'; ctx.restore(); }
+    }
+    if (m.kind === 'marquee' || m.kind === 'draw' || m.kind === 'cut') {
       const x1 = Math.min(m.sx, m.cur.x), y1 = Math.min(m.sy, m.cur.y), x2 = Math.max(m.sx, m.cur.x), y2 = Math.max(m.sy, m.cur.y);
       const r = rectOf({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
       ctx.fillStyle = 'rgba(57,255,20,0.08)'; ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.strokeStyle = '#39ff14'; ctx.setLineDash(m.kind === 'draw' ? [] : [4, 3]); ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w, r.h); ctx.setLineDash([]);
+      ctx.strokeStyle = m.kind === 'cut' ? '#ffc53d' : '#39ff14'; ctx.setLineDash(m.kind === 'draw' ? [] : [4, 3]); ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w, r.h); ctx.setLineDash([]);
     }
   };
 
@@ -252,6 +257,11 @@ export function CanvasView() {
     // select tool
     const hIdx = handleAt(d.x, d.y);
     if (hIdx >= 0) { const sel = ops.selectionBounds(docOf(), st.selection)!; mode.current = { kind: 'resize', handle: hIdx, base: docOf(), ids: st.selection.slice(), start: sel, sx: d.x, sy: d.y }; return; }
+    if (st.cutting) {
+      const cn = ops.findNode(docOf(), st.cutting);
+      if (cn && cn.type === 'image' && ops.containsPt(ops.bounds(cn), d.x, d.y)) { mode.current = { kind: 'cut', id: cn.id, sx: d.x, sy: d.y, cur: d }; return; }
+      set({ cutting: null });
+    }
     if (st.cropping) {
       const cn = ops.findNode(docOf(), st.cropping);
       if (cn && cn.type === 'image' && ops.containsPt(ops.bounds(cn), d.x, d.y)) { mode.current = { kind: 'crop', id: cn.id, sx: d.x, sy: d.y, fx: cn.crop?.fx ?? 0.5, fy: cn.crop?.fy ?? 0.5, base: docOf(), moved: false }; return; }
@@ -307,12 +317,12 @@ export function CanvasView() {
       m.moved = true;
       m.inside = insideArtboard(d.x, d.y);
       const t = m.inside ? hit(d.x, d.y, true) : null;
-      m.over = t && t.type === 'image' ? t.id : null;
+      m.over = t && t.type === 'image' && e.altKey ? t.id : null;
       wrap.current!.style.cursor = 'grabbing';
       A.moveScrap(m.id, m.ox + dx, m.oy + dy);
       return;
     }
-    if (m.kind === 'marquee' || m.kind === 'draw') { m.cur = d; set({}); return; }
+    if (m.kind === 'marquee' || m.kind === 'draw' || m.kind === 'cut') { m.cur = d; set({}); return; }
     if (m.kind === 'move') {
       let dx = d.x - m.sx, dy = d.y - m.sy;
       if (!m.moved && Math.hypot(dx * st.zoom, dy * st.zoom) < 3) return;
@@ -362,9 +372,13 @@ export function CanvasView() {
       A.commit(ops.roundAll(docOf()), false);
     } else if (m.kind === 'scrap' && m.moved) {
       wrap.current!.style.cursor = '';
-      if (insideArtboard(d.x, d.y)) { const t = hit(d.x, d.y, true); A.scrapIntoDoc(m.id, t && t.type === 'image' ? t.id : undefined); }
+      if (insideArtboard(d.x, d.y)) { const t = hit(d.x, d.y, true); const top = t ? ops.topLevelOf(docOf(), t.id) : null; A.scrapIntoDoc(m.id, t && t.type === 'image' && e.altKey ? t.id : undefined, top && top.type === 'group' && top.id !== t?.id ? top.id : undefined); }
     } else if (m.kind === 'crop') {
       wrap.current!.style.cursor = '';
+    } else if (m.kind === 'cut') {
+      const n = ops.findNode(docOf(), m.id); const b = n ? ops.bounds(n) : null;
+      const r = { x: Math.min(m.sx, d.x), y: Math.min(m.sy, d.y), w: Math.abs(d.x - m.sx), h: Math.abs(d.y - m.sy) };
+      if (b && r.w > 4 && r.h > 4) { const x1 = Math.max(b.x, r.x), y1 = Math.max(b.y, r.y), x2 = Math.min(b.x + b.w, r.x + r.w), y2 = Math.min(b.y + b.h, r.y + r.h); if (x2 > x1 && y2 > y1) void A.cutRegion(m.id, { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }); }
     }
     mode.current = { kind: 'idle' };
     set({});

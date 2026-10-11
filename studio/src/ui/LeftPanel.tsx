@@ -169,6 +169,7 @@ function Assets() {
                 <div key={a.id} class="asset" draggable title={`${a.name} · ${a.w}×${a.h} · ${(a.bytes / 1024).toFixed(0)} KB${a.src?.kind === 'web' ? `\nTừ ${a.src.host}${a.src.page || ''}` : ''}\nBấm: dùng cho layer ảnh đang chọn (hoặc thêm mới). Kéo vào email, hoặc thả ra cạnh artboard để xếp tạm.`} onClick={() => use(a.id)} onDragStart={(e) => { e.dataTransfer?.setData('text/phloem-asset', a.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'; }}>
                   {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
                   <button class="del" title="Xoá khỏi thư viện" onClick={async (e) => { e.stopPropagation(); if (await ask(`Xoá "${a.name}" khỏi thư viện?`)) void assets.remove(a.id).then(() => bump((n) => n + 1)); }}>✕</button>
+                  <button class="del cut" title="Tách thành từng ảnh (nền trắng / caro → từng PNG nền trong, xếp cạnh artboard)" onClick={(e) => { e.stopPropagation(); void A.splitAssetToScraps(a.id); }}>✂</button>
                   <div class="nm">{pageLabel(a) ? `${pageLabel(a)} · ` : ''}{a.name}</div>
                 </div>
               ))}

@@ -3,7 +3,7 @@ import type { BlockKind, Check, NNode, SlicePlan, Suggestion, SuggestionAction, 
 import { planSlices } from '../../../src/shared/slicer';
 import { runChecks } from '../../../src/shared/checks';
 import { suggest } from '../../../src/shared/suggestions';
-import type { Asset, Brand, Color, Doc, Node, Project, RectNode, TextNode } from '../model/types';
+import type { Asset, Brand, Color, Doc, ImageNode, Node, Project, RectNode, TextNode } from '../model/types';
 import { DEFAULT_BRAND, uid } from '../model/types';
 import * as ops from '../model/ops';
 import { contrastToken, logoAssetFor, makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
@@ -14,6 +14,8 @@ import { thumbnail } from '../render/renderer';
 import { ensureFonts } from '../render/fonts';
 import { db } from '../storage/idb';
 import { assets } from '../storage/assets';
+import { cropRegion, removeBackground, removeBackgroundAI, splitSprites } from '../storage/imageTools';
+import { imageDrawRect } from '../render/renderer';
 import { get, history, set, toast, type Scrap, type Variant } from '../store';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import * as auth from '../auth/core';
@@ -213,6 +215,63 @@ export async function addImageFile(file: File, at?: { x: number; y: number }, in
   return n.id;
 }
 
+// ---------- cut-outs: remove background, split sprite sheets, cut a region ----------
+const stem = (name: string) => name.replace(/\.[a-z0-9]+$/i, '');
+/** Replace the layer's photo with a background-free cut-out; the frame shrinks to the object so nothing moves on screen. */
+export async function cutoutLayer(nodeId: string, mode: 'auto' | 'ai' = 'auto') {
+  const n = ops.findNode(doc(), nodeId); if (!n || n.type !== 'image' || !n.assetId) return;
+  const a = assets.get(n.assetId); const blob = await assets.blob(n.assetId); if (!a || !blob) { toast('Chưa tải được ảnh gốc.', 'err'); return; }
+  set({ busy: { label: mode === 'ai' ? 'Xoá nền bằng AI…' : 'Đang xoá nền…', done: 0, total: 0 } });
+  try {
+    const r = mode === 'ai' ? await removeBackgroundAI(blob, (m) => set({ busy: { label: m, done: 0, total: 0 } })) : await removeBackground(blob);
+    const na = await assets.add(r.blob, `${stem(a.name)}-nobg.png`, { src: { kind: 'ai', host: a.src?.host, url: a.src?.url, page: a.src?.page } });
+    // keep the object where it was: map the trimmed box through the current draw rect
+    const cur = ops.findNode(doc(), nodeId) as ImageNode;
+    const dr = imageDrawRect(cur, a.w, a.h); const k = dr.dw / a.w;
+    const sx = r.w / a.w; // removal may have downscaled very large photos
+    const fx = cur.x + dr.dx + (r.bbox.x / sx) * k, fy = cur.y + dr.dy + (r.bbox.y / sx) * k, fw = (r.bbox.w / sx) * k, fh = (r.bbox.h / sx) * k;
+    updateNode(nodeId, (m) => (m.type === 'image' ? { ...m, assetId: na.id, fit: 'contain', crop: null, fill: null, x: Math.round(fx), y: Math.round(fy), w: Math.max(8, Math.round(fw)), h: Math.max(8, Math.round(fh)) } : m));
+    toast('Đã xoá nền. Bật "Bóng nổi" nếu muốn ảnh trông như đang bay.', 'ok');
+  } catch (e) { toast((e as Error).message || 'Không xoá được nền.', 'err'); }
+  finally { set({ busy: null }); }
+}
+/** Split a sprite sheet asset into separate transparent pieces, parked beside the artboard in a grid. */
+export async function splitAssetToScraps(assetId: string) {
+  const a = assets.get(assetId); const blob = await assets.blob(assetId); if (!a || !blob) { toast('Chưa tải được ảnh gốc.', 'err'); return 0; }
+  set({ busy: { label: 'Đang tách từng ảnh…', done: 0, total: 0 } });
+  try {
+    const pieces = await splitSprites(blob);
+    if (!pieces.length) { toast('Không tìm thấy vật thể tách được (nền phải là trắng/xám/trong suốt).', 'err'); return 0; }
+    const d = doc(); const list = [...get().scraps];
+    const colW = 150, startY = Math.max(0, ...list.filter((sc) => sc.x >= d.width).map((sc) => sc.y + sc.h + 16));
+    let i = 0;
+    for (const b of pieces) {
+      const na = await assets.add(b, `${stem(a.name)}-${i + 1}.png`, { src: { kind: 'ai', host: a.src?.host, url: a.src?.url, page: a.src?.page } });
+      const w = Math.min(140, na.w), h = Math.round(w * (na.h / na.w));
+      list.push({ id: uid(), assetId: na.id, x: d.width + 48 + (i % 3) * colW, y: startY + Math.floor(i / 3) * 160, w, h });
+      i++;
+    }
+    setScraps(list);
+    toast(`Đã tách ${pieces.length} ảnh, xếp cạnh artboard. Kéo vào mail, ⌘[ / ⌘] để đưa xuống dưới / lên trên.`, 'ok');
+    return pieces.length;
+  } catch (e) { toast((e as Error).message || 'Không tách được.', 'err'); return 0; }
+  finally { set({ busy: null }); }
+}
+/** Cut a rectangle (doc coordinates) out of an image layer into a new layer placed exactly on top of it. */
+export async function cutRegion(nodeId: string, r: { x: number; y: number; w: number; h: number }) {
+  const d = doc(); const n = ops.findNode(d, nodeId); if (!n || n.type !== 'image' || !n.assetId) return;
+  const a = assets.get(n.assetId); const blob = await assets.blob(n.assetId); if (!a || !blob) return;
+  const dr = imageDrawRect(n, a.w, a.h); const k = dr.dw / a.w;
+  const px = { x: (r.x - n.x - dr.dx) / k, y: (r.y - n.y - dr.dy) / k, w: r.w / k, h: r.h / k };
+  if (px.w < 2 || px.h < 2) return;
+  const piece = await cropRegion(blob, px);
+  const na = await assets.add(piece, `${stem(a.name)}-cut.png`, { src: { kind: 'ai', host: a.src?.host } });
+  const node = mkImage({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), assetId: na.id, name: `${n.name} · cắt`, alt: n.alt, fit: 'fill' });
+  const parent = ops.findParent(d, nodeId);
+  const next = parent ? ops.updateNode(d, parent.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children.slice(0, g.children.indexOf(n) + 1), node, ...g.children.slice(g.children.indexOf(n) + 1)] }) : g)) : ops.insertNodes(d, [node]);
+  commit(next); set({ selection: [node.id], cutting: null, tool: 'select' });
+  toast('Đã cắt thành layer riêng. Dùng "Xoá nền" để bỏ phần nền thừa.', 'ok');
+}
 /** Multiply the crop zoom of an image layer (1..6), keeping its focal point. */
 export function zoomCrop(id: string, factor: number) {
   updateNode(id, (n) => { if (n.type !== 'image') return n; const z = Math.max(1, Math.min(6, (n.crop?.zoom ?? 1) * factor)); return { ...n, crop: { zoom: Math.round(z * 100) / 100, fx: n.crop?.fx ?? 0.5, fy: n.crop?.fy ?? 0.5 } }; });
@@ -249,15 +308,18 @@ export function addScrap(assetId: string, at?: { x: number; y: number }): string
 export function moveScrap(id: string, x: number, y: number) { setScraps(get().scraps.map((sc) => (sc.id === id ? { ...sc, x: Math.round(x), y: Math.round(y) } : sc))); }
 export function removeScrap(id: string) { setScraps(get().scraps.filter((sc) => sc.id !== id)); if (get().scrapSel === id) set({ scrapSel: null }); }
 /** Drop a scrap into the email: onto an image layer (replace) or as a new image layer at the scrap's position. */
-export function scrapIntoDoc(id: string, into?: string) {
+export function scrapIntoDoc(id: string, into?: string, groupId?: string) {
   const sc = get().scraps.find((x) => x.id === id); if (!sc) return;
   const a = assets.get(sc.assetId); if (!a) { removeScrap(id); return; }
   const d = doc();
   if (into) { commit(ops.updateNode(d, into, (n) => (n.type === 'image' ? { ...n, assetId: a.id, name: n.name === 'Image' ? a.name : n.name } : n))); removeScrap(id); set({ selection: [into] }); return; }
   const w = Math.min(d.width, sc.w), h = Math.round(w * (sc.h / sc.w));
   const x = Math.max(0, Math.min(d.width - w, Math.round(sc.x))), y = Math.max(0, Math.round(sc.y));
-  const n = mkImage({ x, y, w, h, assetId: a.id, name: a.name, alt: a.name.replace(/\.[a-z0-9]+$/i, '') });
-  commit(ops.insertNodes(d, [n])); removeScrap(id); set({ selection: [n.id], tool: 'select' });
+  const n = mkImage({ x, y, w, h, assetId: a.id, name: a.name, alt: a.name.replace(/\.[a-z0-9]+$/i, ''), fit: 'contain', fill: null });
+  // dropped on a block: become part of it (so ⌘[ can push it behind the product); else a top-level layer
+  const g = groupId ? ops.findNode(d, groupId) : null;
+  const next = g && g.type === 'group' ? ops.updateNode(d, g.id, (gg) => (gg.type === 'group' ? ops.syncGroup({ ...gg, children: [...gg.children, n] }) : gg)) : ops.insertNodes(d, [n]);
+  commit(next); removeScrap(id); set({ selection: [n.id], tool: 'select' });
 }
 export async function addImageFileToScraps(file: File, at?: { x: number; y: number }, src: Asset['src'] = { kind: 'paste' }) { const a = await assets.add(file, undefined, { src }); return addScrap(a.id, at); }
 /** Pull a pasted image URL (from copied HTML or a link) into the library: via the relay when configured, else directly. */
