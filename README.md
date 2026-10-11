@@ -38,7 +38,8 @@ npm run typecheck:studio
 
 | Phần | Cách | Ghi chú |
 |---|---|---|
-| Studio online | Đã publish: https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG | Trang claude.ai khoá mạng ra ngoài: thiết kế, xem trước, tải zip chạy; tạo draft/Copy HTML cần relay nên không chạy ở đây. Share từ menu Share của trang. |
+| **Studio trên GitHub Pages** | https://dorisle-uxui.github.io/phloem/ | Bản đầy đủ. Repo: https://github.com/DorisLe-UXUI/phloem. Tạo draft cần relay: chạy `npm run relay` ở máy (Studio online gọi được `http://localhost:8787`) hoặc deploy relay rồi điền URL vào Cài đặt. |
+| Studio trên claude.ai | https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG | Bản riêng tư. Trang claude.ai khoá mạng ra ngoài: thiết kế, xem trước, tải zip chạy; tạo draft/Copy HTML không chạy ở đây. |
 | Studio + relay đầy đủ | Static host bất kỳ cho `studio/` (sau `npm run studio`) + relay Node | Relay: `server/Dockerfile`, `server/render.yaml` (Render), `server/fly.toml` (Fly). Điền `PUBLIC_URL`, `RELAY_TOKEN`; nhập URL relay vào Studio → Cài đặt. |
 | Chạy local | `npm run preview` + `npm run relay` | http://localhost:5173/studio/ |
 
