@@ -87,6 +87,13 @@ export function createAuth({ dataDir, secret = '' }) {
       if (!(await verifyPassword(input.password, u.password))) throw fail(401, 'badpass', 'Mật khẩu không đúng.');
       return session(u, agent);
     },
+    /** Google Sign-In: the relay verified the ID token with Google; find or create the user by email. */
+    async loginWithGoogle(profile, agent = '') {
+      const email = String(profile.email).trim().toLowerCase();
+      let u = db.users.byEmail(email);
+      if (!u) u = db.users.insert({ id: `u_${randomBytes(8).toString('hex')}`, name: String(profile.name || email.split('@')[0]).slice(0, 80), email, brand: '', password: await hashPassword(randomBytes(24).toString('hex')), createdAt: new Date().toISOString() });
+      return session(u, agent || 'google');
+    },
     /** Token → user, or null when the signature, expiry or the session row (revoked) fails. */
     me(token) {
       const id = verifyToken(token, secret);

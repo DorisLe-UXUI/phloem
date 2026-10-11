@@ -151,4 +151,15 @@ export async function restore(opts: AuthOpts = readStudioRelay()): Promise<Sessi
 /** A relay route answered 401: the session is dead. Drop it and explain. */
 export function expired(): Error { setSession(null); return new AuthError('expired' as AuthCode, 'Phiên đăng nhập relay đã hết hạn hoặc chưa đăng nhập. Bấm Đăng nhập để dùng AI.'); }
 export function logout(): void { setSession(null); }
+/** Relay info (auth, google client id…) for the configured relay, or null. */
+export async function relayInfo(opts: AuthOpts = readStudioRelay()): Promise<{ auth?: boolean; google?: string; ai?: boolean } | null> {
+  if (!opts.relayUrl) return null;
+  try { const r = await fetch(opts.relayUrl + '/', { signal: AbortSignal.timeout(2500) }); return await r.json(); } catch { return null; }
+}
+/** Google Sign-In: hand Google's ID token to the relay, which verifies it and opens a relay session. */
+export async function loginWithGoogle(credential: string, opts: AuthOpts = readStudioRelay()): Promise<Session> {
+  if (!opts.relayUrl) throw fail('network', 'Cần relay để đăng nhập Google.');
+  const s: Session = { ...(await relayCall(opts, '/auth/google', { method: 'POST', body: JSON.stringify({ credential }) })), mode: 'relay', relayUrl: opts.relayUrl };
+  setSession(s); return s;
+}
 export const messages = MSG;

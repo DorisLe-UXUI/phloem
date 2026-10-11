@@ -4,7 +4,7 @@ import type { Profile } from '../../../src/shared/types';
 import type { Asset } from '../model/types';
 import { getSession } from '../auth/core';
 import { db, type StoredProject } from './idb';
-import { get, set, history } from '../store';
+import { get, set, history, type State } from '../store';
 
 export interface RemoteProjectMeta { id: string; name: string; updatedAt: string; createdAt: string; thumb?: string; thumbMobile?: string; provider?: string; size?: number }
 export interface RemoteAsset { id: string; name: string; mime: string; w: number; h: number; bytes: number; createdAt: string }
@@ -84,6 +84,10 @@ export const cloud = {
   },
   async deleteAsset(id: string): Promise<void> { if (!this.active()) return; try { await req(`/db/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch { /* best effort */ } },
 
+  // ---------- key/value (catalog…) ----------
+  async kvGet<T = unknown>(key: string): Promise<{ value: T | null; updatedAt: string | null }> { if (!this.active()) return { value: null, updatedAt: null }; try { return await req(`/db/kv/${encodeURIComponent(key)}`); } catch { return { value: null, updatedAt: null }; } },
+  async kvPut(key: string, value: unknown, updatedAt?: string): Promise<void> { if (!this.active()) return; try { await req(`/db/kv/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify({ value, updatedAt }) }); } catch { /* best effort */ } },
+
   // ---------- client profiles (encrypted at rest on the relay) ----------
   async pullProfiles(): Promise<{ profiles: Profile[]; updatedAt: string | null }> { const r = await req<{ profiles: Profile[]; updatedAt: string | null }>('/db/profiles'); return { profiles: r.profiles || [], updatedAt: r.updatedAt ?? null }; },
   async pushProfiles(profiles: Profile[]): Promise<void> {
@@ -132,6 +136,10 @@ export const cloud = {
         const b = await db.getBlob(a.id);
         if (b) { try { await this.pushAsset(a, b); } catch { /* oversized, non-image or transient: retried next sync */ } }
       }
+      const kv = await this.kvGet<unknown[]>('catalog');
+      const st = get();
+      if (kv.updatedAt && (!st.catalogAt || kv.updatedAt > st.catalogAt) && Array.isArray(kv.value)) set({ catalog: kv.value as State['catalog'], catalogAt: kv.updatedAt });
+      else if (st.catalogAt && (!kv.updatedAt || st.catalogAt > kv.updatedAt) && st.catalog.length) await this.kvPut('catalog', st.catalog, st.catalogAt);
       const remoteP = await this.pullProfiles();
       const seenAt = lsGet(AT_KEY);
       const localProfiles = get().profiles;

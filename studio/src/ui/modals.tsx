@@ -19,6 +19,8 @@ import { ask, isArtifact } from './confirm';
 import { AiModal } from './AiModal';
 import { AI_MODELS } from '../ai/client';
 import * as auth from '../auth/core';
+import { GoogleButton } from './GoogleButton';
+import { CatalogModal } from './CatalogModal';
 
 export function Modals() {
   const s = useStore();
@@ -33,6 +35,7 @@ export function Modals() {
     case 'figma': return <FigmaModal onClose={close} />;
     case 'ai': return <AiModal onClose={close} />;
     case 'auth': return <AuthModal onClose={close} />;
+    case 'catalog': return <CatalogModal onClose={close} />;
     default: return null;
   }
 }
@@ -374,6 +377,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
         <button type="button" class={reg ? 'on' : ''} onClick={() => { setTab('register'); setErr(''); }}>Đăng ký</button>
         <button type="button" class={!reg ? 'on' : ''} onClick={() => { setTab('login'); setErr(''); }}>Đăng nhập</button>
       </div>
+      <GoogleButton opts={A.authOpts()} onDone={() => { void A.afterExternalSignIn(); onClose(); }} onError={setErr} />
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} class="props" style={{ gap: 10 }}>
         {reg && <Field label="Tên"><TextInput value={f.name} onInput={up('name')} onCommit={up('name')} placeholder="Tên của bạn" /></Field>}
         <Field label="Email"><TextInput type="email" value={f.email} onInput={up('email')} onCommit={up('email')} placeholder="ban@congty.com" /></Field>

@@ -1,5 +1,7 @@
 // Tiny observable store for Preact. Subscribers are notified once per animation frame.
 import { getSession, type User } from './auth/core';
+import type { CatalogItem } from './catalog/catalog';
+import type { SiteProduct } from './ai/site';
 import { useEffect, useState } from 'preact/hooks';
 import type { Profile, Settings } from '../../src/shared/types';
 import { DEFAULT_SETTINGS } from '../../src/shared/types';
@@ -9,7 +11,7 @@ import type { ProjectMeta } from './storage/idb';
 
 export type Tool = 'select' | 'rect' | 'text' | 'image' | 'hand';
 export type Variant = 'desktop' | 'mobile';
-export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai' | 'auth';
+export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai' | 'auth' | 'catalog';
 export type RightTab = 'design' | 'email' | 'export' | 'ai';
 export type LeftTab = 'layers' | 'blocks' | 'assets';
 
@@ -50,9 +52,14 @@ export interface State {
   guestProjects: number;
   /** Cloud sync status (relay accounts only). */
   sync: { state: 'off' | 'idle' | 'syncing' | 'error'; at?: string; msg?: string };
+  /** Kho hàng: imported products; persisted locally and mirrored to the relay kv store. */
+  catalog: CatalogItem[];
+  catalogAt: string | null;
+  /** Products handed to the AI composer from the catalog (consumed when the AI modal opens). */
+  aiSeed: { products: SiteProduct[]; goal?: string; brief?: string } | null;
 }
 
-const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings';
+const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings', LS_CATALOG = 'phloem.catalog';
 
 function loadLS<T>(k: string, fb: T): T { try { const v = localStorage.getItem(k); return v ? { ...fb, ...JSON.parse(v) } : fb; } catch { return fb; } }
 
@@ -73,6 +80,9 @@ export const initialState: State = {
   authTab: 'login',
   guestProjects: 0,
   sync: { state: 'off' },
+  catalog: loadLS<{ items: CatalogItem[]; at: string | null }>(LS_CATALOG, { items: [], at: null }).items,
+  catalogAt: loadLS<{ items: CatalogItem[]; at: string | null }>(LS_CATALOG, { items: [], at: null }).at,
+  aiSeed: null,
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),
@@ -100,6 +110,7 @@ export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...p };
   if ('profiles' in p) { try { localStorage.setItem(LS_PROFILES, JSON.stringify(state.profiles)); } catch { /* ignore */ } }
   if ('settings' in p) { try { localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings)); } catch { /* ignore */ } }
+  if ('catalog' in p) { try { localStorage.setItem(LS_CATALOG, JSON.stringify({ items: state.catalog, at: state.catalogAt })); } catch { /* ignore */ } }
   if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; for (const s of subs) s(); }); }
 }
 

@@ -209,6 +209,14 @@ Brand kit có **Vibe** (clean / playful / bold / luxury / editorial): quyết đ
 
 Ảnh: dán Ctrl+V vào editor (thay vào layer ảnh đang chọn hoặc thêm layer mới), kéo file từ máy vào canvas, kéo ảnh từ thư viện (tab Ảnh) vào email; trong "Dựng bằng AI" cũng dán hoặc kéo thả được.
 
+## Kho hàng và gợi ý nên đẩy gì
+
+Trang chủ Studio → **Kho hàng**: nhập sản phẩm từ Google Sheet (share "Anyone with the link" hoặc Publish to web → CSV; relay tải qua `POST /csv`), file CSV, hoặc cửa hàng Shopify. Cột tự nhận (VI/EN): tên, giá, giá cũ, giá vốn, tồn kho, đã bán, danh mục, ảnh, link, mô tả. Bấm **AI gợi ý**: Claude đọc kho (tồn nhiều/bán chậm, bán chạy, sắp hết, biên cao, mùa vụ) và trả 3–5 chiến dịch nên làm, mỗi gợi ý có sản phẩm cụ thể, lý do, loại email, subject. Tick sản phẩm (hoặc bấm "Dựng email từ gợi ý") → mở Dựng bằng AI với đúng tên/giá/link/ảnh sản phẩm. Kho lưu trên máy và đồng bộ lên relay (`/db/kv/catalog`) khi có tài khoản relay. Ảnh sản phẩm trong email hiển thị trọn (contain), không cắt.
+
+## Đăng nhập bằng Google
+
+Tạo OAuth Client ID (Web) trong Google Cloud Console, thêm Authorized JavaScript origins (`https://dorisle-uxui.github.io`, `http://localhost:5173`), đặt `GOOGLE_CLIENT_ID=...` trong `server/.env`, chạy lại relay. Nút "Continue with Google" tự hiện trong Studio (và sẽ hiện ở landing khi relay báo có client id). Relay xác minh ID token với Google rồi mở phiên như đăng nhập thường; không lưu mật khẩu Google.
+
 ## Import từ Figma
 
 Studio → Import Figma cần Personal access token có quyền **File content: Read** (tuỳ chọn thêm Dev resources: Read). Token thiếu quyền này bị Figma trả `403 Invalid scope(s)`; tạo token mới trong Figma → Settings → Security → Personal access tokens và tick quyền đó.

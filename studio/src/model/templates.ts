@@ -22,6 +22,7 @@ export function themeFor(vibe?: Vibe): Theme {
     default: return { radius: 14, btnRadius: 10, shadow: true, glow: false, heroScale: 1, eyebrowPill: false, blobs: false, stroke: false, btnH: 48 };
   }
 }
+const darken = (hex: string, t: number) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '#07100b'; const n = parseInt(m[1], 16); const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v * (1 - t))); return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join(''); };
 const cardShadow = (T: Theme): Shadow | null => (T.shadow ? { blur: 24, y: 10, color: '#000000', opacity: 0.1 } : null);
 const cardStroke = (T: Theme): RectNode['stroke'] => (T.stroke ? { color: { token: 'line' }, width: 1 } : null);
 const btnShadow = (T: Theme, brand: Brand): Shadow | null => (T.glow ? { blur: 24, y: 8, color: brand.primary, opacity: 0.38 } : T.shadow ? { blur: 14, y: 6, color: '#000000', opacity: 0.16 } : null);
@@ -110,6 +111,8 @@ export interface BlockContent {
   social?: LinkC[];
   /** hero-center: 'light' (bg), 'band' (primary), 'gradient' (primary → accent). */
   style?: 'light' | 'band' | 'gradient';
+  /** Set by buildDoc: this block sits on a soft tinted band (alternating rhythm). */
+  tint?: boolean;
 }
 
 export const BLOCKS: { kind: BlockKind; name: string; desc: string }[] = [
@@ -223,7 +226,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 12, w: inner, fontSize: 16, color: { token: 'muted' }, lineHeight: 1.55, name: 'Subhead' });
       const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + 22);
       h = btn.y + btn.h + 36 - y;
-      kids.push(band(h), img, ...(eyebrow || []), head, sub, btn);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), img, ...(eyebrow || []), head, sub, btn);
       break;
     }
     case 'hero-band': {
@@ -244,10 +247,10 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       let cy = y + 28;
       const eyebrow = c.eyebrow !== '' ? text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: cy, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: { token: 'primary' }, name: 'Eyebrow' }) : null;
       if (eyebrow) cy = eyebrow.y + eyebrow.h + 8;
-      const head = text(brand, c.heading || d.heading, { x: PAD, y: cy, w: inner, fontSize: 24, fontWeight: 700, lineHeight: 1.25, fontFamily: 'heading', name: 'Heading' });
-      const body = text(brand, c.body || d.body, { x: PAD, y: head.y + head.h + 10, w: inner, fontSize: 15, lineHeight: 1.6, name: 'Paragraph' });
+      const head = text(brand, c.heading || d.heading, { x: PAD, y: cy, w: inner, fontSize: hs(28), fontWeight: 800, lineHeight: 1.2, fontFamily: 'heading', name: 'Heading' });
+      const body = text(brand, c.body || d.body, { x: PAD, y: head.y + head.h + 12, w: inner, fontSize: 16, lineHeight: 1.6, color: { token: 'muted' }, name: 'Paragraph' });
       h = body.y + body.h + 28 - y;
-      kids.push(band(h), ...(eyebrow ? [eyebrow] : []), head, body);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...(eyebrow ? [eyebrow] : []), head, body);
       break;
     }
     case 'cta': {
@@ -260,7 +263,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       btn.x = Math.round((W - btn.w) / 2); const dx = btn.x - btn.children[0].x; btn.children.forEach((k) => { k.x += dx; });
       const cardH = btn.y + btn.h + 28 - cardY;
       h = cardH + 32;
-      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), head, sub, syncGroup(btn));
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), head, sub, syncGroup(btn));
       break;
     }
     case 'products-2':
@@ -275,20 +278,20 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         const x = PAD + i * (cw + gap);
         const url = it.url || 'https://example.com/shop';
         const top = y + 16;
-        const img = image({ x: x + 8, y: top + 8, w: cw - 16, h: cw - 16, radius: RI, name: `Product image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null });
-        const name = text(brand, it.name, { x: x + 12, y: img.y + img.h + 12, w: cw - 24, fontSize: n === 3 ? 14 : 16, fontWeight: 600, name: 'Name' });
+        const img = image({ x: x + 8, y: top + 8, w: cw - 16, h: cw - 16, radius: RI, name: `Product image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, fit: 'contain', fill: { token: 'bg' } });
+        const name = text(brand, it.name, { x: x + 12, y: img.y + img.h + 12, w: cw - 24, fontSize: n === 3 ? 15 : 17, fontWeight: 700, lineHeight: 1.3, name: 'Name' });
         const extra: Node[] = [];
         let last: TextNode = name;
         if (it.oldPrice) { const o = text(brand, it.oldPrice, { x: x + 12, y: last.y + last.h + 4, w: cw - 24, fontSize: 12, color: { token: 'muted' }, strike: true, name: 'Old price' }); extra.push(o); last = o; }
-        if (it.price) { const pr = text(brand, it.price, { x: x + 12, y: last.y + last.h + (it.oldPrice ? 2 : 4), w: cw - 24, fontSize: n === 3 ? 15 : 16, fontWeight: 800, color: { token: 'primary' }, name: 'Price' }); extra.push(pr); last = pr; }
+        if (it.price) { const pr = text(brand, it.price, { x: x + 12, y: last.y + last.h + (it.oldPrice ? 2 : 4), w: cw - 24, fontSize: n === 3 ? 17 : 19, fontWeight: 800, color: { token: 'primary' }, name: 'Price' }); extra.push(pr); last = pr; }
         if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 200, fontSize: 11, fontWeight: 800, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 16; const bg = rect({ x: x + 8, y: top + 8, w: bw, h: 22, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = x + 16; bt.w = bw - 16; bt.y = top + 8 + Math.round((22 - bt.h) / 2); extra.push(bg, bt); }
         const cardH = last.y + last.h + 14 - top;
-        const card = rect({ x, y: top, w: cw, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
+        const card = rect({ x, y: top, w: cw, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
         bottom = Math.max(bottom, top + cardH);
         cards.push(group(`Product ${i + 1}`, [card, img, name, ...extra], { link: url, alt: `${it.name}${it.price ? ' — ' + it.price : ''}` }));
       });
       h = bottom + 28 - y;
-      kids.push(band(h), ...cards);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...cards);
       break;
     }
     case 'feature-row': {
@@ -302,7 +305,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const more = text(brand, linkC.label, { x: cx, y: body.y + body.h + 12, w: cwid, fontSize: 14, fontWeight: 700, color: { token: 'primary' }, name: 'Link', link: linkC.url });
       const cardH = Math.max(img.y + img.h + 14, more.y + more.h + 22) - cardY;
       h = cardH + 24;
-      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), img, head, body, more);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), img, head, body, more);
       break;
     }
     case 'stats': {
@@ -318,24 +321,24 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         cells.push(nT, lT);
       });
       h = bottom + 26 - y;
-      kids.push(band(h), rect({ x: PAD, y: y, w: inner, h: 1, fill: { token: 'line' }, name: 'Line top' }), ...cells, rect({ x: PAD, y: y + h - 1, w: inner, h: 1, fill: { token: 'line' }, name: 'Line bottom' }));
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: y, w: inner, h: 1, fill: { token: 'line' }, name: 'Line top' }), ...cells, rect({ x: PAD, y: y + h - 1, w: inner, h: 1, fill: { token: 'line' }, name: 'Line bottom' }));
       break;
     }
     case 'quote': {
       const d = DEF.quote;
       const cardY = y + 16;
       const mark = text(brand, '“', { x: PAD + 24, y: cardY + 10, w: 60, fontSize: 64, fontWeight: 800, color: { token: 'primary' }, fontFamily: 'heading', lineHeight: 1, name: 'Quote mark' });
-      const q = text(brand, c.quote || d.quote, { x: PAD + 24, y: mark.y + 48, w: inner - 48, fontSize: 18, fontWeight: 500, lineHeight: 1.5, italic: true, name: 'Quote' });
+      const q = text(brand, c.quote || d.quote, { x: PAD + 24, y: mark.y + 48, w: inner - 48, fontSize: 19, fontWeight: 500, lineHeight: 1.5, italic: true, fontFamily: 'heading', name: 'Quote' });
       const who = text(brand, c.author || d.author, { x: PAD + 24, y: q.y + q.h + 12, w: inner - 48, fontSize: 13, color: { token: 'muted' }, name: 'Author' });
       const cardH = who.y + who.h + 26 - cardY;
       h = cardH + 32;
-      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), mark, q, who);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), mark, q, who);
       break;
     }
     case 'hero-overlay': {
       const d = DEF.hero; const btnC = c.button ?? d.button;
-      const H = 440;
-      const img = image({ x: 0, y, w: W, h: H, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: '#07100b', opacity: 0.82, gradient: true } });
+      const H = 470;
+      const img = image({ x: 0, y, w: W, h: H, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: darken(brand.primary, 0.72), opacity: 0.86, gradient: true } });
       const btn = button(brand, btnC.label, btnC.url, PAD, y + H - 30 - 48);
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: 0, w: inner - 40, fontSize: 16, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
       sub.y = btn.y - 18 - sub.h;
@@ -360,7 +363,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const btn = button(brand, c.button?.label || linkC.label.replace(/\s*→$/, ''), c.button?.url || linkC.url, cx, body.y + body.h + 18, { fontSize: 14, h: 42 });
       h = Math.max(H0, btn.y + btn.h + 36 - y);
       img.h = h;
-      kids.push(band(h), img, eyebrow, head, body, btn);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), img, eyebrow, head, body, btn);
       break;
     }
     case 'bento': {
@@ -371,30 +374,30 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const bigH1 = text(brand, big.name, { x: PAD + 16, y: bigImg.y + bigImg.h + 14, w: colW - 32, fontSize: 18, fontWeight: 700, fontFamily: 'heading', lineHeight: 1.25, name: 'Heading' });
       const bigB = text(brand, big.body || big.price || '', { x: PAD + 16, y: bigH1.y + bigH1.h + 6, w: colW - 32, fontSize: 13, color: { token: 'muted' }, lineHeight: 1.5, name: 'Body' });
       const bigCardH = bigB.y + bigB.h + 18 - top;
-      const bigCard = rect({ x: PAD, y: top, w: colW, h: bigCardH, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
+      const bigCard = rect({ x: PAD, y: top, w: colW, h: bigCardH, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
       const smallH = Math.floor((bigCardH - gap) / 2);
       const cards: Node[] = [group('Bento 1', [bigCard, bigImg, bigH1, bigB], { link: big.url || null, alt: big.name })];
       [items[1], items[2]].forEach((it, i) => {
         if (!it) return;
         const sy = top + i * (smallH + gap), sx = PAD + colW + gap;
-        const card = rect({ x: sx, y: sy, w: colW, h: smallH, fill: i === 0 ? { token: 'primary' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: i === 0 ? null : cardStroke(T) });
+        const card = rect({ x: sx, y: sy, w: colW, h: smallH, fill: i === 0 ? { token: 'primary' } : c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: i === 0 ? null : cardStroke(T) });
         const hT = text(brand, it.name, { x: sx + 16, y: sy + 18, w: colW - 32, fontSize: 17, fontWeight: 700, fontFamily: 'heading', lineHeight: 1.25, color: i === 0 ? { token: 'onPrimary' } : { token: 'ink' }, name: 'Heading' });
         const bT = text(brand, it.body || it.price || '', { x: sx + 16, y: hT.y + hT.h + 6, w: colW - 32, fontSize: 13, color: i === 0 ? { token: 'onPrimary' } : { token: 'muted' }, lineHeight: 1.45, name: 'Body', opacity: i === 0 ? 0.85 : 1 });
         cards.push(group(`Bento ${i + 2}`, [card, hT, bT], { link: it.url || null, alt: it.name }));
       });
       h = bigCardH + 32;
-      kids.push(band(h), ...cards);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...cards);
       break;
     }
     case 'badges': {
       const pills = (c.stats && c.stats.length ? c.stats : [{ value: '-30%', label: 'toàn bộ' }, { value: 'Freeship', label: '' }, { value: '24h', label: 'giao hàng' }]).slice(0, 4);
       const nodes: Node[] = []; const gap = 10, ph = 34;
-      const ts = pills.map((pl) => text(brand, [pl.value, pl.label].filter(Boolean).join(' '), { x: 0, y: 0, w: 300, fontSize: 13, fontWeight: 700, color: { token: 'primary' }, name: 'Pill' }));
+      const ts = pills.map((pl, i) => text(brand, [pl.value, pl.label].filter(Boolean).join(' '), { x: 0, y: 0, w: 300, fontSize: 13, fontWeight: 800, color: i === 0 ? { token: 'onPrimary' } : { token: 'primary' }, name: 'Pill' }));
       const ws = ts.map((t) => Math.ceil(measureWidth(brand, t)) + 28);
       let x = Math.round((W - (ws.reduce((a, b) => a + b, 0) + gap * (ws.length - 1))) / 2);
-      ts.forEach((t, i) => { const r = rect({ x, y: y + 14, w: ws[i], h: ph, fill: { token: 'soft' }, radius: 999, name: 'Pill bg', stroke: { color: { token: 'line' }, width: 1 }, shadow: T.shadow ? { blur: 12, y: 4, color: '#000000', opacity: 0.08 } : null }); t.x = x + 14; t.w = ws[i] - 28; t.y = y + 14 + Math.round((ph - t.h) / 2); nodes.push(r, t); x += ws[i] + gap; });
+      ts.forEach((t, i) => { const r = rect({ x, y: y + 14, w: ws[i], h: ph, fill: i === 0 ? { token: 'primary' } : c.tint ? { token: 'bg' } : { token: 'soft' }, radius: 999, name: 'Pill bg', stroke: { color: { token: 'line' }, width: 1 }, shadow: T.shadow ? { blur: 12, y: 4, color: '#000000', opacity: 0.08 } : null }); t.x = x + 14; t.w = ws[i] - 28; t.y = y + 14 + Math.round((ph - t.h) / 2); nodes.push(r, t); x += ws[i] + gap; });
       h = ph + 28;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'dark-band': {
@@ -418,17 +421,17 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         nodes.push(group(`Category · ${it.name}`, [img, label], { link: it.url || null, alt: it.name }));
       });
       h = 20 + size + 10 + 24 + 20;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'social': {
       const avatars: Node[] = [];
       for (let i = 0; i < 5; i++) avatars.push(image({ x: PAD + i * 26, y: y + 22, w: 36, h: 36, radius: 999, name: `Avatar ${i + 1}`, alt: '' }));
-      const stars = text(brand, '★★★★★', { x: PAD + 160, y: y + 20, w: 140, fontSize: 15, color: { token: 'primary' }, name: 'Stars', letterSpacing: 1 });
+      const stars = text(brand, '★★★★★', { x: PAD + 160, y: y + 18, w: 160, fontSize: 18, color: { token: 'accent' }, name: 'Stars', letterSpacing: 2 });
       const q = text(brand, c.quote || '4.9/5 từ 2.300 đánh giá', { x: PAD + 160, y: stars.y + stars.h + 2, w: inner - 160, fontSize: 14, fontWeight: 600, name: 'Social text' });
       const sub = text(brand, c.author || 'Khách mua lần hai chiếm 61%', { x: PAD + 160, y: q.y + q.h + 2, w: inner - 160, fontSize: 12, color: { token: 'muted' }, name: 'Social sub' });
       h = Math.max(sub.y + sub.h + 22 - y, 84);
-      kids.push(band(h), rect({ x: PAD, y: y + h - 1, w: inner, h: 1, fill: { token: 'line' }, name: 'Line' }), ...avatars, stars, q, sub);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), rect({ x: PAD, y: y + h - 1, w: inner, h: 1, fill: { token: 'line' }, name: 'Line' }), ...avatars, stars, q, sub);
       break;
     }
     case 'cta-wide': {
@@ -439,7 +442,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const btn = group(`Button · ${btnC.label}`, [bg, t], { link: btnC.url, alt: btnC.label });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: y + 20 + bh + 12, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Sub' });
       h = sub.y + sub.h + 22 - y;
-      kids.push(band(h), btn, sub);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), btn, sub);
       break;
     }
     case 'gallery': {
@@ -447,7 +450,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const gap = 12, n = items.length, size = Math.floor((inner - gap * (n - 1)) / n);
       const nodes = items.map((it, i) => image({ x: PAD + i * (size + gap), y: y + 16, w: size, h: size, radius: R, shadow: cardShadow(T), name: `Gallery ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, link: it.url || null }));
       h = size + 32;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'hero-center': {
@@ -476,13 +479,13 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const nodes: Node[] = [];
       items.forEach((it, i) => {
         const cx = PAD + i * cw + cw / 2;
-        const circ = rect({ x: Math.round(cx - sz / 2), y: y + 22, w: sz, h: sz, fill: { token: 'soft' }, radius: 999, name: 'Icon bg', stroke: T.shadow ? null : { color: { token: 'line' }, width: 1 }, shadow: T.shadow ? { blur: 14, y: 6, color: '#000000', opacity: 0.1 } : null });
+        const circ = rect({ x: Math.round(cx - sz / 2), y: y + 22, w: sz, h: sz, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: 999, name: 'Icon bg', stroke: T.shadow ? null : { color: { token: 'line' }, width: 1 }, shadow: T.shadow ? { blur: 14, y: 6, color: '#000000', opacity: 0.1 } : null });
         const g = text(brand, it.body || it.name.slice(0, 1), { x: circ.x, y: circ.y, w: sz, h: sz, fontSize: T.eyebrowPill ? 28 : 24, align: 'center', autoHeight: false, vAlign: 'middle', color: { token: 'primary' }, name: 'Icon' });
         const label = text(brand, it.name, { x: PAD + i * cw, y: circ.y + sz + 10, w: cw, fontSize: 12, fontWeight: 700, align: 'center', color: { token: 'ink' }, name: 'Label' });
         nodes.push(group(`Icon · ${it.name}`, [circ, g, label], { link: it.url || null, alt: it.name }));
       });
       h = 22 + sz + 10 + 36 + 16;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'checklist': {
@@ -493,12 +496,12 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       for (const it of items) {
         const circ = rect({ x: PAD, y: cy, w: 24, h: 24, fill: { token: 'primary' }, radius: 999, name: 'Check bg' });
         const ck = text(brand, '✓', { x: PAD, y: cy, w: 24, h: 24, fontSize: 13, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: 'Check' });
-        const t = text(brand, it.name, { x: PAD + 36, y: cy + 2, w: inner - 36, fontSize: 15, fontWeight: 600, name: it.name.slice(0, 20) });
+        const t = text(brand, it.name, { x: PAD + 36, y: cy + 2, w: inner - 36, fontSize: 16, fontWeight: 600, name: it.name.slice(0, 20) });
         nodes.push(circ, ck, t);
         cy += Math.max(24, t.h) + 10;
       }
       h = cy + 14 - y;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'countdown': {
@@ -509,18 +512,18 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       if (c.heading) { const hd = text(brand, c.heading, { x: PAD, y: cy, w: inner, fontSize: 13, fontWeight: 700, color: { token: 'muted' }, align: 'center', name: 'Countdown label' }); nodes.push(hd); cy = hd.y + hd.h + 10; }
       units.forEach((u, i) => {
         const x = PAD + i * (tw + gap);
-        nodes.push(rect({ x, y: cy, w: tw, h: th, fill: { token: 'soft' }, radius: Math.min(R, 16), name: 'Tile', stroke: cardStroke(T), shadow: cardShadow(T) }));
+        nodes.push(rect({ x, y: cy, w: tw, h: th, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: Math.min(R, 16), name: 'Tile', stroke: cardStroke(T), shadow: cardShadow(T) }));
         nodes.push(text(brand, u.value, { x, y: cy + 12, w: tw, fontSize: 28, fontWeight: 800, fontFamily: 'heading', align: 'center', color: { token: 'ink' }, name: 'Number' }));
         nodes.push(text(brand, u.label, { x, y: cy + 50, w: tw, fontSize: 11, color: { token: 'muted' }, align: 'center', name: 'Unit' }));
       });
       h = cy + th + 18 - y;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'spotlight': {
       const it: ItemC = (c.items && c.items[0]) || { name: c.heading || 'Tên sản phẩm', price: '', badge: '', url: c.button?.url || `${B0}/shop`, image: c.image ?? null };
       const btnC = c.button ?? { label: 'Xem chi tiết', url: it.url || `${B0}/shop` };
-      const img = image({ x: PAD, y: y + 20, w: inner, h: 300, radius: R, name: 'Spotlight image', alt: it.alt || it.name, assetId: it.image ?? c.image ?? null, link: it.url || btnC.url, shadow: cardShadow(T) });
+      const img = image({ x: PAD, y: y + 20, w: inner, h: 300, radius: R, name: 'Spotlight image', alt: it.alt || it.name, assetId: it.image ?? c.image ?? null, link: it.url || btnC.url, shadow: cardShadow(T), fit: 'contain', fill: { token: 'bg' } });
       const tagT = text(brand, it.name + (it.price ? `  ·  ${it.price}` : ''), { x: 0, y: 0, w: 320, fontSize: 13, fontWeight: 800, name: 'Tag' });
       const tw = Math.min(inner - 40, Math.ceil(measureWidth(brand, tagT)) + 28);
       const tag = rect({ x: PAD + inner - tw - 16, y: img.y + img.h - 52, w: tw, h: 36, fill: { token: 'bg' }, radius: T.btnRadius >= 999 ? 999 : Math.min(R, 12), name: 'Tag bg', shadow: { blur: 18, y: 6, color: '#000000', opacity: 0.22 } });
@@ -531,7 +534,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const body = text(brand, c.body || c.subhead || it.body || 'Một đoạn mô tả ngắn: chất liệu, cảm giác, lý do nên có.', { x: PAD, y: head.y + head.h + 10, w: inner, fontSize: 15, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
       const btn = button(brand, btnC.label, btnC.url, PAD, body.y + body.h + 18);
       h = btn.y + btn.h + 32 - y;
-      kids.push(band(h), ...parts, head, body, btn);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...parts, head, body, btn);
       break;
     }
     case 'glass-hero': {
@@ -569,12 +572,12 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         const bd = text(brand, it.body || '', { x: x + 16, y: nm.y + nm.h + 6, w: cw - 32, fontSize: 13, color: { token: 'muted' }, lineHeight: 1.5, name: 'Step body' });
         const ch = bd.y + bd.h + 18 - cy;
         bottom = Math.max(bottom, cy + ch);
-        cards.push(group(`Step ${i + 1}`, [rect({ x, y: cy, w: cw, h: ch, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), num, numT, nm, bd], { link: it.url || null, alt: it.name }));
+        cards.push(group(`Step ${i + 1}`, [rect({ x, y: cy, w: cw, h: ch, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), num, numT, nm, bd], { link: it.url || null, alt: it.name }));
       });
       // equalise card heights
       cards.forEach((g) => { const card = g.children[0] as RectNode; card.h = bottom - cy; });
       h = bottom + 24 - y;
-      kids.push(band(h), ...cards.map((g) => syncGroup(g)));
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...cards.map((g) => syncGroup(g)));
       break;
     }
     case 'collage': {
@@ -584,7 +587,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const a = items[0]; nodes.push(image({ x: PAD, y: y + 16, w: leftW, h: H0, radius: R, name: 'Collage 1', alt: a.alt || a.name, assetId: a.image ?? null, link: a.url || null, shadow: cardShadow(T) }));
       [items[1], items[2]].forEach((it, i) => { if (!it) return; nodes.push(image({ x: PAD + leftW + gap, y: y + 16 + i * (smallH + gap), w: rightW, h: smallH, radius: RI, name: `Collage ${i + 2}`, alt: it.alt || it.name, assetId: it.image ?? null, link: it.url || null, shadow: cardShadow(T) })); });
       h = H0 + 32;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'code': {
@@ -596,7 +599,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const copy = text(brand, '⧉', { x: box.x + cw - 40, y: box.y, w: 28, h: 52, fontSize: 18, color: { token: 'primary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: 'Copy' });
       const note = c.subhead ? text(brand, c.subhead, { x: PAD, y: box.y + box.h + 10, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Note' }) : null;
       h = (note ? note.y + note.h : box.y + box.h) + 24 - y;
-      kids.push(band(h), label, box, codeT, copy, ...(note ? [note] : []));
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), label, box, codeT, copy, ...(note ? [note] : []));
       break;
     }
     case 'stat-tiles': {
@@ -606,12 +609,12 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const nodes: Node[] = [];
       items.forEach((st, i) => {
         const x = PAD + (i % cols) * (tw + gap), ty = y + 16 + Math.floor(i / cols) * (th + gap);
-        nodes.push(rect({ x, y: ty, w: tw, h: th, fill: { token: 'soft' }, radius: R, name: 'Tile', shadow: cardShadow(T), stroke: cardStroke(T) }));
+        nodes.push(rect({ x, y: ty, w: tw, h: th, fill: c.tint ? { token: 'bg' } : { token: 'soft' }, radius: R, name: 'Tile', shadow: cardShadow(T), stroke: cardStroke(T) }));
         nodes.push(text(brand, st.value, { x: x + 16, y: ty + 16, w: tw - 32, fontSize: 30, fontWeight: 800, fontFamily: 'heading', color: { token: 'primary' }, name: 'Value' }));
         nodes.push(text(brand, st.label, { x: x + 16, y: ty + 58, w: tw - 32, fontSize: 12, color: { token: 'muted' }, name: 'Label' }));
       });
       h = 16 + rows * th + (rows - 1) * gap + 16;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'articles': {
@@ -631,12 +634,12 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         nodes.push(group(`Article ${i + 1}`, parts, { link: it.url || null, alt: it.name }));
       });
       h = bottom + 20 - y;
-      kids.push(band(h), ...nodes);
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), ...nodes);
       break;
     }
     case 'divider': {
       h = 33;
-      kids.push(band(h), rect({ x: PAD, y: y + 16, w: inner, h: 1, fill: { token: 'line' }, name: 'Line' }));
+      kids.push(band(h, c.tint ? { token: 'soft' } : { token: 'bg' }), T.stroke ? rect({ x: Math.round(W / 2 - 24), y: y + 15, w: 48, h: 2, fill: { token: 'primary' }, name: 'Ornament' }) : rect({ x: PAD, y: y + 16, w: inner, h: 1, fill: { token: 'line' }, name: 'Line' }));
       break;
     }
     case 'spacer': {
@@ -678,9 +681,13 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
 /** A block spec: kind + content. Templates and the AI composer both produce lists of these. */
 export interface BlockSpec { kind: BlockKind; content?: BlockContent }
 
+const TINTABLE = new Set<BlockKind>(['products-2', 'products-3', 'feature-row', 'checklist', 'social', 'stats', 'steps', 'articles', 'quote', 'icon-row', 'badges', 'bento', 'categories', 'gallery', 'collage', 'spotlight', 'stat-tiles', 'countdown', 'code', 'text']);
 export function buildDoc(specs: BlockSpec[], brand: Brand): Doc {
   const nodes: Node[] = [];
   let y = 0;
+  // Rhythm: content blocks alternate white / soft bands so long emails never read as one flat sheet.
+  let tintNext = false;
+  specs = specs.map((sp) => { if (!TINTABLE.has(sp.kind)) return sp; const out = { ...sp, content: { ...(sp.content || {}), tint: tintNext } }; tintNext = !tintNext; return out; });
   for (const s of specs) { const g = makeBlock(s.kind, brand, y, s.content); nodes.push(g); y += g.h; }
   return { width: W, height: Math.max(y, 400), bg: { token: 'bg' }, nodes };
 }

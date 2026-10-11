@@ -9,7 +9,7 @@ import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { createAuth } from './auth.mjs';
-import { siteProfile, fetchImage } from './site.mjs';
+import { siteProfile, fetchImage, safeGet } from './site.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -22,6 +22,7 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replac
 const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', import.meta.url).pathname);
 const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '' });
 const DB = AUTH.db;
@@ -77,6 +78,7 @@ const server = createServer(async (req, res) => {
         auth: true,
         db: true,
         site: true,
+        google: GOOGLE_CLIENT_ID,
         users: AUTH.count(),
       });
     }
@@ -86,6 +88,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
     if (url.pathname.startsWith('/db/')) return await dbRoute(url, req, res);
     if (url.pathname === '/site' && req.method === 'POST') { if (!gate(req, res)) return; return await siteRoute(await body(req), res); }
+    if (url.pathname === '/csv' && req.method === 'POST') { if (!gate(req, res)) return; return await csvRoute(await body(req), res); }
     if (url.pathname === '/image' && req.method === 'GET') { if (!gate(req, res)) return; return await imageRoute(url.searchParams.get('url') || '', res); }
     if (url.pathname === '/proxy' && req.method === 'POST') return await proxy(await body(req), res);
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
@@ -292,6 +295,16 @@ async function authRoute(action, req, res) {
       return json(res, user ? 200 : 401, user ? { user } : { error: 'Phiên đăng nhập hết hạn.', code: 'expired' });
     }
     if (action === 'logout' && req.method === 'POST') { AUTH.logout(bearer(req)); return json(res, 200, { ok: true }); }
+    if (action === 'google' && req.method === 'POST') {
+      if (!GOOGLE_CLIENT_ID) return json(res, 503, { error: 'Relay chưa cấu hình GOOGLE_CLIENT_ID.' });
+      const { credential } = await body(req);
+      if (!credential || typeof credential !== 'string' || credential.length > 4096) return json(res, 400, { error: 'thiếu credential' });
+      let info;
+      try { const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, { signal: AbortSignal.timeout(8000) }); info = await r.json(); if (!r.ok) throw new Error(info?.error_description || 'token không hợp lệ'); }
+      catch (e) { return json(res, 401, { error: `Google không xác nhận được: ${e.message}`, code: 'badpass' }); }
+      if (info.aud !== GOOGLE_CLIENT_ID || String(info.email_verified) !== 'true' || !info.email) return json(res, 401, { error: 'Token Google không thuộc app này.', code: 'badpass' });
+      return json(res, 200, await AUTH.loginWithGoogle({ sub: info.sub, email: info.email, name: info.name || info.given_name || info.email.split('@')[0], picture: info.picture || '' }, agent));
+    }
     return json(res, 404, { error: 'không có route auth này' });
   } catch (e) { return json(res, e.status || 500, { error: e.message, code: e.code || 'server' }); }
 }
@@ -348,6 +361,10 @@ async function dbRoute(url, req, res) {
       if (m === 'GET') return json(res, 200, { sessions: DB.sessions.list(u.id) });
       if (m === 'DELETE') { AUTH.logoutAll(u.id); return json(res, 200, { ok: true }); }
     }
+    if (kind === 'kv' && id) {
+      if (m === 'GET') return json(res, 200, DB.kv.get(u.id, id));
+      if (m === 'PUT') { const p = await body(req); if (!checkQuota(res, u.id, JSON.stringify(p).length)) return; return json(res, 200, DB.kv.put(u.id, id, p.value, p.updatedAt)); }
+    }
     if (kind === 'stats' && m === 'GET') return json(res, 200, DB.stats(u.id));
     return json(res, 404, { error: 'không có route db này' });
   } catch (e) { return json(res, e.status || 500, { error: e.message }); }
@@ -357,6 +374,13 @@ async function dbRoute(url, req, res) {
 async function siteRoute(p, res) {
   try { return json(res, 200, await siteProfile(p?.url)); }
   catch (e) { return json(res, e.status || 502, { error: `Không đọc được trang: ${e.message}` }); }
+}
+async function csvRoute(p, res) {
+  try {
+    const { type, buf } = await safeGet(String(p?.url || ''), { accept: 'text/csv,text/plain,application/csv,*/*;q=0.5', limit: 5 * 1024 * 1024, timeout: 20_000, truncate: false });
+    if (!/^(text\/|application\/(csv|octet-stream|vnd\.ms-excel))/.test(type)) return json(res, 415, { error: `không phải CSV (${type}). Với Google Sheet: File → Share → Anyone with the link, hoặc File → Publish to web → CSV.` });
+    return json(res, 200, { text: buf.toString('utf8').slice(0, 5 * 1024 * 1024) });
+  } catch (e) { return json(res, e.status || 502, { error: e.message }); }
 }
 async function imageRoute(target, res) {
   try { const { type, buf } = await fetchImage(target); res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Cache-Control', 'public, max-age=3600'); return res.end(buf); }

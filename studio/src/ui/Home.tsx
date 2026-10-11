@@ -83,6 +83,7 @@ export function Home() {
           </>
         )}
         <span class="sep" />
+        <Btn kind="ghost" sm icon="blocks" onClick={() => set({ modal: 'catalog' })} title="Nhập sản phẩm từ Sheet/CSV/Shopify, AI gợi ý nên đẩy gì">Kho hàng{s.catalog.length ? ` · ${s.catalog.length}` : ''}</Btn>
         <Btn kind="ghost" sm icon="figma" onClick={() => set({ modal: 'figma' })}>Import từ Figma</Btn>
         <Btn kind="ghost" sm icon="upload" onClick={() => file.current?.click()}>Mở file .phloem.json</Btn>
         <Btn kind="ghost" sm icon="mail" onClick={() => set({ modal: 'clients' })}>Client</Btn>

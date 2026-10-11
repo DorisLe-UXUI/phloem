@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS assets (
   data BLOB NOT NULL, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS assets_owner ON assets(owner);
+CREATE TABLE IF NOT EXISTS kv (
+  owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL, json TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (owner, key)
+);
 CREATE TABLE IF NOT EXISTS profiles (
   owner TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, enc BLOB NOT NULL, updated_at TEXT NOT NULL
 );
@@ -72,7 +75,9 @@ export function openDb(file) {
     assetPut: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime, w = excluded.w, h = excluded.h, bytes = excluded.bytes, data = excluded.data WHERE assets.owner = excluded.owner`),
     assetDel: q('DELETE FROM assets WHERE owner = ? AND id = ?'), assetUsage: q('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes FROM assets WHERE owner = ?'),
-    usageAll: q('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM assets) + (SELECT COALESCE(SUM(length(json)), 0) FROM projects) + (SELECT COALESCE(SUM(length(enc)), 0) FROM profiles) AS bytes'),
+    usageAll: q('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM assets) + (SELECT COALESCE(SUM(length(json)), 0) FROM projects) + (SELECT COALESCE(SUM(length(enc)), 0) FROM profiles) + (SELECT COALESCE(SUM(length(json)), 0) FROM kv) AS bytes'),
+    kvGet: q('SELECT json, updated_at FROM kv WHERE owner = ? AND key = ?'),
+    kvPut: q('INSERT INTO kv (owner, key, json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(owner, key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at'),
     profGet: q('SELECT enc, updated_at FROM profiles WHERE owner = ?'),
     profPut: q('INSERT INTO profiles (owner, enc, updated_at) VALUES (?, ?, ?) ON CONFLICT(owner) DO UPDATE SET enc = excluded.enc, updated_at = excluded.updated_at'),
   };
@@ -117,6 +122,10 @@ export function openDb(file) {
     profiles: {
       get: (owner, secret) => { const r = S.profGet.get(owner); if (!r) return { profiles: [], updatedAt: null }; try { return { profiles: JSON.parse(decrypt(secret, r.enc)), updatedAt: r.updated_at }; } catch { return { profiles: [], updatedAt: r.updated_at }; } },
       put: (owner, secret, profiles) => { const t = now(); S.profPut.run(owner, encrypt(secret, JSON.stringify(profiles)), t); return { updatedAt: t }; },
+    },
+    kv: {
+      get: (owner, key) => { const r = S.kvGet.get(owner, key); return r ? { value: JSON.parse(r.json), updatedAt: r.updated_at } : { value: null, updatedAt: null }; },
+      put: (owner, key, value, updatedAt) => { const t = updatedAt || now(); S.kvPut.run(owner, String(key).slice(0, 64), JSON.stringify(value ?? null), t); return { updatedAt: t }; },
     },
     stats: (owner) => ({ projects: S.projCount.get(owner), assets: S.assetUsage.get(owner), sessions: S.sessList.all(owner).length }),
     usageAll: () => Number(S.usageAll.get().bytes),

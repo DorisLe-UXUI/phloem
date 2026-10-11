@@ -389,6 +389,15 @@ export async function signIn(input: auth.Credentials) {
   await refreshProjects();
   await syncNow();
 }
+/** A sign-in completed outside signIn() (Google button): adopt the stored session. */
+export async function afterExternalSignIn() {
+  if (get().dirty) await saveProject();
+  const s = auth.getSession();
+  set({ user: s?.user ?? null, modal: null, route: { name: 'home' }, project: null, selection: [] });
+  if (s) toast(`Đã đăng nhập: ${s.user.name}.`, 'ok');
+  await refreshProjects();
+  await syncNow();
+}
 export async function signOut() {
   if (get().dirty) await saveProject();
   await cloud.flush();

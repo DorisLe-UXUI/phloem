@@ -4,7 +4,7 @@ import { BRAND_PRESETS, DEFAULT_BRAND, FONTS, VIBES, type Vibe } from '../model/
 import { buildDoc, type BlockSpec } from '../model/templates';
 import { assets } from '../storage/assets';
 import { askClaude, extractJson, type AiImage } from './client';
-import { siteSummary, type SiteProfile } from './site';
+import { siteSummary, type SiteProduct, type SiteProfile } from './site';
 
 export interface GenInput {
   goal: string;        // promo | newsletter | launch | welcome | event | cart | digest | other
@@ -20,6 +20,8 @@ export interface GenInput {
   webBrand?: Partial<Brand> | null;
   logoAssetId?: string | null;
   language?: 'auto' | 'vi' | 'en';
+  /** Products from Kho hàng (or the site) with imported imageIds. */
+  products?: SiteProduct[];
   /** Second creative-director pass (default on). */
   refine?: boolean;
 }
@@ -153,6 +155,7 @@ export async function generateVariants(inp: GenInput, onStage?: (s: string) => v
   const lang = inp.language && inp.language !== 'auto' ? inp.language : (inp.site?.lang || '').toLowerCase().startsWith('en') ? 'en' : 'vi';
   const prompt = [
     inp.site ? `Hồ sơ website (AI đã đọc trang này):\n${siteSummary(inp.site, inp.webBrand || {})}\n→ Dùng đúng giọng văn, danh mục, tên nút và ngôn ngữ của website. Ảnh từ web nằm trong danh sách ảnh bên dưới (tên/alt mô tả nội dung): ưu tiên ảnh thật, chọn đúng ngữ cảnh (hero: ảnh ngang lớn hoặc og-image; sản phẩm/bài viết: ảnh tương ứng). Logo đã được gắn vào nav/footer tự động.` : '',
+    inp.products && inp.products.length ? `SẢN PHẨM ĐÃ CHỌN TỪ KHO (bắt buộc dùng đúng tên/giá/link/ảnh, email xoay quanh các sản phẩm này):\n${inp.products.map((pr) => `- ${pr.name}${pr.type ? ` (${pr.type})` : ''}${pr.price ? ` · giá ${pr.price}` : ''}${pr.compareAt ? ` (giá cũ ${pr.compareAt})` : ''} · ${pr.url || ''}${pr.assetId ? ` · imageId "${pr.assetId}"` : ''}`).join('\n')}` : '',
     `Ngôn ngữ copy: ${lang === 'en' ? 'English (natural, concise marketing English)' : 'tiếng Việt'}`,
     `Loại email: ${inp.goal}`,
     `Thương hiệu: ${inp.brandName || '(chưa đặt tên — dùng "BRAND")'}`,

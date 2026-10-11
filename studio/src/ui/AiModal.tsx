@@ -8,7 +8,7 @@ import * as A from '../pipeline/actions';
 import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type GenInput, type Variant } from '../ai/generate';
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
-import { analyzeSite, brandFromSite, importSiteImages, type SiteProfile } from '../ai/site';
+import { analyzeSite, brandFromSite, importSiteImages, type SiteProduct, type SiteProfile } from '../ai/site';
 import { Btn, Eyebrow, Field, Modal, Select, TextArea, TextInput } from './components';
 import { Icon } from './icons';
 import { ask } from './confirm';
@@ -25,12 +25,14 @@ const LS = 'phloem.ai.form';
 export function AiModal({ onClose }: { onClose: () => void }) {
   const s = useStore();
   const [form, setForm] = useState<GenInput>(() => {
-    const base: GenInput = { goal: 'promo', brandName: '', brief: '', content: '', tone: TONES[0].v, imageIds: [], palette: 'auto', website: '', site: null, webBrand: null, logoAssetId: null, language: 'auto' };
-    try { const saved = JSON.parse(localStorage.getItem(LS) || '{}') as Partial<GenInput>; return { ...base, ...saved, imageIds: [], site: null, logoAssetId: null, palette: saved.palette === 'Web' ? 'auto' : (saved.palette ?? 'auto') }; } catch { return base; }
+    const base: GenInput = { goal: 'promo', brandName: '', brief: '', content: '', tone: TONES[0].v, imageIds: [], palette: 'auto', website: '', site: null, webBrand: null, logoAssetId: null, language: 'auto', products: [] };
+    try { const saved = JSON.parse(localStorage.getItem(LS) || '{}') as Partial<GenInput>; return { ...base, ...saved, imageIds: [], site: null, logoAssetId: null, products: [], palette: saved.palette === 'Web' ? 'auto' : (saved.palette ?? 'auto') }; } catch { return base; }
   });
   const [transport, setTransport] = useState<AiTransport | 'checking'>('checking');
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState('');
+  const [relayUp, setRelayUp] = useState(false);
+  useEffect(() => { const u = (get().settings.relayUrl || '').replace(/\/$/, ''); if (!u) return; fetch(u + '/', { signal: AbortSignal.timeout(2500) }).then((r) => r.json()).then((j) => setRelayUp(!!j?.ai && !!j?.auth)).catch(() => setRelayUp(false)); }, [s.settings.relayUrl, s.user?.id]);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [thumbs, setThumbs] = useState<string[]>([]);
   const [err, setErr] = useState('');
@@ -40,12 +42,27 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const [siteBusy, setSiteBusy] = useState('');
   const [siteErr, setSiteErr] = useState('');
   useEffect(() => { void aiTransport().then(setTransport); return assets.onChange(() => bump((n) => n + 1)); }, []);
+  // Products handed over from Kho hàng: import their photos, pin them as the email's subject.
+  useEffect(() => {
+    const seed = get().aiSeed; if (!seed) return;
+    set({ aiSeed: null });
+    void (async () => {
+      setSiteBusy('Đang tải ảnh sản phẩm…');
+      try {
+        const fake = { images: [], products: seed.products, logo: '', icon: '', ogImage: '' } as unknown as SiteProfile;
+        const got = await importSiteImages(fake, 12, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), true);
+        upd((f) => ({ products: seed.products, imageIds: [...new Set([...f.imageIds, ...got.imageIds])], goal: seed.goal && GOALS.some((g) => g.v === seed.goal) ? seed.goal : f.goal, brief: seed.brief || f.brief, content: seed.products.map((p) => `${p.name}${p.price ? ` — ${p.price}` : ''}${p.compareAt ? ` (giá cũ ${p.compareAt})` : ''}${p.url ? ` ${p.url}` : ''}`).join('\n') }));
+        toast(`${seed.products.length} sản phẩm từ kho đã sẵn sàng.`, 'ok');
+      } catch (e) { setSiteErr((e as Error).message); }
+      finally { setSiteBusy(''); }
+    })();
+  }, []);
   const addFiles = async (list: FileList | File[]) => { const ids: string[] = []; for (const f of Array.from(list)) { if (!f.type.startsWith('image/')) continue; try { ids.push((await assets.add(f)).id); } catch { /* skip */ } } if (ids.length) { upd((f) => ({ imageIds: [...f.imageIds, ...ids] })); toast(`Đã thêm ${ids.length} ảnh.`, 'ok'); } };
   useEffect(() => {
     const h = (e: ClipboardEvent) => { const t = e.target as HTMLElement | null; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return; const files = Array.from(e.clipboardData?.files || []); if (files.some((f) => f.type.startsWith('image/'))) { e.preventDefault(); void addFiles(files); } };
     window.addEventListener('paste', h); return () => window.removeEventListener('paste', h);
   }, []);
-  const upd = (patch: Partial<GenInput> | ((f: GenInput) => Partial<GenInput>)) => setForm((f) => { const n = { ...f, ...(typeof patch === 'function' ? patch(f) : patch) }; try { localStorage.setItem(LS, JSON.stringify({ ...n, imageIds: [], site: null, logoAssetId: null })); } catch { /* ignore */ } return n; });
+  const upd = (patch: Partial<GenInput> | ((f: GenInput) => Partial<GenInput>)) => setForm((f) => { const n = { ...f, ...(typeof patch === 'function' ? patch(f) : patch) }; try { localStorage.setItem(LS, JSON.stringify({ ...n, imageIds: [], site: null, logoAssetId: null, products: [] })); } catch { /* ignore */ } return n; });
   const baseBrand = (): Brand => ({ ...DEFAULT_BRAND, ...(form.webBrand || {}), name: form.brandName || form.webBrand?.name || DEFAULT_BRAND.name, logoAssetId: form.logoAssetId ?? null });
   /** Read the website, import its images, update the form. Returns the updated form (or null on error). */
   const analyzeNow = async (): Promise<GenInput | null> => {
@@ -110,8 +127,8 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Dựng bằng AI" icon="sparkle" onClose={onClose} wide
       footer={<>
-        <span class="grow small muted">{transport === 'checking' ? 'Đang kiểm tra AI…' : transport === 'key' ? 'Dùng API key của bạn' : transport === 'relay' ? 'Dùng qua relay' : transport === 'sample' ? 'Dùng Claude của claude.ai' : 'Chưa có AI: vào Cài đặt → AI'}</span>
-        {transport === null ? <><a class="btn sm" href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener">Mở bản claude.ai (AI sẵn)</a><Btn kind="ghost" onClick={() => set({ modal: 'settings' })}>Dán API key</Btn></> : null}
+        <span class="grow small muted">{transport === 'checking' ? 'Đang kiểm tra AI…' : transport === 'key' ? 'Dùng API key của bạn' : transport === 'relay' ? 'Dùng qua relay' : transport === 'sample' ? 'Dùng Claude của claude.ai' : (relayUp ? 'Relay có AI nhưng bạn chưa đăng nhập' : 'Chưa có AI: vào Cài đặt → AI')}</span>
+        {transport === null ? <>{relayUp && <Btn kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập relay để dùng AI</Btn>}<a class="btn sm" href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener">Mở bản claude.ai (AI sẵn)</a><Btn kind="ghost" onClick={() => set({ modal: 'settings' })}>Dán API key</Btn></> : null}
         <Btn kind="primary" icon="sparkle" disabled={busy || transport === 'checking' || transport === null} onClick={run}>{busy ? 'Đang dựng 3 phương án…' : variants.length ? 'Dựng lại' : 'Dựng 3 phương án'}</Btn>
       </>}>
       <div class="small muted">Dán link website: AI tự vào xem, lấy logo, màu, font, ảnh thật và giọng văn, nhận ra ngành để chọn bố cục riêng. Thêm ảnh và nội dung thô nếu có. Kết quả là 3 phương án khác nhau bằng block của Phloem, chọn một rồi chỉnh tiếp.</div>
@@ -131,6 +148,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </div>
+      {form.products && form.products.length > 0 && <div class="check info"><span class="lv">KHO</span><span class="m">{form.products.length} sản phẩm từ kho hàng sẽ là trọng tâm email: {form.products.slice(0, 4).map((p) => p.name).join(', ')}{form.products.length > 4 ? '…' : ''}. <a onClick={() => upd({ products: [] })} style={{ cursor: 'pointer', textDecoration: 'underline' }}>Bỏ</a></span></div>}
       <div class="grid3">
         <Field label="Loại email"><Select value={form.goal} options={GOALS} onChange={(v) => upd({ goal: v })} /></Field>
         <Field label="Thương hiệu"><TextInput value={form.brandName} placeholder="Terra" onCommit={(v) => upd({ brandName: v })} onInput={(v) => upd({ brandName: v })} /></Field>
