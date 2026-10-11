@@ -84,12 +84,23 @@ export class AssetStore implements ImageSource {
     if (added) this.emit();
   }
 
+  /** Asset ids whose bytes could not be fetched, with the time: no re-fetch for a minute (a missing asset must never become a request storm). */
+  private failedAt = new Map<string, number>();
+  private fetching = new Map<string, Promise<Blob | undefined>>();
+
   async blob(id: string): Promise<Blob | undefined> {
     if (this.blobs.has(id)) return this.blobs.get(id);
-    try { const b = await db.getBlob(id); if (b) { this.blobs.set(id, b); return b; } } catch { /* fall through to the cloud */ }
-    const cb = await cloud.fetchAssetBlob(id);
-    if (cb) { this.blobs.set(id, cb); const m = this.meta.get(id); if (m) { try { await db.putAsset(m, cb); } catch { /* ignore */ } } }
-    return cb || undefined;
+    const inflight = this.fetching.get(id); if (inflight) return inflight;
+    const f = this.failedAt.get(id); if (f && Date.now() - f < 60_000) return undefined;
+    const run = (async () => {
+      try { const b = await db.getBlob(id); if (b) { this.blobs.set(id, b); return b; } } catch { /* fall through to the cloud */ }
+      const cb = await cloud.fetchAssetBlob(id);
+      if (cb) { this.blobs.set(id, cb); this.failedAt.delete(id); const m = this.meta.get(id); if (m) { try { await db.putAsset(m, cb); } catch { /* ignore */ } } }
+      else this.failedAt.set(id, Date.now());
+      return cb || undefined;
+    })();
+    this.fetching.set(id, run);
+    try { return await run; } finally { this.fetching.delete(id); }
   }
 
   /** Object URL for <img>/preview use. */
@@ -98,6 +109,7 @@ export class AssetStore implements ImageSource {
     if (u) return u;
     const b = this.blobs.get(id);
     if (b) { const nu = URL.createObjectURL(b); this.urls.set(id, nu); return nu; }
+    const f = this.failedAt.get(id); if (f && Date.now() - f < 60_000) return undefined;
     void this.blob(id).then((bb) => {
       if (bb) { this.urls.set(id, URL.createObjectURL(bb)); this.emit(); }
       else { const img = this.images.get(id); if (img && !img.src) this.images.delete(id); } // offline / relay error: the next draw retries
