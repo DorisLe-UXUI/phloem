@@ -255,6 +255,10 @@ function ImageProps({ n }: { n: ImageNode }) {
         <div class="grow"><Num label="Nghiêng ↕" value={n.tilt?.rx ?? 0} min={-30} max={30} suffix="°" onChange={(v) => up({ tilt: v || n.tilt?.ry ? { rx: v, ry: n.tilt?.ry ?? 0 } : null })} /></div>
       </div>
       <Toggle checked={!!n.floatShadow} onChange={(v) => up({ floatShadow: v })} label="Bóng nổi dưới ảnh" sub="cho ảnh tách nền trông như đang bay" />
+      <div class="row">
+        <div class="grow"><Num label="Làm mờ" value={n.blur ?? 0} min={0} max={40} suffix="px" onChange={(v) => up({ blur: v || 0 })} title="Mờ Gaussian: nền sau chữ, chiều sâu, ảnh phụ" /></div>
+        <div class="grow"><Num label="Mờ" value={Math.round(n.opacity * 100)} min={0} max={100} suffix="%" onChange={(v) => up({ opacity: v / 100 })} title="Độ trong suốt" /></div>
+      </div>
       {a && (a.w < n.w * 2 || a.h < n.h * 2) && <div class="check warn"><span class="lv">CHÚ Ý</span><span class="m">Ảnh gốc {a.w}×{a.h} nhỏ hơn 2× khung ({n.w * 2}×{n.h * 2}) — có thể mờ trên màn Retina.</span></div>}
     </div>
   );

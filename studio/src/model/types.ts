@@ -109,6 +109,8 @@ export interface ImageNode extends BaseNode {
   tilt?: { rx: number; ry: number } | null;
   /** Soft elliptical shadow under the image, so a cut-out product looks like it floats. */
   floatShadow?: boolean;
+  /** Gaussian blur in px (depth of field, soft backgrounds behind text). */
+  blur?: number;
 }
 /** 3D-ish text treatments drawn by the renderer. */
 export interface TextEffect { kind: 'extrude' | 'neon' | 'outline' | 'shadow'; color?: Color; depth?: number; angle?: number }

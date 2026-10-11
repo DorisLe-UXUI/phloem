@@ -176,7 +176,12 @@ function paintImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s
   const { dx, dy, dw, dh } = imageDrawRect(n, img.width, img.height);
   ctx.save();
   if (n.flipX || n.flipY) { ctx.translate(x + w / 2, y + h / 2); ctx.scale(n.flipX ? -1 : 1, n.flipY ? -1 : 1); ctx.translate(-(x + w / 2), -(y + h / 2)); }
-  ctx.drawImage(img, x + dx * s, y + dy * s, dw * s, dh * s);
+  if (n.blur && n.blur > 0) {
+    // blur bleeds transparent edges inward: draw slightly larger so the frame edge stays filled
+    try { ctx.filter = `blur(${n.blur * s}px)`; } catch { /* unsupported */ }
+    const grow = n.blur * s * 1.5;
+    ctx.drawImage(img, x + dx * s - grow, y + dy * s - grow, dw * s + grow * 2, dh * s + grow * 2);
+  } else ctx.drawImage(img, x + dx * s, y + dy * s, dw * s, dh * s);
   ctx.restore();
 }
 
