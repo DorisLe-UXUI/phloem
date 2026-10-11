@@ -4,7 +4,7 @@ import type { Profile, Provider, TemplateKind } from '../../../src/shared/types'
 import { DEFAULT_UTM, newProfile } from '../../../src/shared/types';
 import type { Brand } from '../model/types';
 import { BRAND_PRESETS, DEFAULT_BRAND, FONTS } from '../model/types';
-import { makeTemplate, TEMPLATES } from '../model/templates';
+import { makeTemplate, TEMPLATES, templateBrand } from '../model/templates';
 import { thumbnail } from '../render/renderer';
 import { ensureFonts } from '../render/fonts';
 import { assets } from '../storage/assets';
@@ -48,12 +48,13 @@ function TemplatesModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     let alive = true;
     (async () => {
+      ensureFonts(TEMPLATES.map((t) => t.brand?.headingFamily || 'Inter'));
       await document.fonts.ready;
       const out: Record<string, string> = {};
       for (const t of TEMPLATES) {
         if (!t.blocks.length) continue;
         const key = `${presetName}:${t.kind}`;
-        if (!tplThumbCache.has(key)) { try { tplThumbCache.set(key, thumbnail(makeTemplate(t.kind, brand).doc, brand, assets, 300)); } catch { /* ignore */ } }
+        if (!tplThumbCache.has(key)) { try { const tb = { ...brand, ...(t.brand || {}) }; tplThumbCache.set(key, thumbnail(makeTemplate(t.kind, tb).doc, tb, assets, 300)); } catch { /* ignore */ } }
         out[t.kind] = tplThumbCache.get(key) || '';
         if (!alive) return;
         setThumbs({ ...out });
@@ -71,12 +72,12 @@ function TemplatesModal({ onClose }: { onClose: () => void }) {
       </div>
       <Eyebrow action={touched ? { label: 'Theo mẫu', onClick: () => { setTouched(false); const t = TEMPLATES.find((x) => x.kind === kind); if (t?.preset) setPresetName(t.preset); } } : undefined}>Bảng màu · áp cho cả email</Eyebrow>
       <div class="presets">{BRAND_PRESETS.map((p) => <button key={p.name} class={`preset ${p.name === presetName ? 'on' : ''}`} onClick={() => { setPresetName(p.name); setTouched(true); }}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}</div>
-      <Eyebrow>Template · {TEMPLATES.length}</Eyebrow>
+      <Eyebrow>Template · {TEMPLATES.length} · <span class="chip on" style={{ fontSize: 10 }}>trend</span> là mẫu theo xu hướng 2026</Eyebrow>
       <div class="tpl-grid">
         {TEMPLATES.map((t) => (
           <div key={t.kind} class={`tpl ${kind === t.kind ? 'on' : ''}`} onClick={() => pick(t.kind)} onDblClick={create}>
             <div class={`pv ${t.blocks.length ? '' : 'blank'}`}>{t.blocks.length ? (thumbs[t.kind] ? <img src={thumbs[t.kind]} alt="" /> : <div class="pv-skel" />) : '600 × trống'}</div>
-            <div class="meta"><div class="nm">{t.name}</div><div class="ds">{t.desc}</div></div>
+            <div class="meta"><div class="row"><div class="nm grow">{t.name}</div>{t.tag && <span class="chip on" style={{ fontSize: 9.5 }}>{t.tag}</span>}</div><div class="ds">{t.desc}</div></div>
           </div>
         ))}
       </div>
@@ -91,7 +92,7 @@ function BrandModal({ onClose }: { onClose: () => void }) {
   const up = (patch: Partial<Brand>) => A.applyBrand(patch);
   const fontOpts = FONTS.map((f) => ({ v: f.family, label: f.label }));
   const tokens: { k: keyof Brand; label: string; hint: string }[] = [
-    { k: 'primary', label: 'Primary', hint: 'nút, link nổi bật' }, { k: 'onPrimary', label: 'Chữ trên primary', hint: 'chữ trong nút' }, { k: 'ink', label: 'Chữ chính', hint: 'tiêu đề, đoạn' }, { k: 'muted', label: 'Chữ phụ', hint: 'mô tả, footer' },
+    { k: 'primary', label: 'Primary', hint: 'nút, link nổi bật' }, { k: 'accent', label: 'Accent', hint: 'đầu kia của gradient, điểm nhấn' }, { k: 'onPrimary', label: 'Chữ trên primary', hint: 'chữ trong nút' }, { k: 'ink', label: 'Chữ chính', hint: 'tiêu đề, đoạn' }, { k: 'muted', label: 'Chữ phụ', hint: 'mô tả, footer' },
     { k: 'bg', label: 'Nền', hint: 'nền email' }, { k: 'soft', label: 'Nền phụ', hint: 'footer, khối nhấn' }, { k: 'line', label: 'Đường kẻ', hint: 'divider, viền' },
   ];
   return (
@@ -106,6 +107,20 @@ function BrandModal({ onClose }: { onClose: () => void }) {
             <div class="row"><input type="color" class="in" style={{ width: 40, padding: 2 }} value={b[t.k] as string} onInput={(e) => up({ [t.k]: (e.target as HTMLInputElement).value })} /><input class="in mono" value={(b[t.k] as string).toUpperCase()} onChange={(e) => { const v = (e.target as HTMLInputElement).value.trim(); if (/^#?[0-9a-f]{6}$/i.test(v)) up({ [t.k]: v.startsWith('#') ? v : `#${v}` }); }} /></div>
           </Field>
         ))}
+      </div>
+      <Eyebrow>Logo & tên</Eyebrow>
+      <div class="row" style={{ alignItems: 'stretch' }}>
+        <div style={{ width: 120, height: 64, borderRadius: 8, border: '1px solid var(--line-2)', background: 'repeating-conic-gradient(#1a2a1e 0 25%, #0c120e 0 50%) 0 0 / 14px 14px', display: 'grid', placeItems: 'center', flex: 'none', overflow: 'hidden' }}>
+          {b.logoAssetId && assets.url(b.logoAssetId) ? <img src={assets.url(b.logoAssetId)} alt="" style={{ maxWidth: '90%', maxHeight: '80%', objectFit: 'contain' }} /> : <span class="dim small">chưa có logo</span>}
+        </div>
+        <div class="col grow">
+          <Field label="Tên thương hiệu" hint="dùng khi chưa có logo"><TextInput value={b.name} onCommit={(v) => up({ name: v.trim() || 'BRAND' })} /></Field>
+          <div class="row">
+            <Btn sm icon="upload" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/png,image/svg+xml,image/jpeg,image/webp'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { const a = await assets.add(f); up({ logoAssetId: a.id }); toast('Đã thay logo trong nav và footer.', 'ok'); } catch { toast('Không đọc được ảnh logo.', 'err'); } }; i.click(); }}>Tải logo</Btn>
+            {b.logoAssetId && <Btn sm kind="ghost" onClick={() => up({ logoAssetId: null })}>Dùng chữ</Btn>}
+            <span class="dim small">PNG nền trong suốt, cao ≥ 120px. Logo thay vào mọi block nav/footer.</span>
+          </div>
+        </div>
       </div>
       <Eyebrow>Chữ</Eyebrow>
       <div class="grid2">
@@ -316,7 +331,8 @@ function FigmaModal({ onClose }: { onClose: () => void }) {
   };
   return (
     <Modal title="Import từ Figma" icon="figma" onClose={onClose} footer={<><span class="grow small muted">Chữ, hình chữ nhật, frame màu phẳng thành layer sửa được. Ảnh, vector, hiệu ứng được render thành ảnh.</span><Btn kind="primary" disabled={busy || !token || !url} onClick={run}>{busy ? 'Đang import…' : 'Import'}</Btn></>}>
-      <Field label="Personal access token" hint="Figma → Settings → Security → Personal access tokens (chỉ cần quyền đọc file)"><TextInput type="password" mono value={token} onCommit={setToken} onInput={setToken} placeholder="figd_…" /></Field>
+      <Field label="Personal access token" hint="Figma → Settings → Security → Personal access tokens"><TextInput type="password" mono value={token} onCommit={setToken} onInput={setToken} placeholder="figd_…" /></Field>
+      <div class="check info"><span class="lv">QUYỀN</span><span class="m">Khi tạo token, tick <b>File content: Read</b> (bắt buộc) và <b>Dev resources: Read</b> (tuỳ chọn). Token thiếu quyền này sẽ bị Figma trả lỗi 403 "Invalid scope".</span></div>
       <Field label="Link frame" hint="chọn frame email trong Figma → Copy link (có node-id)"><TextInput mono value={url} onCommit={setUrl} onInput={setUrl} placeholder="https://www.figma.com/design/XXXX/Email?node-id=12-34" /></Field>
       <div class="small muted">Token chỉ lưu trong trình duyệt này và gửi thẳng tới api.figma.com. Ảnh render của Figma nằm trên S3 không có CORS, nên cần Relay URL trong Cài đặt để tải về.</div>
       {logs.length > 0 && <div class="log">{logs.map((l, i) => <div key={i} class={l.startsWith('Lỗi') ? 'er' : ''}>{l}</div>)}</div>}

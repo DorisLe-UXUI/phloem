@@ -18,6 +18,7 @@ const QUICK = [
 ];
 
 const chatStore: { msgs: ChatMsg[] } = { msgs: [] };
+export const CLAUDE_AI_URL = 'https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG';
 
 export function AiPanel() {
   const s = useStore();
@@ -46,7 +47,17 @@ export function AiPanel() {
         <Btn kind="primary" block icon="sparkle" onClick={() => set({ modal: 'ai' })}>Dựng 3 phương án từ nội dung</Btn>
       </div>
       <Eyebrow action={msgs.length ? { label: 'Xoá chat', onClick: () => setMsgs([]) } : undefined}>Trợ lý</Eyebrow>
-      {transport === null && <div class="check warn"><span class="lv">CHƯA CÓ AI</span><span class="m">Dán API key Anthropic trong <a href="#" onClick={(e) => { e.preventDefault(); set({ modal: 'settings' }); }}>Cài đặt → AI</a>, hoặc chạy relay có ANTHROPIC_API_KEY.</span></div>}
+      {transport === null && (
+        <div class="card" style={{ borderColor: 'rgba(255,197,61,.45)' }}>
+          <div class="row"><Icon name="warn" style={{ color: 'var(--warn)' }} /><b class="grow">AI chưa bật ở bản này</b></div>
+          <div class="small muted">Bản web tĩnh không có khoá gọi Claude. Chọn một trong hai:</div>
+          <div class="row wrap">
+            <a class="btn primary sm" href={CLAUDE_AI_URL} target="_blank" rel="noopener"><Icon name="sparkle" /> Mở bản claude.ai, AI sẵn</a>
+            <Btn sm icon="settings" onClick={() => set({ modal: 'settings' })}>Dán API key Anthropic</Btn>
+          </div>
+          <div class="dim small">Có key: Cài đặt → AI → dán sk-ant-… (chỉ lưu trong trình duyệt này). Hoặc chạy relay có ANTHROPIC_API_KEY.</div>
+        </div>
+      )}
       <div class="row wrap">{QUICK.map((q) => <Btn key={q.label} xs disabled={busy || transport === null} onClick={() => send(q.q)}>{q.label}</Btn>)}</div>
       <div class="chat" ref={listRef}>
         {msgs.length === 0 && <div class="dim small">Hỏi về email đang mở: subject, bố cục, màu, copy… Trợ lý thấy cấu trúc và chữ trong email của bạn.</div>}

@@ -74,7 +74,7 @@ export function Select<T extends string>(p: { value: T; options: { v: T; label: 
   return <select class="in" value={p.value} onChange={(e) => p.onChange((e.target as HTMLSelectElement).value as T)}>{p.placeholder && <option value="">{p.placeholder}</option>}{p.options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select>;
 }
 
-const TOKENS: BrandToken[] = ['primary', 'onPrimary', 'ink', 'muted', 'bg', 'soft', 'line'];
+const TOKENS: BrandToken[] = ['primary', 'accent', 'onPrimary', 'ink', 'muted', 'bg', 'soft', 'line'];
 
 export function ColorInput(p: { value: Color | null; brand: Brand; onChange: (c: Color | null) => void; allowNone?: boolean; label?: string }) {
   const [open, setOpen] = useState(false);

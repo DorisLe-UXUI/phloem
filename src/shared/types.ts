@@ -102,11 +102,27 @@ export type BlockKind =
   | 'feature-row'
   | 'stats'
   | 'quote'
+  | 'hero-overlay'
+  | 'split'
+  | 'bento'
+  | 'badges'
+  | 'dark-band'
+  | 'categories'
+  | 'social'
+  | 'cta-wide'
+  | 'gallery'
+  | 'hero-center'
+  | 'icon-row'
+  | 'checklist'
+  | 'countdown'
+  | 'code'
+  | 'stat-tiles'
+  | 'articles'
   | 'divider'
   | 'spacer'
   | 'footer';
 
-export type TemplateKind = 'newsletter' | 'product-grid' | 'promo' | 'welcome' | 'cart' | 'launch' | 'event' | 'digest' | 'testimonial' | 'seasonal' | 'reengagement' | 'blank' | 'mobile-pair';
+export type TemplateKind = 'newsletter' | 'product-grid' | 'promo' | 'welcome' | 'cart' | 'launch' | 'event' | 'digest' | 'testimonial' | 'seasonal' | 'reengagement' | 'drop' | 'bento' | 'luxe' | 'travel' | 'food' | 'flash' | 'fitness' | 'kids' | 'offer' | 'agency' | 'assets' | 'portfolio' | 'appkids' | 'blank' | 'mobile-pair';
 
 export interface SlicerOptions {
   /** Max slice height in px before a forced cut (Outlook truncates images taller than ~1728px). */

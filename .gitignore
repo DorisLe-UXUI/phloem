@@ -3,3 +3,9 @@ server/.env
 .DS_Store
 # plugin build output (rebuilt with `npm run build`); studio/dist is committed so GitHub Pages can serve it
 /dist/
+
+# Landing: only the brand-safe crops ship; the raw reference panels stay local.
+landing/showcase/*
+!landing/showcase/*-h.jpg
+!landing/showcase/*-t.jpg
+brand/

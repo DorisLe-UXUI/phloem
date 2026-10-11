@@ -144,3 +144,28 @@ test/          node --test
 - JPG được nén trong UI (canvas) vì Figma không có quality cho JPG; lát nào PNG nhỏ hơn thì giữ PNG.
 - Hash FNV-1a của từng lát được lưu trong frame (`sharedPluginData`) để lần sau không upload lại ảnh không đổi.
 - Klaviyo API revision mặc định `2025-07-15` (`KLAVIYO_REVISION` trên relay). Nếu Klaviyo đổi schema campaign-message, sửa `src/ui/api/klaviyo.ts → messageDefinition`.
+
+## Landing page (song ngữ VI/EN)
+
+`index.html` ở gốc repo là trang giới thiệu, GitHub Pages phục vụ tại `https://dorisle-uxui.github.io/phloem/`.
+
+- Hero là cảnh 3D bằng CSS (`landing/landing.css`, `landing/landing.js`): laptop mở Studio, con trỏ chọn mẫu → đổi màu → bấm "Tạo draft" → email được cắt lát bay sang điện thoại, hiện "Draft Mailchimp đã tạo". Tự lặp, nghiêng theo chuột, dừng khi cuộn khỏi màn hình, tôn trọng `prefers-reduced-motion`.
+- Phần cắt lát chạy theo cuộn (sticky), vòng xoay 24 mẫu kéo được, bấm vào mẫu mở thẳng Studio với `studio/?t=<kind>`.
+- Song ngữ: `landing/i18n.js` chứa từ điển `vi`/`en`; phần tử có `data-i` (text) hoặc `data-ih` (HTML). Nút VI/EN gọi `applyLang()`, lưu lựa chọn vào `localStorage`, tự đoán theo ngôn ngữ trình duyệt lần đầu.
+- Ảnh tham khảo trong `landing/showcase/` chỉ commit bản crop (`*-h.jpg`, `*-t.jpg`) đã bỏ phần có tên thương hiệu; bản gốc bị `.gitignore`.
+
+## Bật AI (trợ lý + dựng 3 phương án)
+
+Bản tĩnh trên GitHub Pages không chứa khoá API. Có ba cách để AI chạy:
+
+| Cách | Khi nào dùng | Làm gì |
+| --- | --- | --- |
+| Bản claude.ai | Nhanh nhất, không cần khoá | Mở artifact Phloem Studio trên claude.ai, AI dùng ngay qua tài khoản của bạn |
+| Dán khoá trong Studio | Dùng bản GitHub Pages | Cài đặt → AI → dán `sk-ant-…` và chọn model. Khoá chỉ lưu trong trình duyệt đó |
+| Relay cục bộ | Đội nhóm, không muốn chia khoá | `cp server/.env.example server/.env`, điền `ANTHROPIC_API_KEY`, chạy `npm run relay`, trong Studio đặt Relay URL `http://localhost:8787`. Khoá nằm ở máy chạy relay, không bao giờ lên repo |
+
+Relay cũng là nơi giữ khoá Mailchimp/Klaviyo cho OAuth và chặn mọi lệnh gửi/lên lịch.
+
+## Import từ Figma
+
+Studio → Import Figma cần Personal access token có quyền **File content: Read** (tuỳ chọn thêm Dev resources: Read). Token thiếu quyền này bị Figma trả `403 Invalid scope(s)`; tạo token mới trong Figma → Settings → Security → Personal access tokens và tick quyền đó.

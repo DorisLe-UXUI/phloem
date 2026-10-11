@@ -71,7 +71,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     <Modal title="Dựng bằng AI" icon="sparkle" onClose={onClose} wide
       footer={<>
         <span class="grow small muted">{transport === 'checking' ? 'Đang kiểm tra AI…' : transport === 'key' ? 'Dùng API key của bạn' : transport === 'relay' ? 'Dùng qua relay' : transport === 'sample' ? 'Dùng Claude của claude.ai' : 'Chưa có AI: vào Cài đặt → AI'}</span>
-        {!transport || transport === null ? <Btn kind="ghost" onClick={() => set({ modal: 'settings' })}>Cài đặt AI</Btn> : null}
+        {transport === null ? <><a class="btn sm" href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener">Mở bản claude.ai (AI sẵn)</a><Btn kind="ghost" onClick={() => set({ modal: 'settings' })}>Dán API key</Btn></> : null}
         <Btn kind="primary" icon="sparkle" disabled={busy || transport === 'checking' || transport === null} onClick={run}>{busy ? 'Đang dựng 3 phương án…' : variants.length ? 'Dựng lại' : 'Dựng 3 phương án'}</Btn>
       </>}>
       <div class="small muted">Đưa ảnh và nội dung thô. AI sắp xếp thành 3 phương án khác nhau bằng block của Phloem, bạn chọn một rồi chỉnh tiếp. Chữ, ảnh, màu đều sửa được sau đó.</div>

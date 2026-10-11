@@ -6,7 +6,7 @@ import { CanvasView } from './CanvasView';
 import { LeftPanel } from './LeftPanel';
 import { RightPanel } from './RightPanel';
 import { Btn } from './components';
-import { Icon, type IconName } from './icons';
+import { Icon, Logo, type IconName } from './icons';
 
 const zoomEvt = (kind: string, value?: number) => window.dispatchEvent(new CustomEvent('phloem-zoom', { detail: { kind, value } }));
 
@@ -48,7 +48,7 @@ function TopBar() {
   return (
     <div class="topbar">
       <div class="l">
-        <div class="logo" onClick={() => A.goHome()} title="Về trang chủ"><Icon name="leaf" /><span>Phloem</span><span class="sub">studio</span></div>
+        <Logo size={18} onClick={() => A.goHome()} />
         <Btn kind="ghost" sm icon="home" title="Project" onClick={() => A.goHome()} />
         <input class="pname grow" value={p.name} onChange={(e) => A.renameProject((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} title="Tên project" />
       </div>

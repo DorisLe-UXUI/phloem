@@ -16,7 +16,17 @@ export function parseFigmaUrl(url: string): { fileKey: string; nodeId: string | 
 
 async function figmaGet(path: string, token: string): Promise<any> {
   const res = await fetch(`https://api.figma.com/v1${path}`, { headers: { 'X-Figma-Token': token } });
-  if (!res.ok) { const t = await res.text(); throw new Error(`Figma ${res.status}: ${t.slice(0, 160)}`); }
+  if (!res.ok) {
+    const t = await res.text();
+    let msg = '';
+    try { const j = JSON.parse(t); msg = j.err || j.message || ''; } catch { msg = t.slice(0, 160); }
+    if (res.status === 403 && /scope/i.test(msg)) throw new Error('Token thiếu quyền "File content: Read". Vào Figma → Settings → Security → Personal access tokens → Generate new token, tick File content: Read (thêm Dev resources: Read nếu có), rồi dán token mới vào đây.');
+    if (res.status === 403 && /token/i.test(msg)) throw new Error('Token Figma không hợp lệ hoặc đã bị thu hồi (403). Tạo token mới trong Figma → Settings → Security → Personal access tokens.');
+    if (res.status === 403) throw new Error('Figma từ chối (403): bạn không có quyền xem file này, hoặc token không đúng tài khoản.');
+    if (res.status === 404) throw new Error('Không tìm thấy file/frame (404): kiểm tra link có node-id và file đã được chia sẻ với tài khoản của token.');
+    if (res.status === 429) throw new Error('Figma giới hạn tốc độ (429). Đợi một phút rồi thử lại.');
+    throw new Error(`Figma ${res.status}: ${msg || 'lỗi không rõ'}`);
+  }
   return res.json();
 }
 

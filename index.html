@@ -1,4 +1,259 @@
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8" /><meta http-equiv="refresh" content="0; url=studio/" /><title>Phloem</title>
-<style>html,body{height:100%;margin:0;background:#070a08;color:#8fa796;font:14px Inter,system-ui,sans-serif;display:grid;place-items:center}a{color:#39ff14}</style></head>
-<body><p>Đang mở Phloem Studio… <a href="studio/">Bấm vào đây nếu không tự chuyển.</a></p></body></html>
+<html lang="vi">
+<head>
+<script>document.documentElement.classList.add('js');</script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Phloem Studio — thiết kế email, bấm một nút, có draft</title>
+<meta name="description" content="Thiết kế email đẹp như vẽ. Bấm một nút, có draft trong Mailchimp hoặc Klaviyo. 24 mẫu theo xu hướng, AI dựng 3 phương án, không bao giờ tự gửi." />
+<meta property="og:title" content="Phloem Studio" />
+<meta property="og:description" content="Email bạn vẽ ra sao, hộp thư nhận y vậy. 24 mẫu, AI dựng 3 phương án, draft Mailchimp/Klaviyo." />
+<meta property="og:image" content="landing/showcase/ps-1-h.jpg" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath d='M50 7C30 30 15 50 15 73a35 35 0 0 0 70 0C85 50 70 30 50 7Z' fill='none' stroke='%2339ff14' stroke-width='9' stroke-linejoin='round'/%3E%3Cpath d='M50 100V33' stroke='%2339ff14' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M50 64C38 64 29 55 29 42c12 0 21 9 21 22Z' fill='%2339ff14'/%3E%3Cpath d='M50 80c12 0 21-9 21-22-12 0-21 9-21 22Z' fill='%2339ff14'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="landing/landing.css" />
+<script src="landing/i18n.js"></script>
+</head>
+<body>
+<div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="grid"></div><div class="grain"></div></div>
+<div class="progress" id="progress" aria-hidden="true"><i></i></div>
+
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="Phloem Studio">
+    <svg class="mark" viewBox="0 0 100 120" aria-hidden="true"><path d="M50 7C30 30 15 50 15 73a35 35 0 0 0 70 0C85 50 70 30 50 7Z" fill="none" stroke="#39ff14" stroke-width="9" stroke-linejoin="round"/><path d="M50 100V33" stroke="#39ff14" stroke-width="7" stroke-linecap="round"/><path d="M50 64C38 64 29 55 29 42c12 0 21 9 21 22Z" fill="#39ff14"/><path d="M50 80c12 0 21-9 21-22-12 0-21 9-21 22Z" fill="#39ff14"/></svg>
+    <span class="word">Phloem</span><span class="word studio">studio</span>
+  </a>
+  <nav class="links">
+    <a href="#features" data-i="nav_features">Tính năng</a><a href="#templates" data-i="nav_templates">Mẫu</a><a href="#how" data-i="nav_how">Cách hoạt động</a><a href="#ai" data-i="nav_ai">AI</a>
+  </nav>
+  <div class="nav-cta">
+    <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="vi" onclick="applyLang('vi')">VI</button><button type="button" data-lang="en" onclick="applyLang('en')">EN</button></div>
+    <a class="btn ghost sm" href="https://github.com/DorisLe-UXUI/phloem" target="_blank" rel="noopener">GitHub</a>
+    <a class="btn primary sm" href="studio/"><span data-i="nav_open">Mở Studio</span> <span class="arr">→</span></a>
+  </div>
+</header>
+
+<main id="top">
+  <!-- HERO: product story — laptop → design → slice → draft -->
+  <section class="hero" id="hero">
+    <div class="hero-copy" id="heroCopy">
+      <div class="pill"><i></i><span data-i="hero_pill">Figma · Studio → Mailchimp · Klaviyo</span></div>
+      <h1 data-ih="hero_h1">Thiết kế email<br>đẹp như vẽ.<br><span class="neon">Bấm một nút, có draft.</span></h1>
+      <p class="lead" data-i="hero_lead">Email bạn vẽ ra sao, hộp thư nhận y vậy. Phloem cắt thiết kế thành lát ảnh chuẩn mọi hộp thư, giữ link và alt, rồi tạo bản nháp trong Mailchimp hoặc Klaviyo. Không dựng lại. Không bao giờ tự gửi.</p>
+      <div class="cta-row">
+        <a class="btn primary lg" href="studio/"><span data-i="hero_cta1">Mở Studio miễn phí</span> <span class="arr">→</span></a>
+        <a class="btn ghost lg" href="#templates" data-i="hero_cta2">Xem 24 mẫu</a>
+      </div>
+      <div class="trust"><span data-i="hero_trust">Chạy đúng ở</span><b>Gmail</b><b>Outlook</b><b>Apple Mail</b><b>Mailchimp</b><b>Klaviyo</b></div>
+    </div>
+    <div class="stage-wrap">
+      <div class="stage" id="stage" data-step="0" aria-hidden="true">
+        <div class="laptop" id="laptop">
+          <div class="lid">
+            <div class="bezel"><i class="cam"></i>
+              <div class="scr">
+                <div class="ui-top"><span class="dots"><i></i><i></i><i></i></span><span class="ui-title">Phloem <em>studio</em></span><span class="ui-tabs"><i data-i="ui_tab1">Thiết kế</i><i data-i="ui_tab2">Mobile</i></span><span class="ui-btn" id="uiExport" data-i="ui_export">Tạo draft</span></div>
+                <div class="ui-body">
+                  <aside class="ui-left">
+                    <div class="ui-lab" data-i="ui_templates">Mẫu</div>
+                    <img class="ui-t" src="landing/thumbs/newsletter.jpg" alt="">
+                    <img class="ui-t" id="uiPick" src="landing/thumbs/promo.jpg" alt="">
+                    <img class="ui-t" src="landing/thumbs/launch.jpg" alt="">
+                    <img class="ui-t" src="landing/thumbs/drop.jpg" alt="">
+                  </aside>
+                  <div class="ui-canvas" id="uiCanvas">
+                    <div class="ui-empty" data-i="ui_empty">Chọn một mẫu để bắt đầu</div>
+                    <div class="ui-mail" id="uiMail"><img src="landing/thumbs/promo.jpg" alt=""><i class="ui-sel" id="uiSel"></i><i class="ui-scan" id="uiScan"></i><span class="ui-cuts" id="uiCuts"><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+                  </div>
+                  <aside class="ui-right">
+                    <div class="ui-lab" data-i="ui_palette">Bảng màu</div>
+                    <div class="sw"><i style="--c:#1f6f3f"></i><i style="--c:#ff6a4d"></i><i id="uiSw" style="--c:#5b5bd6"></i><i style="--c:#e0b000"></i><i style="--c:#15181a"></i></div>
+                    <div class="ui-lab" data-i="ui_checks">Kiểm tra</div>
+                    <div class="ui-chk"><i>✓</i><span data-i="ui_chk1">Link &amp; alt đủ</span></div>
+                    <div class="ui-chk"><i>✓</i><span data-i="ui_chk2">≤ 102 KB / lát</span></div>
+                    <div class="ui-chk"><i>✓</i><span data-i="ui_chk3">Mobile 375px</span></div>
+                    <div class="ui-lab" data-i="ui_dest">Đích</div>
+                    <div class="ui-dest"><b>M</b> Mailchimp</div>
+                  </aside>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="base"><i class="pad"></i></div>
+        </div>
+        <div class="fly" id="fly"><img src="landing/thumbs/promo.jpg" alt=""></div>
+        <div class="phone" id="phone"><i class="notch"></i><img src="landing/thumbs/promo-m.jpg" alt=""><span class="cap" data-i="ui_mobile">Mobile · 375px</span></div>
+        <div class="toast" id="toast"><b>✓</b><span><strong data-i="toast_draft">Draft Mailchimp đã tạo</strong><small class="mono" data-i="chip_slices">38 lát · 331 KB · PNG 2×</small></span></div>
+        <div class="toast t2" id="toast2"><b>🔒</b><span><strong data-i="toast_nosend">Không bao giờ tự gửi</strong><small data-i="toast_nosend_s">Bạn bấm gửi trong Mailchimp</small></span></div>
+        <div class="cur" id="cur"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8-6 1.5L16 20l-2.5 1-3-7.5L5 17z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg><i class="rip"></i></div>
+      </div>
+      <ol class="story-steps" id="storySteps"><li><i>1</i><span data-i="st1">Chọn mẫu</span></li><li><i>2</i><span data-i="st2">Đổi màu</span></li><li><i>3</i><span data-i="st3">Cắt lát</span></li><li><i>4</i><span data-i="st4">Draft sẵn</span></li></ol>
+    </div>
+  </section>
+
+  <!-- SLICE: one email, cut along links as you scroll -->
+  <section class="slice-track" id="slice">
+    <div class="slice-sticky">
+      <div class="slice-copy">
+        <div class="eyebrow" data-i="slice_eyebrow">Cắt lát thông minh</div>
+        <h2 data-ih="slice_h2">Mỗi vùng link thành <span class="neon">một lát ảnh</span>.</h2>
+        <p data-i="slice_p">Lưới sản phẩm dày, chữ đè ảnh, nền ảnh: Phloem cắt đúng theo vùng link, ghép thành HTML bảng, mở đúng ở Gmail, Outlook, Apple Mail. Ảnh không đổi thì không upload lại.</p>
+        <ul class="checks"><li data-i="slice_l1">Cắt theo link</li><li data-i="slice_l2">Kiểm tra alt, link, dung lượng</li><li data-i="slice_l3">Bản mobile riêng</li></ul>
+      </div>
+      <div class="slice-stage" id="sliceStage">
+        <div class="slice-email" id="sliceEmail"></div>
+        <div class="scanline" id="scan"></div>
+        <div class="slice-phone" id="slicePhone"><div class="notch"></div><img src="landing/thumbs/launch-m.jpg" alt="" loading="lazy" /><span class="cap" data-i="slice_cap">Điện thoại nhận bản mobile</span></div>
+        <div class="slice-badge" id="sliceBadge">r3c1 · <span class="neon">link</span> · alt ✓</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TEMPLATES: 3D ring -->
+  <section class="ring-sec" id="templates">
+    <div class="sec-head reveal">
+      <div class="eyebrow" data-i="tpl_eyebrow">24 mẫu theo xu hướng</div>
+      <h2 data-ih="tpl_h2">Mẫu nào cũng có nội dung thật.<br>Đổi bảng màu là <span class="neon">cả email đổi theo</span>.</h2>
+      <p data-i="tpl_p">Gốm, streetwear, app, beauty, du lịch, F&amp;B, giáo dục trẻ em, agency, asset số… 29 block, 14 bảng màu, logo của bạn thay vào nav và footer. Kéo để xoay, bấm để mở trong Studio.</p>
+    </div>
+    <div class="ring-wrap" id="ringWrap">
+      <div class="ring" id="ring">
+        <a class="ring-item" href="studio/?t=promo" draggable="false"><img src="landing/thumbs/promo.jpg" alt="" loading="lazy" draggable="false" /><span>Promo · Coral</span></a>
+        <a class="ring-item" href="studio/?t=kids" draggable="false"><img src="landing/thumbs/kids.jpg" alt="" loading="lazy" draggable="false" /><span>Kids · Candy</span></a>
+        <a class="ring-item" href="studio/?t=drop" draggable="false"><img src="landing/thumbs/drop.jpg" alt="" loading="lazy" draggable="false" /><span>Drop · Neon</span></a>
+        <a class="ring-item" href="studio/?t=agency" draggable="false"><img src="landing/thumbs/agency.jpg" alt="" loading="lazy" draggable="false" /><span>Agency · Neon</span></a>
+        <a class="ring-item" href="studio/?t=offer" draggable="false"><img src="landing/thumbs/offer.jpg" alt="" loading="lazy" draggable="false" /><span>Offer · Lavender</span></a>
+        <a class="ring-item" href="studio/?t=travel" draggable="false"><img src="landing/thumbs/travel.jpg" alt="" loading="lazy" draggable="false" /><span>Travel · Ocean</span></a>
+        <a class="ring-item" href="studio/?t=portfolio" draggable="false"><img src="landing/thumbs/portfolio.jpg" alt="" loading="lazy" draggable="false" /><span>Portfolio · Lavender</span></a>
+        <a class="ring-item" href="studio/?t=luxe" draggable="false"><img src="landing/thumbs/luxe.jpg" alt="" loading="lazy" draggable="false" /><span>Beauty · Linen</span></a>
+        <a class="ring-item" href="studio/?t=appkids" draggable="false"><img src="landing/thumbs/appkids.jpg" alt="" loading="lazy" draggable="false" /><span>Game · Sky</span></a>
+        <a class="ring-item" href="studio/?t=bento" draggable="false"><img src="landing/thumbs/bento.jpg" alt="" loading="lazy" draggable="false" /><span>App · Midnight</span></a>
+        <a class="ring-item" href="studio/?t=assets" draggable="false"><img src="landing/thumbs/assets.jpg" alt="" loading="lazy" draggable="false" /><span>Assets · Sky</span></a>
+        <a class="ring-item" href="studio/?t=food" draggable="false"><img src="landing/thumbs/food.jpg" alt="" loading="lazy" draggable="false" /><span>F&amp;B · Sunset</span></a>
+        <a class="ring-item" href="studio/?t=flash" draggable="false"><img src="landing/thumbs/flash.jpg" alt="" loading="lazy" draggable="false" /><span>Flash · Coral</span></a>
+        <a class="ring-item" href="studio/?t=digest" draggable="false"><img src="landing/thumbs/digest.jpg" alt="" loading="lazy" draggable="false" /><span>Digest · Mono</span></a>
+      </div>
+    </div>
+    <div class="ring-hint mono" data-i="tpl_hint">Kéo để xoay · bấm để mở</div>
+    <div class="marquee" data-marquee>
+      <div class="track">
+        <figure><img src="landing/thumbs/newsletter.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/ps-2-h.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/fitness.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/doris2-2-h.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/launch.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/ps2-2-h.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/event.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/kids-4-t.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/seasonal.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/ps-6-h.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/welcome.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/doris2-6-h.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/testimonial.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/ps2-4-h.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/cart.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/doris-2-t.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/reengagement.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/ps-3-h.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/thumbs/product-grid.jpg" alt="" loading="lazy" /></figure><figure><img src="landing/showcase/ps2-6-h.jpg" alt="" loading="lazy" /></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section class="how" id="how">
+    <div class="sec-head reveal">
+      <div class="eyebrow" data-i="how_eyebrow">Cách hoạt động</div>
+      <h2 data-ih="how_h2">Ba bước. <span class="neon">Không có bước thứ tư.</span></h2>
+    </div>
+    <div class="steps">
+      <article class="step tilt reveal" data-tilt>
+        <div class="num">01</div>
+        <div class="step-ico"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 10-10-3-3L5 16l-1 4zM13 6l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h3 data-i="how_1t">Vẽ, hoặc để AI dựng</h3>
+        <p data-i="how_1p">Chọn một trong 24 mẫu, kéo block, đổi bảng màu, thả logo. Hoặc đưa ảnh và nội dung thô: AI xếp thành 3 phương án, bạn chọn một.</p>
+        <div class="mini"><img src="landing/showcase/ps2-3-h.jpg" alt="" loading="lazy" /></div>
+      </article>
+      <article class="step tilt reveal" data-tilt style="--d:.1s">
+        <div class="num">02</div>
+        <div class="step-ico"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16M9 2v20M15 2v20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+        <h3 data-i="how_2t">Phloem cắt lát và kiểm tra</h3>
+        <p data-i="how_2p">Mỗi vùng link thành một lát ảnh, ghép thành HTML bảng chuẩn mọi hộp thư. Báo link lỗi, thiếu alt, email quá nặng, Gmail cắt 102KB.</p>
+        <div class="mini slices"><img src="landing/showcase/kids-4-h.jpg" alt="" loading="lazy" /><span></span><span></span><span></span><span></span></div>
+      </article>
+      <article class="step tilt reveal" data-tilt style="--d:.2s">
+        <div class="num">03</div>
+        <div class="step-ico"><svg viewBox="0 0 24 24"><path d="M3 12l18-8-5 17-4-6-6-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+        <h3 data-i="how_3t">Draft trong Mailchimp hay Klaviyo</h3>
+        <p data-i="how_3p">Ảnh upload lên tài khoản của bạn, bản nháp tạo đúng audience. Sửa thiết kế, bấm lại: cập nhật đúng draft đó. Bạn duyệt và bấm gửi.</p>
+        <div class="mini draft"><div class="row"><span class="dot"></span>Draft · Klaviyo</div><div class="bar"></div><div class="bar w2"></div><div class="ok" data-i="how_3ok">✓ Sẵn sàng để duyệt</div></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- AI -->
+  <section class="ai" id="ai">
+    <div class="ai-copy reveal">
+      <div class="eyebrow" data-i="ai_eyebrow">Trợ lý AI</div>
+      <h2 data-ih="ai_h2">Đưa ảnh và nội dung. <span class="neon">Nhận 3 phương án.</span></h2>
+      <p data-i="ai_p">AI đọc ảnh, viết copy tiếng Việt, xếp block theo xu hướng, trả về 3 phương án khác nhau. Chọn một, chỉnh tiếp trên canvas. Trợ lý còn viết subject, rút gọn chữ, đề xuất CTA, mỗi gợi ý kèm nút áp dụng.</p>
+      <ul class="checks"><li data-i="ai_c1">Viết subject và preheader theo luật hộp thư</li><li data-i="ai_c2">Rút gọn chữ, giữ ý chính</li><li data-i="ai_c3">Kiểm tra: CTA trên fold, chữ đủ to, tương phản</li><li data-i="ai_c4">Bản claude.ai có AI sẵn, không cần key</li></ul>
+      <div class="cta-row">
+        <a class="btn primary" href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener" data-i="ai_cta1">Mở bản có AI sẵn ↗</a>
+        <a class="btn ghost" href="studio/" data-i="ai_cta2">Mở Studio</a>
+      </div>
+    </div>
+    <div class="ai-demo reveal">
+      <div class="chat tilt" data-tilt>
+        <div class="msg u" data-i="ai_u">Viết 5 subject cho email này</div>
+        <div class="msg a"><span data-i="ai_a">Email là promo gốm, giảm 30% đến Chủ nhật. Năm phương án, chọn 1 làm action:</span><br /><span class="mono" data-i="ai_s1">1. Giảm 30% đến hết Chủ nhật</span><br /><span class="mono" data-i="ai_s2">2. Ba ngày, ba món, giảm 30%</span><br /><span class="dim">…</span></div>
+        <div class="acts"><span class="act" data-i="ai_act1">✓ Subject: Giảm 30% đến hết Chủ nhật</span><span class="act" data-i="ai_act2">✓ Preheader: Mã TERRA30 · freeship</span><span class="act primary" data-i="ai_act3">Áp dụng tất cả</span></div>
+      </div>
+      <div class="fan" id="fan">
+        <div class="v"><img src="landing/showcase/ps2-5-h.jpg" alt="" loading="lazy" /><span data-i="ai_v1">Dải màu nổi bật</span></div>
+        <div class="v"><img src="landing/showcase/doris-3-t.jpg" alt="" loading="lazy" /><span data-i="ai_v2">Kể chuyện</span></div>
+        <div class="v"><img src="landing/showcase/kids-6-h.jpg" alt="" loading="lazy" /><span data-i="ai_v3">Tối giản</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features" id="features">
+    <div class="sec-head reveal">
+      <div class="eyebrow" data-i="feat_eyebrow">Tính năng</div>
+      <h2 data-ih="feat_h2">Mọi thứ cho email, <span class="neon">không cần thứ gì khác</span>.</h2>
+    </div>
+    <div class="bento">
+      <article class="f big reveal">
+        <div class="f-ico">✦</div>
+        <h3 data-i="f1t">AI dựng 3 phương án</h3>
+        <p data-i="f1p">Đưa ảnh và nội dung thô. AI đọc ảnh, viết copy, xếp block theo xu hướng, trả về 3 phương án khác nhau. Kết quả là block thật, không phải ảnh mockup.</p>
+        <div class="f-visual"><img src="landing/showcase/ps2-6-h.jpg" alt="" loading="lazy" /><img src="landing/showcase/doris2-5-h.jpg" alt="" loading="lazy" /><img src="landing/showcase/kids-4-h.jpg" alt="" loading="lazy" /></div>
+      </article>
+      <article class="f reveal" style="--d:.05s"><div class="f-ico">◐</div><h3 data-i="f2t">Brand kit có logo</h3><p data-i="f2p">Tên, logo, 8 token màu, 2 font. Đổi là cả email đổi theo, logo thay vào mọi nav và footer.</p></article>
+      <article class="f reveal" style="--d:.1s"><div class="f-ico">▦</div><h3 data-i="f3t">29 block · 24 mẫu</h3><p data-i="f3p">Hero phủ ảnh, dải gradient, bento, hàng icon, đếm ngược, mã giảm giá, bảng giá có giá cũ, tiles số liệu, social proof…</p></article>
+      <article class="f reveal" style="--d:.15s"><div class="f-ico">◫</div><h3 data-i="f4t">Xem trước y như hộp thư</h3><p data-i="f4p">HTML thật render tại chỗ. Desktop, iPhone, chế độ chặn ảnh để kiểm tra alt text, nền tối.</p></article>
+      <article class="f reveal" style="--d:.2s"><div class="f-ico">⌗</div><h3 data-i="f5t">Cắt lát theo link</h3><p data-i="f5p">Lưới sản phẩm dày, chữ đè ảnh, link lồng nhau: mỗi vùng link đúng một lát, ảnh không đổi không upload lại.</p></article>
+      <article class="f reveal" style="--d:.25s"><div class="f-ico">⊘</div><h3 data-i="f6t">Không bao giờ tự gửi</h3><p data-i="f6p">Phloem chỉ tạo draft. Cả relay cũng từ chối lệnh gửi. Người duyệt là bạn.</p></article>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="stats reveal">
+    <div><b data-count="24">0</b><span data-i="s1">mẫu email</span></div>
+    <div><b data-count="29">0</b><span data-i="s2">block</span></div>
+    <div><b data-count="14">0</b><span data-i="s3">bảng màu</span></div>
+    <div><b data-count="2">0</b><span data-i="s4">nền tảng draft</span></div>
+    <div><b>0</b><span data-i="s5">lần tự gửi</span></div>
+  </section>
+
+  <!-- CTA -->
+  <section class="final reveal">
+    <div class="final-card">
+      <div class="final-glow"></div>
+      <svg class="mark big float" viewBox="0 0 100 120" aria-hidden="true"><path d="M50 7C30 30 15 50 15 73a35 35 0 0 0 70 0C85 50 70 30 50 7Z" fill="none" stroke="#39ff14" stroke-width="9" stroke-linejoin="round"/><path d="M50 100V33" stroke="#39ff14" stroke-width="7" stroke-linecap="round"/><path d="M50 64C38 64 29 55 29 42c12 0 21 9 21 22Z" fill="#39ff14"/><path d="M50 80c12 0 21-9 21-22-12 0-21 9-21 22Z" fill="#39ff14"/></svg>
+      <h2 data-i="final_h2">Thử ngay. Không cần tài khoản.</h2>
+      <p data-i="final_p">Mở Studio, chọn một mẫu, đổi bảng màu, tải zip. Khi sẵn sàng, kết nối Mailchimp hoặc Klaviyo để tạo draft.</p>
+      <div class="cta-row center">
+        <a class="btn primary lg" href="studio/"><span data-i="final_cta1">Mở Studio</span> <span class="arr">→</span></a>
+        <a class="btn ghost lg" href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener" data-i="final_cta2">Bản claude.ai có AI</a>
+      </div>
+      <div class="dim mono small" data-i="tagline">phloem · mạch dẫn của cây: mang đúng thứ lá tạo ra tới nơi cần, không biến đổi.</div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="brand"><svg class="mark" viewBox="0 0 100 120" aria-hidden="true"><path d="M50 7C30 30 15 50 15 73a35 35 0 0 0 70 0C85 50 70 30 50 7Z" fill="none" stroke="#39ff14" stroke-width="9" stroke-linejoin="round"/><path d="M50 100V33" stroke="#39ff14" stroke-width="7" stroke-linecap="round"/><path d="M50 64C38 64 29 55 29 42c12 0 21 9 21 22Z" fill="#39ff14"/><path d="M50 80c12 0 21-9 21-22-12 0-21 9-21 22Z" fill="#39ff14"/></svg><span class="word">Phloem</span><span class="word studio">studio</span></div>
+  <nav><a href="studio/" data-i="foot_studio">Studio</a><a href="https://github.com/DorisLe-UXUI/phloem" target="_blank" rel="noopener">GitHub</a><a href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener">claude.ai</a><a href="#top" data-i="foot_top">Lên đầu trang</a></nav>
+  <div class="dim small" data-i="foot_line">Thiết kế email · Figma plugin · relay Mailchimp/Klaviyo · không bao giờ tự gửi</div>
+</footer>
+
+<script src="landing/landing.js" defer></script>
+</body>
+</html>

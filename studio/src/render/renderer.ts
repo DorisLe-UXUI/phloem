@@ -34,6 +34,13 @@ function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: n
   const x = n.x * s, y = n.y * s, w = n.w * s, h = n.h * s;
   const fill = col(n.fill, brand);
   if (fill) { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = fill; ctx.fill(); }
+  if (n.gradient) {
+    const a = ((n.gradient.angle || 0) * Math.PI) / 180;
+    const cx = x + w / 2, cy = y + h / 2, len = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
+    const g = ctx.createLinearGradient(cx - (Math.cos(a) * len) / 2, cy - (Math.sin(a) * len) / 2, cx + (Math.cos(a) * len) / 2, cy + (Math.sin(a) * len) / 2);
+    g.addColorStop(0, col(n.gradient.from, brand) || '#000'); g.addColorStop(1, col(n.gradient.to, brand) || '#000');
+    rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = g; ctx.fill();
+  }
   if (n.stroke && n.stroke.width > 0) {
     const sc = col(n.stroke.color, brand);
     if (sc) { rr(ctx, x + (n.stroke.width * s) / 2, y + (n.stroke.width * s) / 2, w - n.stroke.width * s, h - n.stroke.width * s, Math.max(0, n.radius * s - (n.stroke.width * s) / 2)); ctx.strokeStyle = sc; ctx.lineWidth = n.stroke.width * s; ctx.stroke(); }
@@ -128,7 +135,12 @@ function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s:
   } else if (editor && h > 40 * s && w > 80 * s) {
     drawPlaceholder(ctx, x, y, w, h, s, `Ảnh ${Math.round(n.w)}×${Math.round(n.h)} · kéo ảnh vào`);
   }
-  if (n.overlay && n.overlay.opacity > 0) { ctx.globalAlpha = n.overlay.opacity; ctx.fillStyle = n.overlay.color; ctx.fillRect(x, y, w, h); }
+  if (n.overlay && n.overlay.opacity > 0) {
+    ctx.globalAlpha = n.overlay.opacity;
+    if (n.overlay.gradient) { const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.35, 'rgba(0,0,0,0)'); g.addColorStop(1, n.overlay.color); ctx.fillStyle = g; }
+    else ctx.fillStyle = n.overlay.color;
+    ctx.fillRect(x, y, w, h);
+  }
   ctx.restore();
 }
 
@@ -156,6 +168,7 @@ function drawText(ctx: CanvasRenderingContext2D, n: TextNode, brand: Brand, s: n
     const ly = y0 + i * lay.lineHeight + pad + ascent;
     ctx.fillText(ln.text, lx, ly);
     if (n.underline && ln.width) { ctx.fillRect(lx, ly + 2 * s, ln.width, Math.max(1, s)); }
+    if (n.strike && ln.width) { ctx.fillRect(lx, ly - n.fontSize * s * 0.3, ln.width, Math.max(1, 1.2 * s)); }
   });
   ctx.restore();
 }

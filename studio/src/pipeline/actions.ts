@@ -7,6 +7,7 @@ import type { Brand, Doc, Node, Project, TextNode } from '../model/types';
 import { DEFAULT_BRAND, uid } from '../model/types';
 import * as ops from '../model/ops';
 import { makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
+import type { DraftRecord } from '../../../src/shared/types';
 import { docToNNode } from '../model/toNNode';
 import { textHeight } from '../render/textLayout';
 import { thumbnail } from '../render/renderer';
@@ -55,10 +56,11 @@ export async function saveProject(): Promise<void> {
   const s = get();
   if (!s.project) return;
   const p: Project = { ...s.project, updatedAt: new Date().toISOString() };
-  let thumb: string | undefined;
-  try { thumb = thumbnail(p.desktop, p.brand, assets, 320); } catch { /* fonts/images not ready */ }
+  let thumb: string | undefined, thumbMobile: string | undefined;
+  try { thumb = thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); } catch { /* fonts/images not ready */ }
+  const provider = (Object.values(p.drafts || {})[0] as DraftRecord | undefined)?.provider;
   try {
-    await db.putProject({ ...p, thumb });
+    await db.putProject({ ...p, thumb, thumbMobile, provider });
     set({ project: p, dirty: false, savedAt: p.updatedAt });
     void refreshProjects();
   } catch (e) { toast(`Không lưu được: ${(e as Error).message}`, 'err'); }
@@ -206,7 +208,39 @@ export function createMobileVariant() { const p = get().project; if (!p) return;
 export function deleteMobileVariant() { patchProject({ mobile: null }); setVariant('desktop'); }
 
 // ---------- brand ----------
-export function applyBrand(b: Partial<Brand>) { const p = get().project; if (!p) return; const nb = { ...p.brand, ...b }; ensureFonts([nb.fontFamily, nb.headingFamily]); patchProject({ brand: nb }); remeasureAll(); }
+export function applyBrand(b: Partial<Brand>) {
+  const p = get().project; if (!p) return;
+  const nb = { ...p.brand, ...b };
+  ensureFonts([nb.fontFamily, nb.headingFamily]);
+  patchProject({ brand: nb });
+  if (nb.logoAssetId !== p.brand.logoAssetId || nb.name !== p.brand.name) {
+    const d = doc();
+    const next = swapLogos(d, nb);
+    if (next !== d) commit(next);
+  }
+  remeasureAll();
+}
+
+/** Replace every "Logo" layer (nav/footer) with the brand's logo image, or back to the wordmark. */
+function swapLogos(d: Doc, b: Brand): Doc {
+  return ops.mapNodes(d, (n) => {
+    if (n.name !== 'Logo' || (n.type !== 'text' && n.type !== 'image')) return n;
+    const cy = n.y + n.h / 2;
+    const isCenter = n.type === 'text' ? n.align === 'center' : Math.abs(n.x + n.w / 2 - d.width / 2) < 4;
+    if (b.logoAssetId) {
+      if (n.type === 'image' && n.assetId === b.logoAssetId) return n;
+      const meta = assets.get(b.logoAssetId); const ratio = meta ? meta.w / Math.max(1, meta.h) : 3.2;
+      const h = n.type === 'image' ? n.h : (n.fontSize >= 16 ? 30 : 24); const w = Math.max(40, Math.min(220, Math.round(h * ratio)));
+      const x = isCenter ? Math.round((d.width - w) / 2) : n.x;
+      return { id: n.id, type: 'image', name: 'Logo', x, y: Math.round(cy - h / 2), w, h, visible: n.visible, locked: n.locked, opacity: 1, link: n.link, alt: b.name, assetId: b.logoAssetId, fit: 'contain', radius: 0, fill: null, overlay: null } as Node;
+    }
+    if (n.type === 'text') return n.text === b.name.toUpperCase() ? n : A_fixText({ ...n, text: b.name.toUpperCase() });
+    const t = mkText(b, b.name.toUpperCase(), { x: isCenter ? 24 : n.x, y: 0, w: isCenter ? d.width - 48 : 260, fontSize: n.h >= 28 ? 18 : 13, fontWeight: 800, letterSpacing: 1.5, name: 'Logo', link: n.link, align: isCenter ? 'center' : 'left' });
+    t.id = n.id; t.y = Math.round(cy - t.h / 2);
+    return t;
+  });
+}
+const A_fixText = (n: Node): Node => fixTextHeight(n);
 
 // ---------- analysis (shared engine) ----------
 export interface Analysis { root: NNode; plan: SlicePlan; checks: Check[]; suggestions: Suggestion[]; score: number }
@@ -245,7 +279,7 @@ export async function openProject(id: string) {
     const p = await db.getProject(id);
     if (!p) { toast('Không tìm thấy project.', 'err'); return; }
     history.clear();
-    const { thumb: _t, ...project } = p;
+    const { thumb: _t, thumbMobile: _tm, provider: _pv, ...project } = p;
     ensureFonts([project.brand.fontFamily, project.brand.headingFamily]);
     set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [] });
   } catch (e) { toast(`Không mở được: ${(e as Error).message}`, 'err'); }
@@ -256,8 +290,9 @@ export async function newProject(kind: TemplateKind, brandOverride?: Partial<Bra
   ensureFonts([b.fontFamily, b.headingFamily]);
   await document.fonts.ready;
   const t = makeTemplate(kind, b);
+  ensureFonts([t.brand.fontFamily, t.brand.headingFamily]);
   const now = new Date().toISOString();
-  const p: Project = { id: uid('p'), name: name || t.name, createdAt: now, updatedAt: now, brand: b, fields: t.fields, desktop: t.doc, mobile: null, drafts: {} };
+  const p: Project = { id: uid('p'), name: name || t.name, createdAt: now, updatedAt: now, brand: t.brand, fields: t.fields, desktop: t.doc, mobile: null, drafts: {} };
   history.clear();
   set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [] });
   await saveProject();

@@ -171,9 +171,7 @@ export async function makeBlock(kind: BlockKind): Promise<FrameNode> {
       f.primaryAxisSizingMode = 'FIXED'; f.resize(EMAIL_W, 24);
       return f;
     }
-    case 'hero-band':
-    case 'stats':
-    case 'quote': {
+    default: {
       // Studio-only richer blocks; in Figma fall back to a text block the designer can restyle.
       const f = await makeBlock('text');
       f.name = kind;

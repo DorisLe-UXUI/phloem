@@ -153,7 +153,7 @@ function TextProps({ n }: { n: TextNode }) {
       </div>
       <div class="row">
         <Seg value={n.align} options={[{ v: 'left', icon: 'alignL', title: 'Trái' }, { v: 'center', icon: 'alignC', title: 'Giữa' }, { v: 'right', icon: 'alignR', title: 'Phải' }]} onChange={(v) => up({ align: v })} />
-        <div class="seg"><button class={n.italic ? 'on' : ''} title="Nghiêng" onClick={() => up({ italic: !n.italic })}><Icon name="italic" /></button><button class={n.underline ? 'on' : ''} title="Gạch chân" onClick={() => up({ underline: !n.underline })}><Icon name="underline" /></button></div>
+        <div class="seg"><button class={n.italic ? 'on' : ''} title="Nghiêng" onClick={() => up({ italic: !n.italic })}><Icon name="italic" /></button><button class={n.underline ? 'on' : ''} title="Gạch chân" onClick={() => up({ underline: !n.underline })}><Icon name="underline" /></button><button class={n.strike ? 'on' : ''} title="Gạch ngang (giá cũ)" onClick={() => up({ strike: !n.strike })}><span style={{ textDecoration: 'line-through', fontWeight: 700 }}>S</span></button></div>
       </div>
       <Field label="Màu chữ"><ColorInput value={n.color} brand={b} onChange={(c) => up({ color: c || '#000000' })} /></Field>
       <Toggle checked={n.autoHeight} onChange={(v) => up({ autoHeight: v })} label="Chiều cao tự theo nội dung" />
@@ -169,6 +169,8 @@ function RectProps({ n }: { n: RectNode }) {
     <div class="section">
       <Eyebrow>Hình</Eyebrow>
       <Field label="Nền"><ColorInput value={n.fill} brand={b} allowNone onChange={(c) => up({ fill: c })} /></Field>
+      <Toggle checked={!!n.gradient} onChange={(v) => up({ gradient: v ? { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 } : null })} label="Gradient primary → accent" sub="Đổi hai màu trong Brand kit" />
+      {n.gradient && <div class="grid2"><Field label="Từ"><ColorInput value={n.gradient.from} brand={b} onChange={(c) => up({ gradient: { ...n.gradient!, from: c || '#000000' } })} /></Field><Field label="Đến"><ColorInput value={n.gradient.to} brand={b} onChange={(c) => up({ gradient: { ...n.gradient!, to: c || '#000000' } })} /></Field></div>}
       <Field label="Viền">
         <div class="row">
           <div class="grow"><ColorInput value={n.stroke?.color ?? null} brand={b} allowNone onChange={(c) => up({ stroke: c ? { color: c, width: n.stroke?.width || 1 } : null })} /></div>

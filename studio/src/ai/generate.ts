@@ -27,6 +27,24 @@ const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - stats: {stats:[{value,label}]} (3 mục, value ngắn như "12k+", "48h", "-25%")
 - quote: {quote, author}
 - cta: {heading, subhead, button:{label,url}}
+- hero-overlay: chữ trắng trên ảnh tối dần, {eyebrow, headline, subhead, button, image, imageAlt}. Rất hợp du lịch, ẩm thực, lifestyle.
+- split: ảnh trái, chữ phải {eyebrow, heading, body, button:{label,url}, image, imageAlt}
+- bento: {items:[{name, body, url, image}]} (đúng 3 item: 1 lớn + 2 nhỏ)
+- badges: {stats:[{value,label}]} (3–4 pill ngắn: "-30% toàn bộ", "Freeship", "24h giao")
+- dark-band: {eyebrow, headline (viết HOA, ≤40 ký tự), subhead, button} chữ khổ lớn trên nền tối, hợp streetwear/tech/fitness
+- categories: {items:[{name, url, image}]} (3 ảnh tròn)
+- gallery: {items:[{name, url, image}]} (3 ảnh vuông)
+- social: {quote:"4.9/5 từ 2.300 đánh giá", author:"dòng phụ"}
+- cta-wide: {button:{label,url}, subhead} nút full-width
+- hero-center: {style:"light"|"band"|"gradient", eyebrow (pill), headline (≤40 ký tự, có thể viết HOA), subhead, button, image, imageAlt} tiêu đề căn giữa khổ lớn, ảnh dưới; "gradient" rất hợp khuyến mãi lớn kiểu "GIẢM 20%"
+- icon-row: {items:[{name:"nhãn", body:"1 emoji hoặc ký tự", url}]} (4 mục) hàng icon tròn: dịch vụ, danh mục, lợi ích
+- checklist: {heading, items:[{name}]} (3–5 dòng ✓)
+- countdown: {heading, stats:[{value:"06",label:"Ngày"},{value:"12",label:"Giờ"},{value:"24",label:"Phút"},{value:"18",label:"Giây"}]}
+- code: {eyebrow:"Dùng mã", headline:"MÃ", subhead:"điều kiện"} khung mã giảm giá
+- stat-tiles: {stats:[{value:"+320%",label:"doanh thu"}]} (3 hoặc 4 tile)
+- articles: {items:[{name:"tiêu đề", badge:"EP01", body:"Đọc thêm →", url, image}]} (3 thẻ bài viết / tập video / dự án)
+- products-2/3 cũng nhận oldPrice ("$2.000") + badge ("-20%") để hiện giá cũ gạch ngang và nhãn
+- footer nhận social:[{label:"YouTube"|"Instagram"|"TikTok"|"Facebook"|"LinkedIn"|"X", url}]
 - divider: {} · spacer: {}
 - footer: {brand, address, unsubscribeUrl, preferencesUrl}`;
 
@@ -41,6 +59,7 @@ Quy tắc:
 - Lấy URL từ nội dung nếu có; nếu không, dùng https://example.com/… có nghĩa.
 - Mỗi phương án đặt tên ngắn (ví dụ "Tối giản", "Dải màu nổi bật", "Kể chuyện") và một câu "why" giải thích chọn cấu trúc đó cho mục tiêu nào.
 - Chọn palette cho mỗi phương án từ: ${presetNames.join(', ')}. Ưu tiên khác nhau giữa các phương án trừ khi người dùng đã chọn.
+- Thiết kế theo xu hướng hiện nay: một block "anchor" khổ lớn (hero-overlay / dark-band / hero-band / hero-center), hàng icon hoặc badges ngay dưới hero, khoảng trắng rộng, 1 CTA chính lặp lại ở cuối bằng cta-wide, social proof ngắn, footer có social, không quá 2 block chữ dài. Khuyến mãi: thêm code + countdown + giá cũ/mới.
 - fields: campaignName (ngắn), subject (30–55 ký tự, nói thẳng lợi ích), preheader (40–90 ký tự, nối tiếp subject, không lặp).
 
 Trả lời CHỈ bằng JSON hợp lệ, không giải thích thêm:

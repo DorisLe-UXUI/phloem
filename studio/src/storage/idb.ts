@@ -3,7 +3,7 @@ import type { Asset, Project } from '../model/types';
 
 const DB = 'phloem-studio', VER = 1;
 
-export interface ProjectMeta { id: string; name: string; updatedAt: string; thumb?: string }
+export interface ProjectMeta { id: string; name: string; updatedAt: string; thumb?: string; thumbMobile?: string; provider?: string }
 
 function open(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
@@ -28,7 +28,7 @@ function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) 
   }));
 }
 
-export interface StoredProject extends Project { thumb?: string }
+export interface StoredProject extends Project { thumb?: string; thumbMobile?: string; provider?: string }
 
 export const db = {
   putProject: (p: StoredProject) => tx<IDBValidKey>('projects', 'readwrite', (s) => s.put(p)),
@@ -36,7 +36,7 @@ export const db = {
   deleteProject: (id: string) => tx<undefined>('projects', 'readwrite', (s) => s.delete(id)),
   listProjects: async (): Promise<ProjectMeta[]> => {
     const all = await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll());
-    return all.map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, thumb: p.thumb })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return all.map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, thumb: p.thumb, thumbMobile: p.thumbMobile, provider: p.provider })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   },
   putAsset: async (a: Asset, blob: Blob) => { await tx('assets', 'readwrite', (s) => s.put(a)); await tx('blobs', 'readwrite', (s) => s.put(blob, a.id)); },
   getBlob: (id: string) => tx<Blob | undefined>('blobs', 'readonly', (s) => s.get(id)),

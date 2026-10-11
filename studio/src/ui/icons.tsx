@@ -61,10 +61,33 @@ const P: Record<string, string> = {
   palette: 'M10 2a8 8 0 100 16c1.5 0 2-1 1.5-2s0-2 1.5-2h1a4 4 0 004-4c0-4.4-3.6-8-8-8zM6 9h.01M8 6h.01M12 6h.01M14 9h.01',
   keyboard: 'M2 5h16v10H2zM5 8h.01M8 8h.01M11 8h.01M14 8h.01M5 11h.01M8 11h6M14 11h.01',
   external: 'M11 3h6v6M17 3l-8 8M14 11v6H3V6h6',
-  leaf: 'M10 2.5c4 3.2 6.5 7 6.5 11a6.5 6.5 0 0 1-13 0c0-4 2.5-7.8 6.5-11ZM10 7v10M10 11l-3-2.2M10 14l3-2.2',
+  leaf: 'M10 1.6C6.2 5.8 3.4 9.3 3.4 12.6a6.6 6.6 0 0 0 13.2 0c0-3.3-2.8-6.8-6.6-11Z M10 17V7.2 M10 11.2c-1.6 0-2.9-1.1-3.1-2.8 1.7-.1 3 1 3.1 2.8Z M10 13.6c1.6 0 2.9-1.1 3.1-2.8-1.7-.1-3 1-3.1 2.8Z',
 };
 
 export type IconName = keyof typeof P;
+
+/** Brand mark: drop outline with a sprout, neon glow. */
+export function LogoMark({ size = 22, glow = true }: { size?: number; glow?: boolean }) {
+  return (
+    <svg viewBox="0 0 100 120" width={size} height={size * 1.2} aria-hidden="true" style={glow ? { filter: 'drop-shadow(0 0 6px rgba(57,255,20,.55))' } : undefined}>
+      <path d="M50 7C30 30 15 50 15 73a35 35 0 0 0 70 0C85 50 70 30 50 7Z" fill="none" stroke="#39ff14" stroke-width="9" stroke-linejoin="round" />
+      <path d="M50 100V33" stroke="#39ff14" stroke-width="7" stroke-linecap="round" />
+      <path d="M50 64C38 64 29 55 29 42c12 0 21 9 21 22Z" fill="#39ff14" />
+      <path d="M50 80c12 0 21-9 21-22-12 0-21 9-21 22Z" fill="#39ff14" />
+    </svg>
+  );
+}
+
+/** Wordmark: "Phloem" + green "studio" in Poppins ExtraBold. */
+export function Logo({ size = 22, onClick, dark = false }: { size?: number; onClick?: () => void; dark?: boolean }) {
+  return (
+    <div class="logo" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
+      <LogoMark size={size} />
+      <span class="wordmark" style={{ fontSize: size * 0.95, color: dark ? '#111' : '#fff' }}>Phloem</span>
+      <span class="wordmark studio" style={{ fontSize: size * 0.95 }}>studio</span>
+    </div>
+  );
+}
 
 export function Icon({ name, size = 16, class: cls, style }: { name: IconName | string; size?: number; class?: string; style?: JSX.CSSProperties }) {
   return (
