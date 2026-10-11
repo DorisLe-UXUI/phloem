@@ -161,7 +161,7 @@ test/          node --test
 1. Bấm nút trên (hoặc Render → New → Blueprint → chọn repo). Render đọc `render.yaml`, tạo service `phloem-relay` từ `server/`.
 2. Điền `ANTHROPIC_API_KEY` (bắt buộc), `GOOGLE_CLIENT_ID` nếu muốn đăng nhập Google. `RELAY_TOKEN` tự sinh (không cần dùng nếu mọi người đăng nhập tài khoản).
 3. Gói Starter có ổ đĩa 1 GB cho SQLite (tài khoản, email, ảnh giữ qua các lần deploy). Gói Free: xoá khối `disk` và biến `DATA_DIR` trong `render.yaml`; relay vẫn chạy nhưng dữ liệu trên relay mất khi deploy lại (dữ liệu trong trình duyệt người dùng vẫn còn).
-4. Lấy URL dạng `https://phloem-relay.onrender.com`, dán vào `studio/index.html` → `<meta name="phloem-relay" content="https://…">`, push. Từ đó bản GitHub Pages mặc định trỏ về relay này: người dùng chỉ cần đăng ký/đăng nhập.
+4. Relay của Phloem đang chạy tại `https://phloem-relay.onrender.com` (gói Free). URL này nằm trong `<meta name="phloem-relay">` của `studio/index.html` và `index.html`; đổi relay thì sửa meta rồi push. Từ đó bản GitHub Pages mặc định trỏ về relay này: người dùng chỉ cần đăng ký/đăng nhập.
 
 Fly.io: `cd server && fly launch --copy-config --yes && fly volumes create phloem_data --size 1 && fly secrets set ANTHROPIC_API_KEY=… DATA_DIR=/data` (thêm `[mounts] source="phloem_data" destination="/data"` vào `fly.toml`).
 

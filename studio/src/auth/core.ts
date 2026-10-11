@@ -40,7 +40,8 @@ function setSession(s: Session | null) {
 }
 /** Relay settings the Studio saved in this browser (same origin as the landing page). */
 export function readStudioRelay(): AuthOpts {
-  try { const s = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); return { relayUrl: String(s.relayUrl || '').replace(/\/$/, ''), relayToken: String(s.relayToken || '') }; } catch { return {}; }
+  const meta = typeof document !== 'undefined' ? (document.querySelector('meta[name="phloem-relay"]') as HTMLMetaElement | null)?.content || '' : '';
+  try { const s = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); return { relayUrl: String(s.relayUrl || meta || '').replace(/\/$/, ''), relayToken: String(s.relayToken || '') }; } catch { return { relayUrl: meta.replace(/\/$/, ''), relayToken: '' }; }
 }
 
 export function validate(input: Credentials, register: boolean): AuthCode | null {

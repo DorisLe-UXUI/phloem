@@ -15,8 +15,6 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: RELAY_TOKEN
-        generateValue: true
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: MAILCHIMP_CLIENT_ID
