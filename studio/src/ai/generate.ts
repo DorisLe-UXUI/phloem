@@ -97,7 +97,7 @@ Quy tắc:
 - Thiết kế theo xu hướng hiện nay: một block "anchor" khổ lớn (hero-overlay / dark-band / hero-band / hero-center), hàng icon hoặc badges ngay dưới hero, khoảng trắng rộng, 1 CTA chính lặp lại ở cuối bằng cta-wide, social proof ngắn, footer có social, không quá 2 block chữ dài. Khuyến mãi: thêm code + countdown + giá cũ/mới.
 - fields: campaignName (ngắn), subject (30–55 ký tự, nói thẳng lợi ích), preheader (40–90 ký tự, nối tiếp subject, không lặp).
 - Mỗi phương án có vibe, headingFont, bodyFont riêng (khác nhau giữa 3 phương án khi hợp lý). Nếu website dùng font có trong danh sách thì ưu tiên font đó.
-- SẢN PHẨM THẬT: nếu hồ sơ web có danh sách sản phẩm (tên, giá, link, imageId) thì products-2/3, bento, categories, articles PHẢI dùng đúng dữ liệu đó (không bịa tên hay giá; tiền tệ giữ nguyên như web, ví dụ $93.00).
+- SẢN PHẨM THẬT: nếu hồ sơ web có danh sách sản phẩm (tên, giá, link, imageId) thì products-2/3, bento, categories, articles PHẢI dùng đúng dữ liệu đó (không bịa tên hay giá; tiền tệ giữ nguyên như web, ví dụ $93.00). Chỉ chọn sản phẩm CÓ imageId cho các card ảnh; không bao giờ để card sản phẩm trống ảnh khi còn sản phẩm khác có ảnh.
 - ẢNH: nếu có ảnh thì hero PHẢI dùng ảnh (hero-overlay / hero / hero-band / split), không để null. Ảnh tên "og-image" thường đã có chữ in sẵn: không dùng làm nền hero-overlay (chữ đè chữ), chỉ dùng ở hero/hero-band/split nếu không còn ảnh khác. Mỗi card sản phẩm/bài viết/bento/categories dùng một ảnh khác nhau. Chỉ để null khi thật sự không có ảnh phù hợp.
 
 Trả lời CHỈ bằng JSON hợp lệ, không giải thích thêm:

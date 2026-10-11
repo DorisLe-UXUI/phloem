@@ -98,13 +98,15 @@ export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (d
       return (await assets.add(file, name)).id;
     } catch { return null; }
   };
+  // Every product photo is imported (the composer needs one per card); `max` only caps the generic page images.
   const urls: { url: string; name: string }[] = [];
   const seen = new Set<string>();
   const push = (url: string, name: string) => { if (url && !seen.has(url)) { seen.add(url); urls.push({ url, name }); } };
+  for (const pr of (p.products || []).slice(0, 40)) if (pr.image) push(pr.image, pr.name);
+  const productCount = urls.length;
   if (p.ogImage) push(p.ogImage, 'og-image');
   for (const im of p.images) push(im.url, im.alt || im.url.split('/').pop()?.split('?')[0] || 'image');
-  for (const pr of p.products || []) if (pr.image) push(pr.image, pr.name);
-  const list = urls.slice(0, max);
+  const list = urls.slice(0, productCount + max);
   const wantLogo = !skipLogo && !!(p.logo || p.icon);
   const total = list.length + (wantLogo ? 1 : 0);
   let done = 0;
@@ -112,8 +114,8 @@ export async function importSiteImages(p: SiteProfile, max = 10, onProgress?: (d
   if (wantLogo) { done++; onProgress?.(done, total); }
   const imageIds: string[] = [];
   const byUrl = new Map<string, string>();
-  for (let i = 0; i < list.length; i += 3) {
-    const batch = list.slice(i, i + 3);
+  for (let i = 0; i < list.length; i += 4) {
+    const batch = list.slice(i, i + 4);
     const ids = await Promise.all(batch.map((x) => grab(x.url, x.name)));
     ids.forEach((id, k) => { done++; onProgress?.(done, total); if (id) { imageIds.push(id); byUrl.set(batch[k].url, id); } });
   }

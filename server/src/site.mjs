@@ -179,9 +179,9 @@ export function analyzeHtml(html, baseUrl) {
 }
 
 /** Shopify stores expose /products.json publicly: real names, prices and product photos. */
-export async function shopifyProducts(origin, limit = 12) {
+export async function shopifyProducts(origin, limit = 40) {
   try {
-    const j = JSON.parse(await fetchText(`${origin}/products.json?limit=${limit}`, { limit: 1_500_000, timeout: 8000 }));
+    const j = JSON.parse(await fetchText(`${origin}/products.json?limit=${Math.min(250, limit)}`, { limit: 4_000_000, timeout: 10000 }));
     return (j.products || []).filter((p) => p && p.title).slice(0, limit).map((p) => {
       const v = (p.variants || [])[0] || {};
       return { name: String(p.title).slice(0, 80), price: v.price ? String(v.price) : '', compareAt: v.compare_at_price ? String(v.compare_at_price) : '', type: p.product_type || '', url: `${origin}/products/${p.handle}`, image: (p.images || [])[0]?.src || '' };
