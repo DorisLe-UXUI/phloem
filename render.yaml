@@ -8,15 +8,11 @@ services:
     name: phloem-relay
     runtime: docker
     rootDir: server
-    plan: starter
+    plan: free
     healthCheckPath: /
-    disk:
-      name: phloem-data
-      mountPath: /var/data
-      sizeGB: 1
+    # Paid instance? Add a disk and DATA_DIR=/var/data so the SQLite database survives deploys:
+    #   disk: { name: phloem-data, mountPath: /var/data, sizeGB: 1 }   envVars: - key: DATA_DIR  value: /var/data
     envVars:
-      - key: DATA_DIR
-        value: /var/data
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: RELAY_TOKEN
