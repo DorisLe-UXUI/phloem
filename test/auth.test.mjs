@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAuth, hashPassword, signToken, validate, verifyPassword, verifyToken } from '../server/src/auth.mjs';
+import { decrypt, encrypt, openDb } from '../server/src/db.mjs';
 
 test('password hashes are salted and verify only the right password', () => {
   const a = hashPassword('correct horse'), b = hashPassword('correct horse');
@@ -29,10 +30,10 @@ test('validate returns the first failing field', () => {
   assert.equal(validate({ email: 'a@b.co', password: '12345678' }), null);
 });
 
-test('createAuth registers, refuses duplicates, logs in, resolves me, persists to disk', () => {
+test('createAuth: register, duplicates, login, me, revocable sessions, persisted in SQLite', () => {
   const dir = mkdtempSync(join(tmpdir(), 'phloem-auth-'));
   const auth = createAuth({ dataDir: dir });
-  const s = auth.register({ name: 'Khanh', email: 'K@Example.com ', password: 'passw0rd!', brand: 'Terra' });
+  const s = auth.register({ name: 'Khanh', email: 'K@Example.com ', password: 'passw0rd!', brand: 'Terra' }, 'test-agent');
   assert.equal(s.user.email, 'k@example.com');
   assert.equal(s.user.brand, 'Terra');
   assert.ok(!('password' in s.user));
@@ -42,11 +43,53 @@ test('createAuth registers, refuses duplicates, logs in, resolves me, persists t
   const l = auth.login({ email: 'k@example.com', password: 'passw0rd!' });
   assert.equal(auth.me(l.token)?.id, s.user.id);
   assert.equal(auth.me('bad.token'), null);
-  const onDisk = JSON.parse(readFileSync(join(dir, 'users.json'), 'utf8'));
-  assert.equal(onDisk.length, 1);
-  assert.match(onDisk[0].password, /^[0-9a-f]{32}:[0-9a-f]{64}$/);
-  // a second instance with the same data dir reuses the generated secret, so old tokens stay valid
+  assert.match(auth.db.users.byEmail('k@example.com').password, /^[0-9a-f]{32}:[0-9a-f]{64}$/);
+  assert.equal(auth.db.sessions.list(s.user.id).length, 2);
+  auth.logout(l.token);
+  assert.equal(auth.me(l.token), null, 'a logged-out token is refused even though its signature is valid');
+  assert.equal(auth.me(s.token)?.id, s.user.id);
+  auth.logoutAll(s.user.id);
+  assert.equal(auth.me(s.token), null);
+  // a second instance on the same data dir reuses the generated secret and the same database
   const again = createAuth({ dataDir: dir });
-  assert.equal(again.me(l.token)?.email, 'k@example.com');
   assert.equal(again.count(), 1);
+  const l2 = again.login({ email: 'k@example.com', password: 'passw0rd!' });
+  assert.equal(auth.me(l2.token)?.email, 'k@example.com', 'sessions are shared through the database');
+});
+
+test('createAuth migrates a legacy users.json once', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phloem-auth-legacy-'));
+  writeFileSync(join(dir, 'users.json'), JSON.stringify([{ id: 'u_old', name: 'Old', email: 'old@example.com', brand: '', password: hashPassword('oldpass123'), createdAt: '2026-01-01T00:00:00.000Z' }]));
+  const auth = createAuth({ dataDir: dir });
+  assert.equal(auth.count(), 1);
+  assert.equal(auth.login({ email: 'old@example.com', password: 'oldpass123' }).user.id, 'u_old');
+  assert.ok(!existsSync(join(dir, 'users.json')) && existsSync(join(dir, 'users.json.migrated')));
+});
+
+test('db: projects, assets, encrypted profiles are scoped per owner', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phloem-db-'));
+  const db = openDb(join(dir, 'phloem.db'));
+  db.users.insert({ id: 'u1', name: 'A', email: 'a@x.co', password: 'x', createdAt: '2026-01-01T00:00:00.000Z' });
+  db.users.insert({ id: 'u2', name: 'B', email: 'b@x.co', password: 'x', createdAt: '2026-01-01T00:00:00.000Z' });
+  const put = db.projects.put('u1', { id: 'p1', name: 'Promo', desktop: { nodes: [] }, mobile: null, brand: {}, fields: {}, drafts: {}, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', thumb: 'data:x' });
+  assert.equal(put.updatedAt, '2026-01-02T00:00:00.000Z');
+  assert.equal(db.projects.list('u1').length, 1);
+  assert.equal(db.projects.list('u2').length, 0);
+  assert.equal(db.projects.get('u2', 'p1'), null, 'another owner cannot read it');
+  assert.equal(db.projects.get('u1', 'p1').thumb, 'data:x');
+  db.projects.put('u2', { id: 'p1', name: 'Hijack', desktop: {}, updatedAt: '2026-01-03T00:00:00.000Z' });
+  assert.equal(db.projects.get('u1', 'p1').name, 'Promo', 'an upsert from another owner does not overwrite');
+  const a = db.assets.put('u1', { id: 'a1', name: 'logo.png', mime: 'image/png', w: 10, h: 10 }, Buffer.from([1, 2, 3]));
+  assert.equal(a.bytes, 3);
+  assert.deepEqual([...db.assets.get('u1', 'a1').data], [1, 2, 3]);
+  assert.equal(db.assets.get('u2', 'a1'), null);
+  assert.equal(db.assets.usage('u1').bytes, 3);
+  db.profiles.put('u1', 'secret', [{ id: 'pr1', provider: 'mailchimp', auth: { type: 'apikey', apiKey: 'abc-us1' } }]);
+  assert.equal(db.profiles.get('u1', 'secret').profiles[0].auth.apiKey, 'abc-us1');
+  assert.equal(db.profiles.get('u1', 'other-secret').profiles.length, 0, 'wrong key decrypts to nothing');
+  assert.notEqual(encrypt('s', 'hello').toString('hex'), encrypt('s', 'hello').toString('hex'));
+  assert.equal(decrypt('s', encrypt('s', 'hello')), 'hello');
+  db.projects.remove('u1', 'p1'); db.assets.remove('u1', 'a1');
+  assert.equal(db.stats('u1').projects.n, 0);
+  db.close();
 });

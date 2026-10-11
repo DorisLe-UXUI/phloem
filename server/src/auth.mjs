@@ -1,8 +1,9 @@
-// Accounts for the relay: scrypt password hashes, HMAC-signed bearer tokens, users in a JSON file.
+// Accounts for the relay: scrypt password hashes, HMAC-signed bearer tokens, revocable sessions, users in SQLite.
 // Zero dependencies. The relay never stores plaintext passwords and never emails anyone.
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { openDb } from './db.mjs';
 
 const TOKEN_TTL = 30 * 24 * 3600 * 1000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -20,7 +21,7 @@ export function verifyPassword(password, stored) {
 }
 
 export function signToken(userId, secret, now = Date.now(), ttl = TOKEN_TTL) {
-  const body = Buffer.from(JSON.stringify({ u: userId, e: now + ttl })).toString('base64url');
+  const body = Buffer.from(JSON.stringify({ u: userId, e: now + ttl, n: randomBytes(6).toString('hex') })).toString('base64url');
   const sig = createHmac('sha256', secret).update(body).digest('base64url');
   return `${body}.${sig}`;
 }
@@ -49,43 +50,52 @@ const fail = (status, code, message) => Object.assign(new Error(message), { stat
 
 export function createAuth({ dataDir, secret = '' }) {
   mkdirSync(dataDir, { recursive: true });
-  const usersFile = join(dataDir, 'users.json');
   if (!secret) {
     const f = join(dataDir, 'auth-secret');
     if (existsSync(f)) secret = readFileSync(f, 'utf8').trim();
     else { secret = randomBytes(32).toString('hex'); writeFileSync(f, secret, { mode: 0o600 }); }
   }
-  const load = () => { try { return existsSync(usersFile) ? JSON.parse(readFileSync(usersFile, 'utf8')) : []; } catch { return []; } };
-  const save = (users) => writeFileSync(usersFile, JSON.stringify(users, null, 2));
-  const pub = (u) => ({ id: u.id, name: u.name, email: u.email, brand: u.brand || '', createdAt: u.createdAt });
-  const session = (u) => ({ token: signToken(u.id, secret), user: pub(u) });
+  const db = openDb(join(dataDir, 'phloem.db'));
+  // One-time migration from the JSON store the first version used.
+  const legacy = join(dataDir, 'users.json');
+  if (existsSync(legacy)) {
+    try {
+      for (const u of JSON.parse(readFileSync(legacy, 'utf8'))) if (!db.users.byEmail(u.email)) db.users.insert({ id: u.id, name: u.name, email: u.email, brand: u.brand || '', password: u.password, createdAt: u.createdAt });
+      renameSync(legacy, `${legacy}.migrated`);
+    } catch (e) { console.error('[auth] users.json migration failed:', e?.message || e); }
+  }
+  const pub = (u) => ({ id: u.id, name: u.name, email: u.email, brand: u.brand || '', createdAt: u.created_at || u.createdAt });
+  const session = (u, agent) => { const token = signToken(u.id, secret); db.sessions.add(token, u.id, agent); return { token, user: pub(u) }; };
 
   return {
-    register(input) {
+    db,
+    secret,
+    register(input, agent = '') {
       const code = validate(input, { register: true });
       if (code) throw fail(400, code, { name: 'Tên cần ít nhất 2 ký tự.', email: 'Email không hợp lệ.', password: 'Mật khẩu cần ít nhất 8 ký tự.' }[code]);
-      const users = load();
       const email = String(input.email).trim().toLowerCase();
-      if (users.some((u) => u.email === email)) throw fail(409, 'exists', 'Email này đã có tài khoản. Hãy đăng nhập.');
-      const u = { id: `u_${randomBytes(8).toString('hex')}`, name: String(input.name).trim(), email, brand: String(input.brand || '').trim().slice(0, 80), password: hashPassword(input.password), createdAt: new Date().toISOString() };
-      users.push(u); save(users);
-      return session(u);
+      if (db.users.byEmail(email)) throw fail(409, 'exists', 'Email này đã có tài khoản. Hãy đăng nhập.');
+      const u = db.users.insert({ id: `u_${randomBytes(8).toString('hex')}`, name: String(input.name).trim().slice(0, 80), email, brand: String(input.brand || '').trim().slice(0, 80), password: hashPassword(input.password), createdAt: new Date().toISOString() });
+      return session(u, agent);
     },
-    login(input) {
+    login(input, agent = '') {
       const code = validate(input);
       if (code) throw fail(400, code, code === 'email' ? 'Email không hợp lệ.' : 'Mật khẩu cần ít nhất 8 ký tự.');
-      const email = String(input.email).trim().toLowerCase();
-      const u = load().find((x) => x.email === email);
+      const u = db.users.byEmail(String(input.email).trim().toLowerCase());
       if (!u) throw fail(404, 'notfound', 'Chưa có tài khoản với email này.');
       if (!verifyPassword(input.password, u.password)) throw fail(401, 'badpass', 'Mật khẩu không đúng.');
-      return session(u);
+      return session(u, agent);
     },
+    /** Token → user, or null when the signature, expiry or the session row (revoked) fails. */
     me(token) {
       const id = verifyToken(token, secret);
       if (!id) return null;
-      const u = load().find((x) => x.id === id);
+      if (db.sessions.check(token) !== id) return null;
+      const u = db.users.byId(id);
       return u ? pub(u) : null;
     },
-    count() { return load().length; },
+    logout(token) { db.sessions.remove(token); },
+    logoutAll(userId) { db.sessions.removeAll(userId); },
+    count() { return db.users.count(); },
   };
 }
