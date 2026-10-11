@@ -1,0 +1,33 @@
+# Render Blueprint: https://render.com/deploy?repo=https://github.com/DorisLe-UXUI/phloem
+# One web service running the relay (Docker, from server/). Add ANTHROPIC_API_KEY (and optionally GOOGLE_CLIENT_ID,
+# Mailchimp/Klaviyo OAuth) in the Render dashboard; RELAY_TOKEN is generated for you.
+# The database lives on the disk below (/var/data/phloem.db). Disks need a paid instance; on the free plan remove the
+# `disk` block and the DATA_DIR var — the relay still works, but accounts/projects on the relay reset on every deploy.
+services:
+  - type: web
+    name: phloem-relay
+    runtime: docker
+    rootDir: server
+    plan: starter
+    healthCheckPath: /
+    disk:
+      name: phloem-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RELAY_TOKEN
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: MAILCHIMP_CLIENT_ID
+        sync: false
+      - key: MAILCHIMP_CLIENT_SECRET
+        sync: false
+      - key: KLAVIYO_CLIENT_ID
+        sync: false
+      - key: KLAVIYO_CLIENT_SECRET
+        sync: false

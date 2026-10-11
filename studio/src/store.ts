@@ -86,7 +86,7 @@ export const initialState: State = {
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),
-  settings: loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, snap: true, grid: false, autosave: true, anthropicKey: '', aiModel: 'claude-opus-5-5' }),
+  settings: loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, relayUrl: (typeof document !== 'undefined' && (document.querySelector('meta[name="phloem-relay"]') as HTMLMetaElement | null)?.content) || DEFAULT_SETTINGS.relayUrl, snap: true, grid: false, autosave: true, anthropicKey: '', aiModel: 'claude-opus-5-5' }),
   toasts: [],
   dirty: false,
   savedAt: null,

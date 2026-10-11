@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 loadEnv(join(here, '..', '.env'));
 
 const PORT = Number(process.env.PORT || 8787);
-const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || (process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : '') || `http://localhost:${PORT}`).replace(/\/$/, '');
 const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
