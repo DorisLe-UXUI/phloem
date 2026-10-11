@@ -372,7 +372,6 @@ section { padding: clamp(56px, 9vh, 110px) var(--gutter); max-width: 1360px; mar
   section { padding-left: 16px; padding-right: 16px; }
   .btn.lg { width: 100%; justify-content: center; }
   .nav { padding: 10px 16px; gap: 10px; }
-  .nav-cta .ghost { display: none; }
   .signup-card { padding: 18px; }
   .word { font-size: 18px; }
   .nav-cta .btn.primary.sm { padding: 0 11px; }
