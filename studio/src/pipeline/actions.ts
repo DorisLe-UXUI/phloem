@@ -142,7 +142,34 @@ export function ungroupSelection() {
   for (const id of get().selection) { const n = ops.findNode(d, id); if (n?.type === 'group') { const r = ops.ungroup(d, id); d = r.doc; ids = ids.concat(r.ids); } else ids.push(id); }
   commit(d); set({ selection: ids });
 }
-export function reorderSelection(dir: 'up' | 'down' | 'top' | 'bottom') { let d = doc(); for (const id of get().selection) d = ops.reorder(d, id, dir); commit(d); }
+/**
+ * Layer order the way designers expect: stepping a free layer "down" over a block moves it INTO the block (as its top child)
+ * so the next steps slide it behind the product, the text, the glow…; stepping the top child "up" moves it back OUT above the block.
+ */
+function reorderSmart(d: Doc, id: string, dir: 'up' | 'down' | 'top' | 'bottom'): Doc {
+  const n = ops.findNode(d, id); if (!n) return d;
+  const parent = ops.findParent(d, id);
+  const hits = (a: ops.Rect, b: ops.Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  if (dir === 'down' && !parent) {
+    const i = d.nodes.findIndex((x) => x.id === id);
+    const below = d.nodes[i - 1];
+    if (below && below.type === 'group' && hits(ops.bounds(below), ops.bounds(n))) {
+      const without = { ...d, nodes: d.nodes.filter((x) => x.id !== id) };
+      return ops.updateNode(without, below.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children, n] }) : g));
+    }
+  }
+  if (dir === 'up' && parent) {
+    const idx = parent.children.findIndex((x) => x.id === id);
+    if (idx === parent.children.length - 1) {
+      const stripped = ops.updateNode(d, parent.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: g.children.filter((x) => x.id !== id) }) : g));
+      const top = ops.topLevelOf(stripped, parent.id) ?? parent;
+      const ti = stripped.nodes.findIndex((x) => x.id === top.id);
+      return ops.insertNodes(stripped, [n], ti + 1);
+    }
+  }
+  return ops.reorder(d, id, dir);
+}
+export function reorderSelection(dir: 'up' | 'down' | 'top' | 'bottom') { let d = doc(); for (const id of get().selection) d = reorderSmart(d, id, dir); commit(d); }
 export function alignSelection(how: ops.AlignHow) { commit(ops.align(doc(), get().selection, how)); }
 export function distributeSelection(axis: 'h' | 'v') { commit(ops.distribute(doc(), get().selection, axis)); }
 export function nudge(dx: number, dy: number) { const s = get(); if (!s.selection.length) return; commit(ops.moveBy(doc(), s.selection, dx, dy)); }

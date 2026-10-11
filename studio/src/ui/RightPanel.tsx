@@ -88,6 +88,13 @@ function AlignRow() {
         <Btn sm icon="alignT" title="Căn trên" onClick={() => A.alignSelection('top')} /><Btn sm icon="alignM" title="Căn giữa dọc" onClick={() => A.alignSelection('vcenter')} /><Btn sm icon="alignB" title="Căn dưới" onClick={() => A.alignSelection('bottom')} />
       </div>
       <div class="row"><Btn sm block icon="distH" title="Dàn đều ngang" onClick={() => A.distributeSelection('h')}>Dàn ngang</Btn><Btn sm block icon="distV" title="Dàn đều dọc" onClick={() => A.distributeSelection('v')}>Dàn dọc</Btn></div>
+      <Eyebrow>Lớp (trên / dưới)</Eyebrow>
+      <div class="grid4">
+        <Btn xs icon="up" title="Lên 1 lớp (⌘]) · từ trong block ra ngoài" onClick={() => A.reorderSelection('up')}>Lên</Btn>
+        <Btn xs icon="down" title="Xuống 1 lớp (⌘[) · đi vào block, chui xuống dưới sản phẩm" onClick={() => A.reorderSelection('down')}>Xuống</Btn>
+        <Btn xs title="Lên trên cùng (⌥⌘])" onClick={() => A.reorderSelection('top')}>Trên cùng</Btn>
+        <Btn xs title="Xuống dưới cùng (⌥⌘[)" onClick={() => A.reorderSelection('bottom')}>Dưới cùng</Btn>
+      </div>
     </div>
   );
 }
