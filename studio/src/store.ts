@@ -64,6 +64,8 @@ export interface State {
   cropping: string | null;
   /** Image layer in "cut a region" mode: drag a rectangle on it to make a new layer from that part. */
   cutting: string | null;
+  /** Preview the layer animations on the canvas (looping). */
+  playing: boolean;
 }
 
 export interface Scrap { id: string; assetId: string; x: number; y: number; w: number; h: number }
@@ -96,6 +98,7 @@ export const initialState: State = {
   scrapSel: null,
   cropping: null,
   cutting: null,
+  playing: false,
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),

@@ -149,7 +149,30 @@ export function extractStyle(css, googleFamilies = []) {
     for (const c of m[2].matchAll(/background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/gi)) { const h = hexOf(c[1]); if (!h) continue; const k = hsl(h); if (k.s < 0.2 || k.l < 0.1 || k.l > 0.92) continue; btn.set(h, (btn.get(h) || 0) + 1); }
   }
   const buttons = [...btn.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([hex, n]) => ({ hex, n }));
-  return { colors: brand.map((c) => ({ hex: c.hex, n: c.n })), darks, lights, fonts, vars: vars.slice(0, 6), buttons };
+  // Design language: how the brand shapes things (radius, button style, heading case/weight/tracking, dark or light theme).
+  const cssS = String(css);
+  const radii = [];
+  for (const m of cssS.matchAll(/([^{}]*(?:btn|button|cta|card)[^{}]*)\{([^}]*)\}/gi)) { for (const r of m[2].matchAll(/border-radius\s*:\s*([0-9.]+)(px|rem|em|%)/gi)) { const v = parseFloat(r[1]) * (r[2] === 'px' ? 1 : r[2] === '%' ? 10 : 16); radii.push(v); } }
+  const radius = radii.length ? radii.sort((a, b) => a - b)[Math.floor(radii.length / 2)] : null;
+  let upper = 0, headRules = 0, weights = [], spacing = [];
+  for (const m of cssS.matchAll(/((?<=^|[,}\s])h[12][^{}]*|[^{}]*(?:heading|title|hero__?title|display)[^{}]*)\{([^}]*)\}/gi)) {
+    headRules++; const body = m[2];
+    if (/text-transform\s*:\s*uppercase/i.test(body)) upper++;
+    const w = /font-weight\s*:\s*(\d{3}|bold|black|heavy)/i.exec(body); if (w) weights.push(/\d/.test(w[1]) ? +w[1] : w[1] === 'bold' ? 700 : 900);
+    const ls = /letter-spacing\s*:\s*(-?[0-9.]+)(px|em|rem)/i.exec(body); if (ls) spacing.push(parseFloat(ls[1]) * (ls[2] === 'px' ? 1 : 16));
+  }
+  let outline = 0, solid = 0;
+  for (const m of cssS.matchAll(/([^{}]*(?:btn|button|cta)[^{}]*)\{([^}]*)\}/gi)) { if (/:hover|:focus/i.test(m[1])) continue; const b = m[2]; if (/border\s*:\s*[0-9.]+px\s+solid/i.test(b) && /background(-color)?\s*:\s*(transparent|none)/i.test(b)) outline++; else if (/background(-color)?\s*:/i.test(b)) solid++; }
+  const bodyBg = (() => { const m = /(?:^|[,}\s])(?:body|html|:root)\s*\{([^}]*)\}/i.exec(cssS); if (!m) return null; const c = /background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/i.exec(m[1]); return c ? hexOf(c[1]) : null; })();
+  const design = {
+    radius, btnShape: radius == null ? null : radius >= 20 ? 'pill' : radius >= 6 ? 'rounded' : 'square',
+    uppercaseHeadings: headRules ? upper / headRules >= 0.4 : false,
+    headingWeight: weights.length ? Math.round(weights.reduce((a, b) => a + b, 0) / weights.length) : null,
+    letterSpacing: spacing.length ? +(spacing.reduce((a, b) => a + b, 0) / spacing.length).toFixed(2) : null,
+    buttonStyle: outline > solid ? 'outline' : 'solid',
+    darkTheme: bodyBg ? hsl(bodyBg).l < 0.25 : null, bodyBg,
+  };
+  return { colors: brand.map((c) => ({ hex: c.hex, n: c.n })), darks, lights, fonts, vars: vars.slice(0, 6), buttons, design };
 }
 
 /** Structural facts from one HTML document. No network. */
@@ -331,7 +354,9 @@ export async function siteProfile(rawUrl, { deep = true } = {}) {
   if (tc && tc.s >= 0.25 && tc.l >= 0.12 && tc.l <= 0.9 && !style.colors.some((c) => c.hex === a.themeColor)) style.colors.unshift({ hex: a.themeColor, n: 999 });
   const { _styles, _inlineCss, _googleFamilies, _shopify, ...pub } = a;
   const products = _shopify ? await shopifyProducts(u.origin) : [];
-  return { url: u.href, ...pub, platform: _shopify ? 'shopify' : '', products, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts, vars: style.vars, ctaColors: style.buttons, pages: pages.map(({ images: _i, ogImage: _o, ...rest }) => rest) };
+  const design = { ...style.design };
+  if (design.darkTheme == null) { const tc = a.themeColor ? hsl(a.themeColor) : null; design.darkTheme = tc ? tc.l < 0.25 : false; }
+  return { url: u.href, ...pub, platform: _shopify ? 'shopify' : '', products, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts, vars: style.vars, ctaColors: style.buttons, design, pages: pages.map(({ images: _i, ogImage: _o, ...rest }) => rest) };
 }
 
 /** Image proxy for the Studio: only public hosts, only image/* bodies, ≤ 10 MB. */

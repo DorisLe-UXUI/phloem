@@ -1,6 +1,6 @@
 // Website → brand profile for the AI composer: the relay reads the page (logo, colours, fonts, headings, images),
 // this module turns that into a Brand, imports the images as assets, and writes the summary the prompt uses.
-import type { Brand } from '../model/types';
+import type { Brand, Vibe } from '../model/types';
 import { FONTS } from '../model/types';
 import { assets } from '../storage/assets';
 import { get } from '../store';
@@ -24,6 +24,25 @@ export interface SiteProfile {
   /** Real menu links and social profiles found on the site. */
   navLinks?: { label: string; url: string }[];
   socials?: { label: string; url: string }[];
+  /** Design language read from the CSS. */
+  design?: { radius: number | null; btnShape: 'pill' | 'rounded' | 'square' | null; uppercaseHeadings: boolean; headingWeight: number | null; letterSpacing: number | null; buttonStyle: 'solid' | 'outline'; darkTheme: boolean | null; bodyBg: string | null };
+}
+/** Vibe + shape overrides that reproduce the website's design language inside Phloem's blocks. */
+export function designFromSite(p: SiteProfile): { vibe: Vibe; shape: NonNullable<Brand['shape']> } {
+  const d = p.design; const fonts = p.fonts.map((f) => f.name.toLowerCase()).join(' ');
+  const serif = /serif|playfair|garamond|georgia|times|lora|merriweather|cormorant|baskerville|fraunces|didot|bodoni/.test(fonts) && !/sans/.test(fonts);
+  const rounded = /nunito|baloo|fredoka|quicksand|varela|comic|rounded|poppins/.test(fonts);
+  let vibe: Vibe = 'clean';
+  if (serif) vibe = d?.darkTheme || (d?.radius != null && d.radius < 6) ? 'luxury' : 'editorial';
+  else if (d?.btnShape === 'pill' && (rounded || !(d.uppercaseHeadings))) vibe = 'playful';
+  else if (d?.darkTheme || (d?.headingWeight ?? 0) >= 800 || d?.uppercaseHeadings) vibe = 'bold';
+  const shape: NonNullable<Brand['shape']> = {};
+  if (d?.radius != null) { shape.radius = Math.round(Math.min(28, d.radius)); shape.btnRadius = Math.round(d.radius); }
+  if (d?.uppercaseHeadings) shape.uppercase = true;
+  if (d?.headingWeight) shape.headingWeight = Math.max(600, Math.min(900, Math.round(d.headingWeight / 100) * 100));
+  if (d?.letterSpacing != null && Math.abs(d.letterSpacing) <= 3) shape.track = d.letterSpacing;
+  if (d?.buttonStyle === 'outline') shape.outlineButtons = true;
+  return { vibe, shape };
 }
 /** Brand.links from a profile: what every logo / nav item / social icon should point at. */
 export function linksFromSite(p: SiteProfile): NonNullable<Brand['links']> {
@@ -119,8 +138,14 @@ export function brandFromSite(p: SiteProfile, extra: { logoColors?: string[] } =
   const onPrimary = lum(primary) > 0.45 ? '#111111' : '#FFFFFF';
   const dark = p.darks[0] && lum(p.darks[0]) < 0.08 ? p.darks[0] : '#141414';
   const heading = mapFont(p.fonts[0]?.name, 'heading'), body = mapFont(p.fonts[1]?.name || p.fonts[0]?.name, 'body');
+  const { vibe, shape } = designFromSite(p);
+  const darkTheme = !!p.design?.darkTheme;
+  // A dark website gets a dark email: page background from the site, light ink, slightly lifted "soft" bands.
+  const palette = darkTheme
+    ? (() => { const bg = p.design?.bodyBg && lum(p.design.bodyBg) < 0.12 ? p.design.bodyBg : dark; return { ink: '#F3F4F6', muted: mix('#F3F4F6', bg, 0.42), bg, soft: mix(bg, '#ffffff', 0.07), line: mix(bg, '#ffffff', 0.16) }; })()
+    : { ink: dark, muted: mix(dark, '#ffffff', 0.45), bg: '#FFFFFF', soft: mix(mix(primary, '#8a8a8a', 0.55), '#ffffff', 0.93), line: mix(mix(primary, '#8a8a8a', 0.5), '#ffffff', 0.84) };
   return {
-    primary, accent, onPrimary, ink: dark, muted: mix(dark, '#ffffff', 0.45), bg: '#FFFFFF', soft: mix(mix(primary, '#8a8a8a', 0.55), '#ffffff', 0.93), line: mix(mix(primary, '#8a8a8a', 0.5), '#ffffff', 0.84),
+    primary, accent, onPrimary, ...palette, vibe, shape,
     ...(heading ? { headingFamily: heading } : {}), ...(body ? { fontFamily: body } : {}),
     name: (p.siteName || p.title.split(/[|·•–-]/)[0] || 'BRAND').trim().slice(0, 40),
   };
@@ -231,6 +256,7 @@ export function siteSummary(p: SiteProfile, brand: Partial<Brand>): string {
     p.buttons.length ? `Nút trên trang: ${p.buttons.join(' · ')}` : '',
     p.text ? `Trích văn bản: ${p.text.slice(0, 600)}` : '',
     `Thương hiệu GỬI email là ${p.siteName || p.title.split(/[|·•–-]/)[0] || 'website này'}: email nói về chính họ và dịch vụ/sản phẩm của họ. Ảnh có alt mang tên thương hiệu khác (khách hàng, đối tác, case study) chỉ dùng làm "khách hàng tiêu biểu" / dự án đã làm trong articles, gallery, collage, quote; không bao giờ coi thương hiệu đó là người gửi hay chủ đề chính.`,
+    p.design ? `NGÔN NGỮ THIẾT KẾ của web (PHẢI tái hiện đúng, đây là "cách design" của thương hiệu): nền ${p.design.darkTheme ? 'TỐI → email dùng nền tối, dải tối, chữ sáng' : 'sáng'}; nút ${p.design.btnShape === 'pill' ? 'pill bo tròn hẳn' : p.design.btnShape === 'square' ? 'vuông góc' : p.design.btnShape === 'rounded' ? 'bo góc vừa' : 'không rõ'}${p.design.buttonStyle === 'outline' ? ', kiểu viền (outline)' : ''}; tiêu đề ${p.design.uppercaseHeadings ? 'IN HOA' : 'viết thường'}${p.design.headingWeight ? `, đậm ${p.design.headingWeight}` : ''}${p.design.letterSpacing != null ? `, giãn chữ ${p.design.letterSpacing}px` : ''}; vibe suy ra: ${brand.vibe}. Chọn vibe này cho cả 3 phương án (chỉ đổi nếu có lý do rất rõ) và viết headline theo đúng giọng/case của web.` : '',
     `Bộ màu nhận diện (ưu tiên biến CSS đặt tên brand/primary, màu logo, theme-color, màu nút): primary ${brand.primary}, accent ${brand.accent}${p.vars?.length ? ` · token CSS: ${p.vars.map((v) => `${v.name}=${v.hex}`).join(', ')}` : ''}${p.ctaColors?.length ? ` · màu nút: ${p.ctaColors.map((b) => b.hex).join(', ')}` : ''} · màu hay dùng trong CSS: ${p.colors.map((c) => c.hex).join(', ') || '(không rõ)'}. Dùng ĐÚNG primary/accent này, không đổi sang màu khác.`,
     `Font trên web: ${p.fonts.map((f) => f.name).join(', ') || '(không rõ)'} → Phloem dùng ${brand.headingFamily || 'mặc định'} / ${brand.fontFamily || 'mặc định'}`,
     p.pages && p.pages.length ? `Các trang con đã đọc:\n${p.pages.map((pg) => `- ${pg.path}: ${pg.title}${pg.headings.length ? ` — ${pg.headings.slice(0, 4).join(' | ')}` : ''}${pg.text ? ` — ${pg.text.slice(0, 160)}` : ''}`).join('\n')}` : '',

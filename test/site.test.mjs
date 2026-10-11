@@ -89,6 +89,15 @@ test('extractStyle finds named brand tokens and CTA button colours', () => {
   assert.deepEqual(st.buttons.map((b) => b.hex).sort(), ['#1f6feb', '#ff4fa3'], 'hover states ignored');
 });
 
+test('extractStyle reads the design language: radius, button style, heading case/weight, dark theme', () => {
+  const st = extractStyle('body{background:#0b0b0b;color:#fff}.btn{background:#f00;border-radius:999px}.btn-primary{border-radius:999px;background:#f00}h1{text-transform:uppercase;font-weight:900;letter-spacing:-1px}h2{text-transform:uppercase;font-weight:800}.card{border-radius:12px}');
+  assert.equal(st.design.btnShape, 'pill');
+  assert.equal(st.design.uppercaseHeadings, true);
+  assert.equal(st.design.headingWeight, 850);
+  assert.equal(st.design.darkTheme, true);
+  assert.equal(st.design.buttonStyle, 'solid');
+});
+
 test('isPublicHost refuses loopback, private ranges and local names', async () => {
   for (const h of ['localhost', '127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.1.1', '::1', 'printer.local', '0.0.0.0']) assert.equal(await isPublicHost(h), false, h);
   assert.equal(await isPublicHost('8.8.8.8'), true);

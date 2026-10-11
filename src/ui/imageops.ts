@@ -40,6 +40,7 @@ export async function finalizeSlices(slices: ExportedSlice[], format: ImageForma
   if (format === 'PNG') return slices;
   const out: ExportedSlice[] = [];
   for (const s of slices) {
+    if (s.format === 'GIF') { out.push(s); continue; } // animated slices stay GIF
     try {
       const jpg = await toJpeg(s.bytes, jpgQuality);
       // keep PNG if it is actually smaller (flat colour slices)
@@ -50,5 +51,5 @@ export async function finalizeSlices(slices: ExportedSlice[], format: ImageForma
   return out;
 }
 
-export function mimeOf(format: ImageFormat): string { return format === 'JPG' ? 'image/jpeg' : 'image/png'; }
-export function extOf(format: ImageFormat): string { return format === 'JPG' ? 'jpg' : 'png'; }
+export function mimeOf(format: ImageFormat): string { return format === 'JPG' ? 'image/jpeg' : format === 'GIF' ? 'image/gif' : 'image/png'; }
+export function extOf(format: ImageFormat): string { return format === 'JPG' ? 'jpg' : format === 'GIF' ? 'gif' : 'png'; }

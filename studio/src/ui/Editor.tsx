@@ -86,6 +86,9 @@ function TopBar() {
         <div class="tools">{tools.map((t) => <button key={t.t} class={`tool ${s.tool === t.t ? 'on' : ''}`} title={t.title} onClick={() => set({ tool: t.t })}><Icon name={t.icon} /><span class="k">{t.k}</span></button>)}</div>
         <div class="row" style={{ gap: 2 }}><Btn kind="ghost" sm icon="undo" title="Hoàn tác (⌘Z)" onClick={() => A.undo()} /><Btn kind="ghost" sm icon="redo" title="Làm lại (⇧⌘Z)" onClick={() => A.redo()} /></div>
         <div class="zoomc"><button class="tool" title="Thu nhỏ (⌘−)" onClick={() => zoomEvt('out')}><Icon name="zoomOut" /></button><span class="z" title="100% (⌘0)" onClick={() => zoomEvt('reset')}>{Math.round(s.zoom * 100)}%</span><button class="tool" title="Phóng to (⌘+)" onClick={() => zoomEvt('in')}><Icon name="zoomIn" /></button><button class="tool" title="Vừa màn hình (⌘1)" onClick={() => zoomEvt('fit')}><Icon name="fit" /></button></div>
+        <div class="variant" style={{ marginRight: 6 }}>
+          <button class={s.playing ? 'on' : ''} title="Xem thử chuyển động (các layer có 'Chuyển động'); khi xuất, lát đó thành GIF động" onClick={() => set({ playing: !s.playing })}><Icon name="play" size={13} />{s.playing ? 'Đang phát' : 'Phát'}</button>
+        </div>
         <div class="variant">
           <button class={s.variant === 'desktop' ? 'on' : ''} onClick={() => A.setVariant('desktop')}><Icon name="desktop" size={13} />Desktop<span class="k">{p.desktop.width}</span></button>
           {p.mobile ? <button class={s.variant === 'mobile' ? 'on' : ''} onClick={() => A.setVariant('mobile')}><Icon name="mobile" size={13} />Mobile<span class="k">{p.mobile.width}</span></button> : <button title="Tạo bản mobile 375px" onClick={() => A.createMobileVariant()}><Icon name="plus" size={13} />Mobile</button>}

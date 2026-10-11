@@ -144,6 +144,8 @@ export interface SlicerOptions {
   mergeRows: boolean;
   /** Minimum row height; thinner strips are merged into a neighbour. */
   minRowHeight: number;
+  /** Regions that must each come out as ONE full-width slice (animated blocks exported as a single GIF, so nothing drifts out of sync). */
+  keep?: { x: number; y: number; w: number; h: number }[];
 }
 
 export const DEFAULT_SLICER_OPTIONS: SlicerOptions = {
@@ -152,7 +154,7 @@ export const DEFAULT_SLICER_OPTIONS: SlicerOptions = {
   minRowHeight: 4,
 };
 
-export type ImageFormat = 'PNG' | 'JPG';
+export type ImageFormat = 'PNG' | 'JPG' | 'GIF';
 
 export interface ExportedSlice {
   key: string;

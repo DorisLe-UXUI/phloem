@@ -1,5 +1,5 @@
 // Canvas renderer: one code path for the editor artboard, project thumbnails and slice export.
-import type { Brand, Color, Doc, ImageNode, Node, RectNode, TextNode } from '../model/types';
+import type { Anim, Brand, Color, Doc, ImageNode, Node, RectNode, TextNode } from '../model/types';
 import { resolveColor } from '../model/types';
 import { layoutText } from './textLayout';
 
@@ -14,7 +14,25 @@ export interface RenderOptions {
   editor?: boolean;
   /** Skip these node ids (e.g. while editing text in an overlay). */
   skip?: Set<string>;
+  /** Animation time in seconds; undefined = final (static) state. */
+  t?: number;
 }
+
+const easeOut = (p: number) => 1 - Math.pow(1 - p, 3);
+/** Progress 0..1 of an entrance animation at time t (undefined → finished). */
+export function animProgress(a: Anim | null | undefined, t: number | undefined): number {
+  if (!a || t === undefined) return 1;
+  const d = a.delay ?? 0, dur = Math.max(0.05, a.dur ?? 0.8);
+  return Math.max(0, Math.min(1, (t - d) / dur));
+}
+/** Total length of one animation cycle for a doc (seconds), plus a hold on the final frame. */
+export function animCycle(nodes: Node[]): number {
+  let end = 0, marquee = false;
+  const walk = (list: Node[]) => { for (const n of list) { if (n.anim) { if (n.anim.kind === 'marquee') marquee = true; else end = Math.max(end, (n.anim.delay ?? 0) + (n.anim.dur ?? 0.8)); } if (n.type === 'group') walk(n.children); } };
+  walk(nodes);
+  return end > 0 ? end + 1.4 : marquee ? 4 : 0;
+}
+export function hasAnim(nodes: Node[]): boolean { return nodes.some((n) => !!n.anim || (n.type === 'group' && hasAnim(n.children))); }
 
 function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -56,8 +74,9 @@ function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: n
     if (n.gradient.radial) {
       g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) / 2);
       const from = n.gradient.from;
-      const mid: Color = typeof from === 'object' ? { token: from.token, alpha: (from.alpha ?? 1) * 0.45 } : from;
-      g.addColorStop(0, col(from, brand) || 'rgba(0,0,0,0)'); g.addColorStop(0.55, col(mid, brand) || 'rgba(0,0,0,0)'); g.addColorStop(1, col(n.gradient.to, brand) || 'rgba(0,0,0,0)');
+      const fromCss = col(from, brand) || 'rgba(0,0,0,0)';
+      const mid = typeof from === 'object' ? (col({ token: from.token, alpha: (from.alpha ?? 1) * 0.42 }, brand) || fromCss) : fadeCss(fromCss, 0.42);
+      g.addColorStop(0, fromCss); g.addColorStop(0.5, mid); g.addColorStop(1, col(n.gradient.to, brand) || 'rgba(0,0,0,0)');
     } else {
       const a = ((n.gradient.angle || 0) * Math.PI) / 180;
       const len = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
@@ -82,6 +101,13 @@ function mix(a: string, b: string, t: number): string {
   const A = hexRgb(a), B = hexRgb(b);
   const c = A.map((v, i) => Math.round(v + (B[i] - v) * t));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+/** Multiply a CSS colour's alpha (hex 6/8 digits or rgb/rgba) so radial glows fade smoothly instead of plateauing. */
+function fadeCss(c: string, f: number): string {
+  const m8 = /^#([0-9a-f]{6})([0-9a-f]{2})$/i.exec(c); if (m8) { const [r, g, b] = hexRgb('#' + m8[1]); return `rgba(${r},${g},${b},${((parseInt(m8[2], 16) / 255) * f).toFixed(3)})`; }
+  const m6 = /^#([0-9a-f]{6})$/i.exec(c); if (m6) { const [r, g, b] = hexRgb(c); return `rgba(${r},${g},${b},${f.toFixed(3)})`; }
+  const mr = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(c); if (mr) return `rgba(${mr[1]},${mr[2]},${mr[3]},${((mr[4] ? +mr[4] : 1) * f).toFixed(3)})`;
+  return c;
 }
 /** Darken an rgb/hex colour by t (0..1) for extrusion sides. */
 function shade(c: string, t: number): string {
@@ -289,15 +315,36 @@ function drawText(ctx: CanvasRenderingContext2D, n: TextNode, brand: Brand, s: n
   ctx.restore();
 }
 
-export function drawNode(ctx: CanvasRenderingContext2D, n: Node, brand: Brand, s: number, src: ImageSource, editor: boolean, skip?: Set<string>) {
+export function drawNode(ctx: CanvasRenderingContext2D, n: Node, brand: Brand, s: number, src: ImageSource, editor: boolean, skip?: Set<string>, t?: number) {
   if (!n.visible || (skip && skip.has(n.id))) return;
   ctx.save();
   if (n.opacity < 1) ctx.globalAlpha *= n.opacity;
-  switch (n.type) {
-    case 'rect': drawRect(ctx, n, brand, s); break;
-    case 'image': drawImage(ctx, n, brand, s, src, editor); break;
-    case 'text': drawText(ctx, n, brand, s); break;
-    case 'group': for (const c of n.children) drawNode(ctx, c, brand, s, src, editor, skip); break;
+  let node: Node = n;
+  if (n.anim && t !== undefined) {
+    const a = n.anim; const p = easeOut(animProgress(a, t));
+    const cx = (n.x + n.w / 2) * s, cy = (n.y + n.h / 2) * s;
+    if (a.kind === 'fade') ctx.globalAlpha *= p;
+    else if (a.kind === 'up') { ctx.globalAlpha *= p; ctx.translate(0, (1 - p) * 28 * s); }
+    else if (a.kind === 'down') { ctx.globalAlpha *= p; ctx.translate(0, -(1 - p) * 28 * s); }
+    else if (a.kind === 'left') { ctx.globalAlpha *= p; ctx.translate(-(1 - p) * 48 * s, 0); }
+    else if (a.kind === 'right') { ctx.globalAlpha *= p; ctx.translate((1 - p) * 48 * s, 0); }
+    else if (a.kind === 'pop') { const k = p < 1 ? 0.6 + 0.4 * p + (p > 0.6 ? Math.sin((p - 0.6) / 0.4 * Math.PI) * 0.06 : 0) : 1; ctx.globalAlpha *= Math.min(1, p * 1.6); ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
+    else if (a.kind === 'type' && n.type === 'text') { const raw = animProgress(a, t); node = { ...n, text: n.text.slice(0, Math.ceil(n.text.length * raw)) + (raw < 1 && Math.floor(t * 3) % 2 === 0 ? '|' : '') }; }
+    else if (a.kind === 'marquee' && n.type === 'text') {
+      // endless scroll: the line drawn twice, shifted by time
+      const lay = layoutText(n, brand, ctx, s); const lineW = Math.max(...lay.lines.map((l) => l.width)) / s + 40;
+      const speed = 60; const off = (t * speed) % lineW;
+      ctx.save(); ctx.beginPath(); ctx.rect(n.x * s, (n.y - 4) * s, n.w * s, (n.h + 8) * s); ctx.clip();
+      const nn = { ...n, w: Math.max(n.w, lineW * 2), align: 'left' as const };
+      drawText(ctx, { ...nn, x: n.x - off }, brand, s); drawText(ctx, { ...nn, x: n.x - off + lineW }, brand, s);
+      ctx.restore(); ctx.restore(); return;
+    }
+  }
+  switch (node.type) {
+    case 'rect': drawRect(ctx, node, brand, s); break;
+    case 'image': drawImage(ctx, node, brand, s, src, editor); break;
+    case 'text': drawText(ctx, node, brand, s); break;
+    case 'group': for (const c of node.children) drawNode(ctx, c, brand, s, src, editor, skip, t); break;
   }
   ctx.restore();
 }
@@ -309,7 +356,7 @@ export function renderDoc(ctx: CanvasRenderingContext2D, doc: Doc, brand: Brand,
   ctx.beginPath(); ctx.rect(0, 0, doc.width * s, doc.height * s); ctx.clip();
   const bg = col(doc.bg, brand) || '#ffffff';
   ctx.fillStyle = bg; ctx.fillRect(0, 0, doc.width * s, doc.height * s);
-  for (const n of doc.nodes) drawNode(ctx, n, brand, s, src, !!o.editor, o.skip);
+  for (const n of doc.nodes) drawNode(ctx, n, brand, s, src, !!o.editor, o.skip, o.t);
   ctx.restore();
 }
 
@@ -323,8 +370,8 @@ export function renderToCanvas(doc: Doc, brand: Brand, src: ImageSource, scale: 
   return c;
 }
 
-export function thumbnail(doc: Doc, brand: Brand, src: ImageSource, width = 240): string {
+export function thumbnail(doc: Doc, brand: Brand, src: ImageSource, width = 240, ratio = 1.6): string {
   const scale = width / doc.width;
-  const c = renderToCanvas({ ...doc, height: Math.min(doc.height, doc.width * 1.6) }, brand, src, scale);
+  const c = renderToCanvas({ ...doc, height: Math.min(doc.height, doc.width * ratio) }, brand, src, scale);
   return c.toDataURL('image/jpeg', 0.8);
 }

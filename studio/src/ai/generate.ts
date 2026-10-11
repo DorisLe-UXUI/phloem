@@ -141,7 +141,7 @@ Quy tắc:
 - Chọn palette cho mỗi phương án từ: ${presetNames.join(', ')}. Ưu tiên khác nhau giữa các phương án trừ khi người dùng đã chọn. Palette "Web" (nếu có) là màu lấy từ chính website: dùng cho ít nhất 2 trong 3 phương án, trừ khi người dùng đã chọn bảng màu khác.
 - Thiết kế theo xu hướng hiện nay: một block "anchor" khổ lớn (hero-overlay / dark-band / hero-band / hero-center), hàng icon hoặc badges ngay dưới hero, khoảng trắng rộng, 1 CTA chính lặp lại ở cuối bằng cta-wide, social proof ngắn, footer có social, không quá 2 block chữ dài. Khuyến mãi: thêm code + countdown + giá cũ/mới.
 - fields: campaignName (ngắn), subject (30–55 ký tự, nói thẳng lợi ích), preheader (40–90 ký tự, nối tiếp subject, không lặp).
-- Mỗi phương án có vibe, headingFont, bodyFont riêng (khác nhau giữa 3 phương án khi hợp lý). Nếu website dùng font có trong danh sách thì ưu tiên font đó.
+- Mỗi phương án có vibe, headingFont, bodyFont riêng. KHI CÓ WEBSITE: cả 3 phương án dùng vibe suy ra từ ngôn ngữ thiết kế của web và font của web (nếu có trong danh sách); khác nhau về cấu trúc/copy, không khác về "chất" thương hiệu. Email phải nhìn như do chính đội thiết kế của thương hiệu đó làm: cùng nền tối/sáng, cùng kiểu nút, cùng cách viết tiêu đề.
 - SẢN PHẨM THẬT: nếu hồ sơ web có danh sách sản phẩm (tên, giá, link, imageId) thì products-2/3, bento, categories, articles PHẢI dùng đúng dữ liệu đó (không bịa tên hay giá; tiền tệ giữ nguyên như web, ví dụ $93.00). Chỉ chọn sản phẩm CÓ imageId cho các card ảnh; không bao giờ để card sản phẩm trống ảnh khi còn sản phẩm khác có ảnh.
 - ẢNH: nếu có ảnh thì hero PHẢI dùng ảnh (hero-product / hero-overlay / hero / hero-band / hero-center / glass-hero), không để null. Ảnh sản phẩm tách nền hoặc nền tối/đơn sắc → hero-product; ảnh lifestyle ngang rộng → hero-overlay / glass-hero / hero-band; ảnh có chữ in sẵn (og-image) → chỉ hero-band / hero-center / dark-band (card nổi), không bao giờ làm nền hero-overlay. Ảnh tên "og-image" thường đã có chữ in sẵn: không dùng làm nền hero-overlay (chữ đè chữ), chỉ dùng ở hero/hero-band/split nếu không còn ảnh khác. Mỗi card sản phẩm/bài viết/bento/categories dùng một ảnh khác nhau. Chỉ để null khi thật sự không có ảnh phù hợp.
 
@@ -266,7 +266,8 @@ export function brandForPalette(name: string, base: Brand = DEFAULT_BRAND, web?:
 /** Brand for a variant: palette + vibe + fonts the AI chose, on top of the user's base (name, logo, web colours). */
 export function brandForVariant(v: Variant, base: Brand = DEFAULT_BRAND, web?: Partial<Brand> | null): Brand {
   const b = brandForPalette(v.palette, base, web);
-  return { ...b, vibe: v.vibe ?? b.vibe ?? 'clean', ...(v.headingFont ? { headingFamily: v.headingFont } : {}), ...(v.bodyFont ? { fontFamily: v.bodyFont } : {}) };
+  // the website's shape (radius, button style, uppercase headings) always applies on the Web palette: that IS the brand's design
+  return { ...b, vibe: v.vibe ?? b.vibe ?? 'clean', ...(v.headingFont ? { headingFamily: v.headingFont } : {}), ...(v.bodyFont ? { fontFamily: v.bodyFont } : {}), ...(v.palette === 'Web' && web?.shape ? { shape: web.shape } : {}) };
 }
 
 export function variantToDoc(v: Variant, brand: Brand): Doc {

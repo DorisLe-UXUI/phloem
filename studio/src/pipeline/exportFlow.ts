@@ -15,6 +15,7 @@ import { copyText, downloadBytes } from '../../../src/ui/clipboard';
 import type { Brand, Doc, Project } from '../model/types';
 import { resolveColor } from '../model/types';
 import { docToNNode } from '../model/toNNode';
+import { animBlocks } from '../model/ops';
 import { exportDocSlices } from '../render/exportSlices';
 import { get, log, set, toast } from '../store';
 import { patchProject } from './actions';
@@ -109,7 +110,7 @@ function busy(label: string, done = 0, total = 0) { set({ busy: { label, done, t
 async function exportProject(p: Project, prof: Profile | null): Promise<Exported> {
   const format = prof?.imageFormat ?? 'PNG', scale = prof?.scale ?? 2, q = prof?.jpgQuality ?? 85;
   const s = get().settings;
-  const planFor = (d: Doc) => planSlices(docToNNode(d, p.brand), { maxSliceHeight: s.maxSliceHeight, mergeRows: s.mergeRows });
+  const planFor = (d: Doc) => planSlices(docToNNode(d, p.brand), { maxSliceHeight: s.maxSliceHeight, mergeRows: s.mergeRows, keep: animBlocks(d.nodes) });
   busy('Cắt & xuất ảnh…');
   const plan = planFor(p.desktop);
   const raw = await exportDocSlices(p.desktop, p.brand, plan, scale, (d, t) => busy('Cắt & xuất ảnh…', d, t));

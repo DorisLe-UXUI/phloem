@@ -126,7 +126,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       setVariants(vs);
       ensureFonts(vs.flatMap((v) => [v.headingFont || '', v.bodyFont || '']).filter(Boolean));
       await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]);
-      const render = () => vs.map((v) => { const br = brandForVariant(v, baseBrand(), form.webBrand); try { return thumbnail(variantToDoc(v, br), br, assets, 320); } catch { return ''; } });
+      const render = () => vs.map((v) => { const br = brandForVariant(v, baseBrand(), form.webBrand); try { return thumbnail(variantToDoc(v, br), br, assets, 480, 2.1); } catch { return ''; } });
       setThumbs(render());
       setTimeout(() => setThumbs(render()), 2500); // once web fonts are in
     } catch (e) { setErr((e as Error).message); }
@@ -160,6 +160,8 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const tagForProject = (pid: string) => { const ids = [...form.imageIds, form.logoAssetId, form.logoLightAssetId].filter((x): x is string => !!x).filter((id) => !assets.get(id)?.project); if (ids.length) assets.tag(ids, { project: pid }); };
   const all = assets.all();
   const groups = groupAssets(all, { projectId: s.project?.id ?? null, usedIds: usedAssetIds(s.project), scope: 'all' });
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const PREVIEW = 12; // two rows per group until "+N"
   const groupSel = (ids: string[]) => { const allOn = ids.every((id) => form.imageIds.includes(id)); upd((f) => ({ imageIds: allOn ? f.imageIds.filter((x) => !ids.includes(x)) : [...f.imageIds, ...ids.filter((x) => !f.imageIds.includes(x))] })); };
   return (
     <Modal title="Dựng bằng AI" icon="sparkle" onClose={onClose} wide
@@ -220,13 +222,15 @@ export function AiModal({ onClose }: { onClose: () => void }) {
           <div key={g.key} class="section" style={{ gap: 6 }}>
             <div class="row small"><b class="grow" style={{ color: on ? 'var(--neon)' : 'var(--muted)' }}>{g.label} · {on}/{ids.length} chọn</b><button class="chip" style={{ cursor: 'pointer' }} onClick={() => groupSel(ids)}>{on === ids.length ? 'Bỏ chọn nhóm' : 'Chọn cả nhóm'}</button></div>
             <div class="asset-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-              {g.items.map((a) => (
+              {(expandedGroups[g.key] ? g.items : g.items.slice(0, PREVIEW)).map((a) => (
                 <div key={a.id} class={`asset ${form.imageIds.includes(a.id) ? 'on' : ''}`} style={form.imageIds.includes(a.id) ? { outline: '2px solid var(--neon)', outlineOffset: -2 } : {}} title={`${a.name}${a.src?.page ? ` · ${a.src.page}` : ''} · ${a.w}×${a.h}`} onClick={() => toggleImg(a.id)}>
                   {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
                   {form.imageIds.includes(a.id) && <span style={{ position: 'absolute', top: 4, left: 4, background: 'var(--neon)', color: 'var(--neon-ink)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>{form.imageIds.indexOf(a.id) + 1}</span>}
                   {pageLabel(a) && <div class="nm">{pageLabel(a)}</div>}
                 </div>
               ))}
+              {g.items.length > PREVIEW && !expandedGroups[g.key] && <button class="asset more" title="Xem thêm" onClick={() => setExpandedGroups((x) => ({ ...x, [g.key]: true }))}>+{g.items.length - PREVIEW}</button>}
+              {g.items.length > PREVIEW && expandedGroups[g.key] && <button class="asset more" title="Thu gọn" onClick={() => setExpandedGroups((x) => ({ ...x, [g.key]: false }))}>−</button>}
             </div>
           </div>
         );
@@ -243,10 +247,10 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       {variants.length > 0 && (
         <>
           <Eyebrow>3 phương án</Eyebrow>
-          <div class="tpl-grid">
+          <div class="tpl-grid ai-variants">
             {variants.map((v, i) => (
               <div key={i} class="tpl">
-                <div class="pv" style={{ aspectRatio: '3 / 3.2' }}>{thumbs[i] ? <img src={thumbs[i]} alt="" /> : null}</div>
+                <div class="pv">{thumbs[i] ? <img src={thumbs[i]} alt="" /> : null}</div>
                 <div class="meta">
                   <div class="row"><div class="nm grow">{v.name}</div><span class="chip">{v.palette}</span>{v.vibe && <span class="chip on">{v.vibe}</span>}</div>
                   {(v.headingFont || v.bodyFont) && <div class="ds mono">{[v.headingFont, v.bodyFont].filter(Boolean).join(' + ')}</div>}

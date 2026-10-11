@@ -4,6 +4,9 @@ import { ensureFonts } from './render/fonts';
 import { assets } from './storage/assets';
 import { refreshProjects, restoreSession } from './pipeline/actions';
 import * as A from './pipeline/actions';
+import { planSlices } from '../../src/shared/slicer';
+import { docToNNode } from './model/toNNode';
+import { exportDocSlices } from './render/exportSlices';
 import { get, set } from './store';
 
 ensureFonts(['Inter']);
@@ -30,7 +33,7 @@ render(<App />, document.getElementById('root')!);
 import { TEMPLATES, makeTemplate, buildDoc, type BlockSpec } from './model/templates';
 import { BRAND_PRESETS, DEFAULT_BRAND } from './model/types';
 import { renderToCanvas } from './render/renderer';
-import { makeMobile } from './model/ops';
+import { animBlocks, makeMobile } from './model/ops';
 (window as unknown as { __phloemExportThumbs?: (base?: string) => Promise<string[]> }).__phloemExportThumbs = async (base = '') => {
   const out: string[] = [];
   for (const t of TEMPLATES) {
@@ -107,4 +110,8 @@ import { makeMobile } from './model/ops';
 };
 
 // Dev/testing hook: store + actions + assets, used by browser checks.
-(window as unknown as { __phloemDev?: unknown }).__phloemDev = { get, set, A, assets };
+(window as unknown as { __phloemDev?: unknown }).__phloemDev = {
+  get, set, A, assets,
+  /** Export the open project's desktop doc as slices (PNG, animated regions as GIF) without uploading. */
+  exportSlices: async (fps = 10) => { const p = get().project!; const plan = planSlices(docToNNode(p.desktop, p.brand), { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: animBlocks(p.desktop.nodes) }); const slices = await exportDocSlices(p.desktop, p.brand, plan, 2, undefined, fps); return slices.map((x) => ({ key: x.key, format: x.format, kb: Math.round(x.bytes.length / 1024), w: x.w, h: x.h, url: x.format === 'GIF' ? URL.createObjectURL(new Blob([x.bytes as BlobPart], { type: 'image/gif' })) : undefined })); },
+};

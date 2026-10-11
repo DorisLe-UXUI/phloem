@@ -24,6 +24,8 @@ export interface Brand {
   logoAssetId: string | null;
   /** White/light version of the logo for dark bands (made automatically from SVG or transparent dark logos). */
   logoLightAssetId?: string | null;
+  /** Design language taken from the website: overrides the vibe's defaults so the email is shaped like the brand. */
+  shape?: { radius?: number; btnRadius?: number; uppercase?: boolean; headingWeight?: number; track?: number; outlineButtons?: boolean } | null;
   /** Real destinations read from the website: home page, menu and social profiles (used for logo/nav/footer links and auto-fix). */
   links?: { website?: string; nav?: { label: string; url: string }[]; socials?: { label: string; url: string }[]; products?: { name: string; url: string; image?: string }[] } | null;
   /** Brand gradient (primary → accent) on every primary-coloured band; null/undefined = flat. */
@@ -56,6 +58,8 @@ export interface BaseNode {
   opacity: number;
   link: string | null;
   alt: string;
+  /** Motion for animated (GIF) slices: how this layer enters, or loops (marquee). Static renders show the final state. */
+  anim?: Anim | null;
   /** Block kind this node was inserted as (top-level groups). */
   block?: string;
 }
@@ -114,6 +118,8 @@ export interface ImageNode extends BaseNode {
   /** Gaussian blur in px (depth of field, soft backgrounds behind text). */
   blur?: number;
 }
+/** Layer motion. delay/dur in seconds. 'marquee' scrolls text forever; 'type' reveals text letter by letter. */
+export interface Anim { kind: 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'marquee' | 'type'; delay?: number; dur?: number }
 /** 3D-ish text treatments drawn by the renderer. */
 export interface TextEffect { kind: 'extrude' | 'neon' | 'outline' | 'shadow'; color?: Color; depth?: number; angle?: number }
 

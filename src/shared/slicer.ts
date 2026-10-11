@@ -49,7 +49,7 @@ function pickRegion(regs: Region[], px: number, py: number): Region | null {
 }
 
 interface Cell { x: number; w: number; link: string | null; linkNodeId: string | null }
-interface RawRow { y: number; h: number; cells: Cell[] }
+interface RawRow { y: number; h: number; cells: Cell[]; keep?: number }
 
 function cellsForRow(regs: Region[], y: number, h: number, W: number): Cell[] {
   const overlapping = regs.filter((r) => r.y < y + h && r.y + r.h > y);
@@ -70,12 +70,42 @@ function cellsForRow(regs: Region[], y: number, h: number, W: number): Cell[] {
 }
 
 function sameStructure(a: RawRow, b: RawRow): boolean {
+  if (a.keep !== undefined || b.keep !== undefined) return false; // kept (animated) rows never absorb static neighbours
   if (a.cells.length !== b.cells.length) return false;
   for (let i = 0; i < a.cells.length; i++) {
     const p = a.cells[i], q = b.cells[i];
     if (p.x !== q.x || p.w !== q.w || p.link !== q.link || p.linkNodeId !== q.linkNodeId) return false;
   }
   return true;
+}
+
+/** Merge overlapping/touching y-intervals. */
+function uniteSpans(spans: [number, number][]): [number, number][] {
+  const sorted = [...spans].sort((a, b) => a[0] - b[0]);
+  const out: [number, number][] = [];
+  for (const sp of sorted) { const last = out[out.length - 1]; if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]); else out.push([sp[0], sp[1]]); }
+  return out;
+}
+
+/** The link that covers most of a rect (a kept row gets one link for the whole GIF). */
+function dominantLink(regs: Region[], r: Rect): { link: string | null; linkNodeId: string | null } {
+  let best: { reg: Region; a: number } | null = null;
+  for (const reg of regs) { const a = area(intersect(reg, r)); if (a > 0 && (!best || a > best.a)) best = { reg, a }; }
+  return best ? { link: best.reg.node.link, linkNodeId: best.reg.node.id } : { link: null, linkNodeId: null };
+}
+
+/** Rows touching a kept span collapse into one full-width row per span (one slice, one GIF). */
+function keepRows(rows: RawRow[], spans: [number, number][], regs: Region[], W: number): RawRow[] {
+  const out: RawRow[] = [];
+  for (const r of rows) {
+    const k = spans.findIndex(([a, b]) => r.y < b && r.y + r.h > a);
+    const prev = out[out.length - 1];
+    if (k >= 0 && prev && prev.keep === k) { prev.h += r.h; continue; }
+    if (k >= 0) { out.push({ y: r.y, h: r.h, cells: [], keep: k }); continue; }
+    out.push(r);
+  }
+  for (const r of out) if (r.keep !== undefined) r.cells = [{ x: 0, w: W, ...dominantLink(regs, { x: 0, y: r.y, w: W, h: r.h }) }];
+  return out;
 }
 
 /** Natural cut candidates: edges of top-level children, for splitting over-tall rows nicely. */
@@ -152,9 +182,11 @@ export function planSlices(root: NNode, opts: Partial<SlicerOptions> = {}): Slic
   const o: SlicerOptions = { ...DEFAULT_SLICER_OPTIONS, ...opts };
   const W = Math.round(root.w), H = Math.round(root.h);
   const regs = linkRegions(root);
+  const keeps = (o.keep || []).map((k) => clipToFrame(k, W, H)).filter((k): k is Rect => !!k && k.h >= 1);
+  const spans = uniteSpans(keeps.map((k) => [k.y, k.y + k.h] as [number, number]));
 
-  // 1. horizontal cuts at every link edge
-  const ys = uniqSorted([0, H, ...regs.flatMap((r) => [clamp(r.y, 0, H), clamp(r.y + r.h, 0, H)])]);
+  // 1. horizontal cuts at every link edge (and at the edges of kept regions)
+  const ys = uniqSorted([0, H, ...regs.flatMap((r) => [clamp(r.y, 0, H), clamp(r.y + r.h, 0, H)]), ...spans.flat()]);
   let rows: RawRow[] = [];
   for (let i = 0; i < ys.length - 1; i++) {
     const y = ys[i], h = ys[i + 1] - ys[i];
@@ -172,6 +204,9 @@ export function planSlices(root: NNode, opts: Partial<SlicerOptions> = {}): Slic
     merged.push(r);
   }
   rows = merged;
+
+  // 2b. animated regions: everything a kept span touches becomes one full-width row (one GIF, always in sync)
+  if (spans.length) rows = keepRows(rows, spans, regs, W);
 
   // 3. merge vertically adjacent rows with identical structure
   if (o.mergeRows) {

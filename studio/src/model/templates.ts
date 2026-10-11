@@ -21,7 +21,12 @@ export interface Theme {
   /** Big numerals instead of small circles for step numbers. */
   bigNumerals: boolean;
 }
-export function themeFor(vibe?: Vibe): Theme {
+export function themeFor(vibe?: Vibe, shape?: Brand['shape']): Theme {
+  const base = baseTheme(vibe);
+  if (!shape) return base;
+  return { ...base, ...(shape.radius != null ? { radius: Math.max(0, Math.min(28, shape.radius)) } : {}), ...(shape.btnRadius != null ? { btnRadius: shape.btnRadius >= 20 ? 999 : Math.max(0, Math.min(16, shape.btnRadius)) } : {}), ...(shape.track != null ? { track: Math.max(-2, Math.min(2, shape.track)) } : {}), ...(shape.radius != null && shape.radius < 4 ? { stroke: true, shadow: false, glow: false } : {}) };
+}
+function baseTheme(vibe?: Vibe): Theme {
   switch (vibe) {
     case 'playful': return { radius: 22, btnRadius: 999, shadow: true, glow: true, heroScale: 1.1, eyebrowPill: true, blobs: true, stroke: false, btnH: 52, track: -0.3, space: 1, bigNumerals: false };
     case 'bold': return { radius: 14, btnRadius: 999, shadow: true, glow: true, heroScale: 1.25, eyebrowPill: true, blobs: true, stroke: false, btnH: 54, track: -1.2, space: 1, bigNumerals: true };
@@ -43,7 +48,7 @@ function blobs(T: Theme, y: number, bandH: number, light: boolean): RectNode[] {
   const a = light ? 0.5 : 0.28;
   return [
     rect({ x: W - Math.round(sz * 0.8), y: y + 8, w: sz, h: sz, fill: null, gradient: { from: { token: 'accent', alpha: a }, to: { token: 'accent', alpha: 0 }, angle: 0, radial: true }, name: 'Glow' }),
-    rect({ x: 0, y: y + bandH - sz - 8, w: Math.round(sz * 0.8), h: Math.round(sz * 0.8), fill: null, gradient: { from: light ? '#FFFFFF55' : '#FFFFFF22', to: '#FFFFFF00', angle: 0, radial: true }, name: 'Glow' }),
+    rect({ x: 0, y: y + bandH - sz - 8, w: Math.round(sz * 0.8), h: Math.round(sz * 0.8), fill: null, gradient: { from: light ? '#FFFFFF3a' : '#FFFFFF14', to: '#FFFFFF00', angle: 0, radial: true }, name: 'Glow' }),
   ];
 }
 /** A round "-30%" style badge (two short lines) pinned on a photo. */
@@ -89,10 +94,11 @@ export function button(brand: Brand, label: string, url: string, x: number, y: n
   const fs = o.fontSize ?? 16;
   const probe = text(brand, label, { x: 0, y: 0, w: 400, fontSize: fs, fontWeight: 700, name: label });
   const wText = Math.min(400, Math.ceil(measureWidth(brand, probe)));
-  const T = themeFor(brand.vibe);
+  const T = themeFor(brand.vibe, brand.shape);
   const w = o.w ?? wText + (T.btnRadius >= 999 ? 64 : 56), h = o.h ?? T.btnH;
-  const bg = rect({ x, y, w, h, fill: { token: o.inverse ? 'bg' : 'primary' }, radius: o.radius ?? T.btnRadius, name: 'Button bg', shadow: o.inverse ? (T.shadow ? { blur: 16, y: 6, color: '#000000', opacity: 0.18 } : null) : btnShadow(T, brand) });
-  const t = text(brand, label, { x, y, w, h, fontSize: fs, fontWeight: 700, color: { token: o.inverse ? 'primary' : 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: label });
+  const outline = !!brand.shape?.outlineButtons && !o.inverse;
+  const bg = rect({ x, y, w, h, fill: outline ? null : { token: o.inverse ? 'bg' : 'primary' }, radius: o.radius ?? T.btnRadius, name: 'Button bg', stroke: outline ? { color: { token: 'primary' }, width: 2 } : null, shadow: outline ? null : o.inverse ? (T.shadow ? { blur: 16, y: 6, color: '#000000', opacity: 0.18 } : null) : btnShadow(T, brand) });
+  const t = text(brand, brand.shape?.uppercase ? up(label) : label, { x, y, w, h, fontSize: fs, fontWeight: 700, color: { token: outline ? 'primary' : o.inverse ? 'primary' : 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: label, letterSpacing: brand.shape?.uppercase ? 0.8 : 0 });
   return group(`Button · ${label}`, [bg, t], { link: url, alt: label });
 }
 
@@ -228,14 +234,14 @@ export function logoNode(brand: Brand, c: BlockContent, x: number, cy: number, h
 export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockContent = {}): GroupNode {
   const kids: Node[] = [];
   let h = 0;
-  const T = themeFor(brand.vibe);
+  const T = themeFor(brand.vibe, brand.shape);
   const R = T.radius, RI = Math.max(6, T.radius - 4);
   const band = (hh: number, fill: RectNode['fill'] = { token: 'bg' }, name = 'Block bg') => rect({ x: 0, y, w: W, h: hh, fill, name });
   const inner = W - PAD * 2;
   const hs = (px: number) => Math.round(px * T.heroScale);
   const S = (px: number) => Math.round(px * T.space);
   /** Display headline: heading font, heavy, tight leading and tracking from the theme. */
-  const H = (t: string, o: Partial<TextNode> & { x: number; y: number; w: number }) => text(brand, t, { fontFamily: 'heading', fontWeight: 800, lineHeight: 1.06, letterSpacing: T.track, ...o });
+  const H = (t: string, o: Partial<TextNode> & { x: number; y: number; w: number }) => text(brand, brand.shape?.uppercase ? up(t) : t, { fontFamily: 'heading', fontWeight: brand.shape?.headingWeight ?? 800, lineHeight: 1.06, letterSpacing: T.track, ...o });
   /** Headline effect requested by the block content, with a colour that works on the band. */
   const fxFor = (onDark: boolean): TextNode['effect'] => {
     if (!c.effect) return null;

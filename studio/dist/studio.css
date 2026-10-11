@@ -2584,3 +2584,18 @@ select.in {
 .asset .del.cut {
   right: 24px;
 }
+.ai-variants .tpl .pv {
+  aspect-ratio: 3 / 3.4;
+}
+.asset.more {
+  display: grid;
+  place-items: center;
+  font: 700 14px var(--mono);
+  color: var(--neon);
+  background: var(--neon-soft);
+  border: 1px dashed var(--neon-line);
+  cursor: pointer;
+}
+.asset.more:hover {
+  background: rgba(57, 255, 20, 0.2);
+}

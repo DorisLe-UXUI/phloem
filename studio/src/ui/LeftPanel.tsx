@@ -140,6 +140,8 @@ function Assets() {
   const [scope, setScope] = useState<'project' | 'all'>('project');
   const [q, setQ] = useState('');
   const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const PREVIEW = 6; // one row of thumbnails per group until "+N" is pressed
   const list = assets.all();
   const groups = groupAssets(list, { projectId: s.project?.id ?? null, usedIds: usedAssetIds(s.project), scope, query: q });
   const shown = groups.reduce((n, g) => n + g.items.length, 0);
@@ -165,7 +167,7 @@ function Assets() {
           <Eyebrow action={{ label: closed[g.key] ? 'Mở' : 'Thu', onClick: () => setClosed((c) => ({ ...c, [g.key]: !c[g.key] })) }}>{g.label} · {g.items.length}</Eyebrow>
           {!closed[g.key] && (
             <div class="asset-grid">
-              {g.items.map((a) => (
+              {(expanded[g.key] || g.kind === 'used' ? g.items : g.items.slice(0, PREVIEW)).map((a) => (
                 <div key={a.id} class="asset" draggable title={`${a.name} · ${a.w}×${a.h} · ${(a.bytes / 1024).toFixed(0)} KB${a.src?.kind === 'web' ? `\nTừ ${a.src.host}${a.src.page || ''}` : ''}\nBấm: dùng cho layer ảnh đang chọn (hoặc thêm mới). Kéo vào email, hoặc thả ra cạnh artboard để xếp tạm.`} onClick={() => use(a.id)} onDragStart={(e) => { e.dataTransfer?.setData('text/phloem-asset', a.id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'; }}>
                   {assets.url(a.id) ? <img src={assets.url(a.id)} alt="" /> : null}
                   <button class="del" title="Xoá khỏi thư viện" onClick={async (e) => { e.stopPropagation(); if (await ask(`Xoá "${a.name}" khỏi thư viện?`)) void assets.remove(a.id).then(() => bump((n) => n + 1)); }}>✕</button>
@@ -173,6 +175,8 @@ function Assets() {
                   <div class="nm">{pageLabel(a) ? `${pageLabel(a)} · ` : ''}{a.name}</div>
                 </div>
               ))}
+              {g.kind !== 'used' && g.items.length > PREVIEW && !expanded[g.key] && <button class="asset more" title="Xem thêm" onClick={() => setExpanded((x) => ({ ...x, [g.key]: true }))}>+{g.items.length - PREVIEW}</button>}
+              {g.kind !== 'used' && g.items.length > PREVIEW && expanded[g.key] && <button class="asset more" title="Thu gọn" onClick={() => setExpanded((x) => ({ ...x, [g.key]: false }))}>−</button>}
             </div>
           )}
         </div>

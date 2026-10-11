@@ -411,9 +411,9 @@ export async function autoFix(): Promise<string[]> {
   const footerY = d.height - 220; let smalls = 0;
   walkAll(d.nodes, (n) => { if (n.type === 'text' && n.fontSize * scale < 9 && n.y < footerY && (n.text || '').trim().length > 12) { n.fontSize = Math.max(n.fontSize, 15); smalls++; } });
   if (smalls) { d = ops.mapNodes(d, fixTextHeight); d = ops.reflowBlocks(d); changes.push(`Phóng ${smalls} đoạn chữ nhỏ lên 15px`); }
-  // 2. hero photo taller than 700px → 560px
-  const hero = (() => { let best: Node | null = null; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.w >= d.width * 0.8 && n.h > 700 && (!best || n.y < best.y)) best = n; }); return best as Node | null; })();
-  if (hero) { d = ops.setHeightFlow(d, hero.id, 560); changes.push('Hạ ảnh hero xuống 560px'); }
+  // 2. a full-bleed cover PHOTO taller than 700px → 600px (never a cut-out / product / composed image: those would be cropped)
+  const hero = (() => { let best: ImageNode | null = null; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.fit === 'cover' && !n.tilt && !n.floatShadow && !n.rotate && n.w >= d.width * 0.95 && n.h > 700 && (!best || n.y < (best as ImageNode).y)) best = n; }); return best as ImageNode | null; })();
+  if (hero) { d = ops.setHeightFlow(d, hero.id, 600); changes.push('Hạ ảnh nền hero xuống 600px'); }
   // 3. alt text for photos
   let alts = 0; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.assetId && !(n.alt || '').trim()) { const a = assets.get(n.assetId); n.alt = (a ? a.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ') : n.name) || 'Ảnh'; alts++; } });
   if (alts) changes.push(`Điền alt cho ${alts} ảnh`);
@@ -430,11 +430,24 @@ export async function autoFix(): Promise<string[]> {
   if (links) changes.push(`Gắn link cho ${links} nút / logo / icon`);
   commit(d);
   const np = linkProducts(); if (np) changes.push(`Gắn link sản phẩm thật cho ${np} ảnh/card`);
-  // 5. footer with unsubscribe / address
-  const dd = doc(); const bottomTexts: TextNode[] = []; walkAll(dd.nodes, (n) => { if (n.type === 'text' && n.y + n.h > dd.height - 260) bottomTexts.push(n); });
+  // 5. unsubscribe / preferences lines: added INTO the existing footer-like last block (never a second footer, never a fake address)
+  const dd = JSON.parse(JSON.stringify(doc())) as Doc; const bottomTexts: TextNode[] = []; walkAll(dd.nodes, (n) => { if (n.type === 'text' && n.y + n.h > dd.height - 260) bottomTexts.push(n); });
   if (!bottomTexts.some((t) => /huỷ đăng ký|hủy đăng ký|unsubscribe/i.test(t.text || ''))) {
-    const g = makeBlock('footer', b, ops.contentHeight(dd), { brand: b.name, social: b.links?.socials });
-    commit(ops.insertNodes(dd, [g])); changes.push('Chèn footer (huỷ đăng ký, địa chỉ, social)');
+    const last = dd.nodes[dd.nodes.length - 1];
+    const lang = /[a-z]/i.test(p.fields.subject || '') && !/[ăâđêôơưàảãáạ]/i.test((p.fields.subject || '') + (p.fields.preheader || '')) ? 'en' : 'vi';
+    const host = (() => { try { return b.links?.website ? new URL(b.links.website).hostname.replace(/^www\./, '') : ''; } catch { return ''; } })();
+    const bandDark = last && last.type === 'group' ? (() => { const bg = last.children.find((k) => k.type === 'rect' && k.w >= dd.width * 0.9) as RectNode | undefined; return bg ? { token: contrastToken(b, bg.fill) } : { token: 'muted' as const }; })() : { token: 'muted' as const };
+    const mk = (t: string, x: number, w: number, link: string | null) => mkText(b, t, { x, y: 0, w, fontSize: 12, color: bandDark, align: 'center', underline: !!link, link, name: link ? 'Unsubscribe' : 'Address' });
+    if (last && last.type === 'group' && (last.block === 'footer' || /footer|social|strip/i.test(last.name) || last.h <= 260)) {
+      const yy = last.y + last.h - 8; const unsub = mk(lang === 'en' ? 'Unsubscribe' : 'Huỷ đăng ký', 60, 220, '*|UNSUB|*'); const prefs = mk(lang === 'en' ? 'Update preferences' : 'Cập nhật thông tin', 320, 220, '*|UPDATE_PROFILE|*'); unsub.y = yy; prefs.y = yy;
+      const addr = host ? mk(host, 24, dd.width - 48, null) : null; if (addr) { addr.y = yy + 22; addr.underline = false; }
+      const extra = 22 + (addr ? 22 : 0) + 12;
+      const grown = ops.updateNode(dd, last.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children.map((k) => (k.type === 'rect' && k.w >= dd.width * 0.9 ? { ...k, h: k.h + extra } : k)), unsub, prefs, ...(addr ? [addr] : [])] }) : g));
+      commit(grown); changes.push('Thêm dòng huỷ đăng ký vào footer có sẵn');
+    } else {
+      const g = makeBlock('footer', b, ops.contentHeight(dd), { brand: b.name, social: b.links?.socials, address: host || ' ', unsubscribeUrl: '*|UNSUB|*', preferencesUrl: '*|UPDATE_PROFILE|*' });
+      commit(ops.insertNodes(dd, [g])); changes.push('Chèn footer (huỷ đăng ký, social)');
+    }
   }
   // 6. subject / preheader by AI
   if (!p.fields.subject.trim() || !p.fields.preheader.trim()) {
@@ -493,6 +506,37 @@ export function make3D(): string[] {
   if (stats) changes.push(`${stats} con số nổi khối`);
   commit(ops.mapNodes(d, (n) => (n.type === 'group' ? ops.syncGroup(n) : n)));
   toast(changes.length ? `Đã làm 3D: ${changes.join(' · ')}` : 'Không tìm thấy tiêu đề / ảnh sản phẩm để làm 3D.', 'ok');
+  return changes;
+}
+
+/** One click of motion for the top of the email: headline types/slides in, copy fades, button pops, product rises, props pop, ticker scrolls. */
+export function animateHero(): string[] {
+  const changes: string[] = [];
+  const d = JSON.parse(JSON.stringify(doc())) as Doc;
+  const blocks = d.nodes.filter((n) => n.type === 'group') as Extract<Node, { type: 'group' }>[];
+  const heroIdx = blocks.findIndex((g) => /hero|dark-band|statement|overlap|spotlight/.test(g.block || '') || /hero/i.test(g.name));
+  const hero = blocks[heroIdx >= 0 ? heroIdx : Math.min(1, blocks.length - 1)];
+  if (!hero) return changes;
+  let tBtn = 1.2, props = 0;
+  const texts = hero.children.filter((k) => k.type === 'text') as TextNode[];
+  const headline = texts.sort((a, b) => b.fontSize - a.fontSize)[0];
+  for (const k of hero.children) {
+    if (k.type === 'text') {
+      if (k === headline) { k.anim = k.text.length <= 48 ? { kind: 'type', delay: 0.2, dur: Math.min(1.8, 0.05 * k.text.length + 0.4) } : { kind: 'up', delay: 0.2, dur: 0.8 }; tBtn = (k.anim.delay ?? 0) + (k.anim.dur ?? 0.8) + 0.3; changes.push('Tiêu đề ' + (k.anim.kind === 'type' ? 'gõ từng chữ' : 'trượt lên')); }
+      else if (/eyebrow/i.test(k.name)) k.anim = { kind: 'fade', delay: 0, dur: 0.5 };
+      else if (/sub|body|paragraph/i.test(k.name)) k.anim = { kind: 'up', delay: tBtn - 0.2, dur: 0.7 };
+      else if (/^Stat|^Statement|^Big number/i.test(k.name)) k.anim = { kind: 'pop', delay: 0.3, dur: 0.6 };
+    } else if (k.type === 'group' && /^Button/.test(k.name)) { k.anim = { kind: 'pop', delay: tBtn + 0.3, dur: 0.6 }; changes.push('Nút nảy ra'); }
+    else if (k.type === 'image' && /prop/i.test(k.name)) { k.anim = { kind: 'pop', delay: 0.9 + props * 0.15, dur: 0.5 }; props++; }
+    else if (k.type === 'image' && /product|hero|spotlight|band image/i.test(k.name)) { k.anim = { kind: 'up', delay: 0.5, dur: 0.6 }; changes.push('Ảnh sản phẩm hiện lên'); }
+    else if (k.type === 'rect' && /badge|pill/i.test(k.name)) k.anim = { kind: 'pop', delay: 1.0, dur: 0.5 };
+    // glows stay static: fading a big soft gradient re-encodes the whole band every frame (heavy GIF, barely visible)
+  }
+  if (props) changes.push(`${props} phụ kiện nảy ra lần lượt`);
+  const ticker = blocks.find((g) => g.block === 'ticker');
+  if (ticker) { for (const k of ticker.children) if (k.type === 'text') k.anim = { kind: 'marquee' }; changes.push('Ticker chạy chữ'); }
+  commit(d);
+  toast(changes.length ? `Đã làm động: ${changes.join(' · ')}. Bấm ▶ Phát để xem; khi xuất, lát hero thành GIF.` : 'Không tìm thấy hero để làm động.', 'ok');
   return changes;
 }
 
@@ -578,7 +622,7 @@ export function analyze(): Analysis | null {
   const d = doc(), b = s.project.brand, f = JSON.stringify(s.project.fields), hasMobile = !!s.project.mobile;
   if (cache && cache.doc === d && cache.brand === b && cache.fields === f && cache.mobile === hasMobile) return cache.a;
   const root = docToNNode(d, b);
-  const plan = planSlices(root, { maxSliceHeight: s.settings.maxSliceHeight, mergeRows: s.settings.mergeRows });
+  const plan = planSlices(root, { maxSliceHeight: s.settings.maxSliceHeight, mergeRows: s.settings.mergeRows, keep: ops.animBlocks(d.nodes) });
   const checks = runChecks({ root, plan, fields: { ...s.project.fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile });
   // Studio-only: image layers still showing the placeholder would export as a hatched box.
   const placeholders = ops.flat(d.nodes).filter((n) => n.type === 'image' && !n.assetId && n.visible);

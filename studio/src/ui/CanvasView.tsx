@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Doc, GroupNode, Node, TextNode } from '../model/types';
 import { resolveColor } from '../model/types';
 import * as ops from '../model/ops';
-import { imageDrawRect, renderDoc } from '../render/renderer';
+import { animCycle, imageDrawRect, renderDoc } from '../render/renderer';
 import { fontString } from '../render/textLayout';
 import { assets } from '../storage/assets';
 import { get, history, set, subscribe, toast, useStore } from '../store';
@@ -70,7 +70,9 @@ export function CanvasView() {
     ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
     ctx.fillStyle = '#000'; ctx.fillRect(px, py, doc.width * z, doc.height * z);
     ctx.restore();
-    renderDoc(ctx, doc, st.project.brand, assets, { scale: z, ox: px, oy: py, editor: true, skip: st.editingText ? new Set([st.editingText]) : undefined });
+    const cycle = st.playing ? animCycle(doc.nodes) : 0;
+    const t = st.playing && cycle > 0 ? ((performance.now() - playStart.current) / 1000) % cycle : undefined;
+    renderDoc(ctx, doc, st.project.brand, assets, { scale: z, ox: px, oy: py, editor: true, skip: st.editingText ? new Set([st.editingText]) : undefined, t });
     // label
     ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = '#5d7265'; ctx.textBaseline = 'bottom';
     ctx.fillText(`${st.variant === 'mobile' ? 'Mobile' : 'Desktop'} · ${doc.width} × ${doc.height}`, px, py - 6);
@@ -166,6 +168,13 @@ export function CanvasView() {
     }
   };
 
+  const playStart = useRef(0);
+  useEffect(() => {
+    if (!s.playing) return;
+    playStart.current = performance.now();
+    let raf = 0; const loop = () => { draw(); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [s.playing]);
   useEffect(() => {
     let raf = 0;
     const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); };

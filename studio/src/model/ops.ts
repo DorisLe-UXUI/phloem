@@ -36,6 +36,11 @@ export function syncGroup(g: GroupNode): GroupNode {
   return { ...g, ...b };
 }
 
+/** Does any layer in the list (or below it) carry an animation? */
+export function hasAnimIn(nodes: Node[]): boolean { return nodes.some((n) => !!n.anim || (n.type === 'group' && hasAnimIn(n.children))); }
+/** Bounds of each top-level block that moves: exported as one animated GIF each, so the whole block stays in sync. */
+export function animBlocks(nodes: Node[]): Rect[] { return nodes.filter((n) => n.visible && (n.anim || (n.type === 'group' && hasAnimIn(n.children)))).map(bounds); }
+
 export function flat(nodes: Node[]): Node[] {
   const out: Node[] = [];
   const walk = (list: Node[]) => { for (const n of list) { out.push(n); if (n.type === 'group') walk(n.children); } };

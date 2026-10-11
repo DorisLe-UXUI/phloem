@@ -80,3 +80,17 @@ test('deterministic: same tree, same plan', () => {
   const b = JSON.stringify(planSlices(newsletter()));
   assert.equal(a, b);
 });
+
+test('keep: an animated block comes out as ONE full-width slice (one GIF), with the dominant link, neighbours untouched', () => {
+  const plan = planSlices(newsletter(), { keep: [{ x: 0, y: 80, w: 600, h: 320 }] }); // hero + 20px of the grid row
+  assert.equal(coverage(plan), 600 * 1000);
+  const kept = plan.slices.filter((s) => s.y >= 80 && s.y + s.h <= 400);
+  assert.equal(kept.length, 1, 'hero rows collapse into one slice');
+  assert.equal(kept[0].w, 600); assert.equal(kept[0].y, 80); assert.equal(kept[0].h, 320);
+  assert.equal(kept[0].link, 'https://shop.test/sale');
+  // the grid row still splits into its 5 cells below the kept region
+  const grid = plan.rows.find((r) => r.y === 400);
+  assert.equal(grid.cells.length, 5);
+  // the header row above is not merged into the GIF
+  assert.equal(plan.rows[0].h, 80);
+});
