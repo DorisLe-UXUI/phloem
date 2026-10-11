@@ -77,7 +77,10 @@ export class AssetStore implements ImageSource {
     if (u) return u;
     const b = this.blobs.get(id);
     if (b) { const nu = URL.createObjectURL(b); this.urls.set(id, nu); return nu; }
-    void this.blob(id).then((bb) => { if (bb) { this.urls.set(id, URL.createObjectURL(bb)); this.emit(); } });
+    void this.blob(id).then((bb) => {
+      if (bb) { this.urls.set(id, URL.createObjectURL(bb)); this.emit(); }
+      else { const img = this.images.get(id); if (img && !img.src) this.images.delete(id); } // offline / relay error: the next draw retries
+    });
     return undefined;
   }
 
@@ -90,7 +93,7 @@ export class AssetStore implements ImageSource {
     el.onload = () => this.emit();
     const u = this.url(id);
     if (u) el.src = u;
-    else { const check = () => { const uu = this.urls.get(id); if (uu) { el.src = uu; off(); } }; const off = this.onChange(check); }
+    else { const check = () => { if (this.images.get(id) !== el) { off(); return; } const uu = this.urls.get(id); if (uu) { el.src = uu; off(); } }; const off = this.onChange(check); }
     return undefined;
   }
 

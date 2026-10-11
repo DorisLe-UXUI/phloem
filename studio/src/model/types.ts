@@ -23,7 +23,20 @@ export interface Brand {
   logoAssetId: string | null;
   /** Brand gradient (primary → accent) on every primary-coloured band; null/undefined = flat. */
   gradient?: { angle: number } | null;
+  /** Design personality for blocks built from now on: radii, shadows, pills, decorative shapes, headline scale. */
+  vibe?: Vibe;
 }
+
+export type Vibe = 'clean' | 'playful' | 'luxury' | 'bold' | 'editorial';
+export const VIBES: { v: Vibe; label: string; hint: string }[] = [
+  { v: 'clean', label: 'Clean', hint: 'bo góc vừa, bóng nhẹ, cân bằng' },
+  { v: 'playful', label: 'Playful', hint: 'bo tròn lớn, nút pill, hình trang trí, cho trẻ em / game / F&B' },
+  { v: 'bold', label: 'Bold', hint: 'tiêu đề khổ lớn, nút pill phát sáng, cho agency / tech / streetwear' },
+  { v: 'luxury', label: 'Luxury', hint: 'góc vuông, viền mảnh, nhiều khoảng trắng, serif' },
+  { v: 'editorial', label: 'Editorial', hint: 'kẻ mảnh, bo nhỏ, báo chí / media' },
+];
+/** Soft drop shadow under a rect or image. */
+export interface Shadow { blur: number; y: number; color: string; opacity: number }
 
 export interface BaseNode {
   id: string;
@@ -49,6 +62,7 @@ export interface RectNode extends BaseNode {
   gradient: { from: Color; to: Color; angle: number } | null;
   stroke: { color: Color; width: number } | null;
   radius: number;
+  shadow?: Shadow | null;
 }
 
 export interface TextNode extends BaseNode {
@@ -78,6 +92,7 @@ export interface ImageNode extends BaseNode {
   fill: Color | null;
   /** Colour overlay (e.g. darken photo behind text). `gradient` fades from transparent at the top to the colour at the bottom. */
   overlay: { color: string; opacity: number; gradient?: boolean } | null;
+  shadow?: Shadow | null;
 }
 
 export interface GroupNode extends BaseNode {
@@ -154,19 +169,66 @@ export const BRAND_PRESETS: { name: string; brand: Partial<Brand> }[] = [
   { name: 'Lavender', brand: { primary: '#8B5CF6', accent: '#F472B6', onPrimary: '#FFFFFF', ink: '#F3EEFF', muted: '#B9A9E0', bg: '#120B2A', soft: '#1C1240', line: '#2E2160' } },
 ];
 
-export const FONTS: { family: string; label: string; google?: string }[] = [
-  { family: 'Inter', label: 'Inter', google: 'Inter:wght@400;500;600;700;800' },
-  { family: 'Be Vietnam Pro', label: 'Be Vietnam Pro', google: 'Be+Vietnam+Pro:wght@400;500;600;700;800' },
-  { family: 'Roboto', label: 'Roboto', google: 'Roboto:wght@400;500;700;900' },
-  { family: 'Montserrat', label: 'Montserrat', google: 'Montserrat:wght@400;500;600;700;800' },
-  { family: 'Playfair Display', label: 'Playfair Display', google: 'Playfair+Display:wght@400;600;700;800' },
-  { family: 'Lora', label: 'Lora', google: 'Lora:wght@400;500;600;700' },
-  { family: 'DM Sans', label: 'DM Sans', google: 'DM+Sans:wght@400;500;600;700' },
-  { family: 'Space Grotesk', label: 'Space Grotesk', google: 'Space+Grotesk:wght@400;500;600;700' },
-  { family: 'Helvetica', label: 'Helvetica / Arial' },
-  { family: 'Georgia', label: 'Georgia' },
-  { family: 'Courier New', label: 'Courier' },
+export type FontCat = 'sans' | 'display' | 'serif' | 'rounded' | 'script' | 'mono' | 'system';
+/** Google Fonts the Studio can load. `vi` = has Vietnamese glyphs (diacritics render correctly). */
+export const FONTS: { family: string; label: string; google?: string; cat: FontCat; vi: boolean }[] = [
+  // sans
+  { family: 'Inter', label: 'Inter', google: 'Inter:wght@400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Be Vietnam Pro', label: 'Be Vietnam Pro', google: 'Be+Vietnam+Pro:wght@400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Montserrat', label: 'Montserrat', google: 'Montserrat:wght@400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Manrope', label: 'Manrope', google: 'Manrope:wght@400;500;600;700;800', cat: 'sans', vi: true },
+  { family: 'Plus Jakarta Sans', label: 'Plus Jakarta Sans', google: 'Plus+Jakarta+Sans:wght@400;500;600;700;800', cat: 'sans', vi: true },
+  { family: 'Sora', label: 'Sora', google: 'Sora:wght@400;500;600;700;800', cat: 'sans', vi: true },
+  { family: 'Lexend', label: 'Lexend', google: 'Lexend:wght@400;500;600;700;800', cat: 'sans', vi: true },
+  { family: 'Raleway', label: 'Raleway', google: 'Raleway:wght@400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Josefin Sans', label: 'Josefin Sans', google: 'Josefin+Sans:wght@400;500;600;700', cat: 'sans', vi: true },
+  { family: 'Work Sans', label: 'Work Sans', google: 'Work+Sans:wght@400;500;600;700;800', cat: 'sans', vi: true },
+  { family: 'Mulish', label: 'Mulish', google: 'Mulish:wght@400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Roboto', label: 'Roboto', google: 'Roboto:wght@400;500;700;900', cat: 'sans', vi: true },
+  { family: 'DM Sans', label: 'DM Sans', google: 'DM+Sans:wght@400;500;600;700;800', cat: 'sans', vi: false },
+  { family: 'Poppins', label: 'Poppins', google: 'Poppins:wght@400;500;600;700;800', cat: 'sans', vi: false },
+  { family: 'Outfit', label: 'Outfit', google: 'Outfit:wght@400;500;600;700;800', cat: 'sans', vi: false },
+  // display / headline
+  { family: 'Space Grotesk', label: 'Space Grotesk', google: 'Space+Grotesk:wght@400;500;600;700', cat: 'display', vi: true },
+  { family: 'Unbounded', label: 'Unbounded', google: 'Unbounded:wght@400;500;600;700;800;900', cat: 'display', vi: true },
+  { family: 'Oswald', label: 'Oswald', google: 'Oswald:wght@400;500;600;700', cat: 'display', vi: true },
+  { family: 'Anton', label: 'Anton', google: 'Anton', cat: 'display', vi: true },
+  { family: 'Archivo Black', label: 'Archivo Black', google: 'Archivo+Black', cat: 'display', vi: true },
+  { family: 'Bungee', label: 'Bungee', google: 'Bungee', cat: 'display', vi: true },
+  { family: 'Chakra Petch', label: 'Chakra Petch', google: 'Chakra+Petch:wght@400;500;600;700', cat: 'display', vi: true },
+  { family: 'Exo 2', label: 'Exo 2', google: 'Exo+2:wght@400;500;600;700;800;900', cat: 'display', vi: true },
+  { family: 'Syne', label: 'Syne', google: 'Syne:wght@400;500;600;700;800', cat: 'display', vi: false },
+  { family: 'Bebas Neue', label: 'Bebas Neue', google: 'Bebas+Neue', cat: 'display', vi: false },
+  // serif
+  { family: 'Playfair Display', label: 'Playfair Display', google: 'Playfair+Display:wght@400;500;600;700;800;900', cat: 'serif', vi: true },
+  { family: 'Lora', label: 'Lora', google: 'Lora:wght@400;500;600;700', cat: 'serif', vi: true },
+  { family: 'Merriweather', label: 'Merriweather', google: 'Merriweather:wght@400;700;900', cat: 'serif', vi: true },
+  { family: 'Cormorant Garamond', label: 'Cormorant Garamond', google: 'Cormorant+Garamond:wght@400;500;600;700', cat: 'serif', vi: true },
+  { family: 'Fraunces', label: 'Fraunces', google: 'Fraunces:wght@400;500;600;700;800;900', cat: 'serif', vi: true },
+  { family: 'Roboto Slab', label: 'Roboto Slab', google: 'Roboto+Slab:wght@400;500;600;700;800', cat: 'serif', vi: true },
+  { family: 'Noto Serif', label: 'Noto Serif', google: 'Noto+Serif:wght@400;500;600;700;800', cat: 'serif', vi: true },
+  { family: 'DM Serif Display', label: 'DM Serif Display', google: 'DM+Serif+Display', cat: 'serif', vi: false },
+  // rounded / playful
+  { family: 'Nunito', label: 'Nunito', google: 'Nunito:wght@400;500;600;700;800;900', cat: 'rounded', vi: true },
+  { family: 'Quicksand', label: 'Quicksand', google: 'Quicksand:wght@400;500;600;700', cat: 'rounded', vi: true },
+  { family: 'Baloo 2', label: 'Baloo 2', google: 'Baloo+2:wght@400;500;600;700;800', cat: 'rounded', vi: true },
+  { family: 'Fredoka', label: 'Fredoka', google: 'Fredoka:wght@400;500;600;700', cat: 'rounded', vi: false },
+  { family: 'Varela Round', label: 'Varela Round', google: 'Varela+Round', cat: 'rounded', vi: false },
+  // script / handwritten
+  { family: 'Pacifico', label: 'Pacifico', google: 'Pacifico', cat: 'script', vi: true },
+  { family: 'Dancing Script', label: 'Dancing Script', google: 'Dancing+Script:wght@400;500;600;700', cat: 'script', vi: true },
+  { family: 'Lobster', label: 'Lobster', google: 'Lobster', cat: 'script', vi: true },
+  { family: 'Caveat', label: 'Caveat', google: 'Caveat:wght@400;500;600;700', cat: 'script', vi: false },
+  // mono
+  { family: 'JetBrains Mono', label: 'JetBrains Mono', google: 'JetBrains+Mono:wght@400;500;600;700;800', cat: 'mono', vi: true },
+  { family: 'Space Mono', label: 'Space Mono', google: 'Space+Mono:wght@400;700', cat: 'mono', vi: false },
+  // system fallbacks (no download)
+  { family: 'Helvetica', label: 'Helvetica / Arial', cat: 'system', vi: true },
+  { family: 'Georgia', label: 'Georgia', cat: 'system', vi: true },
+  { family: 'Courier New', label: 'Courier', cat: 'system', vi: true },
 ];
+export const FONT_CAT_LABEL: Record<FontCat, string> = { sans: 'Sans', display: 'Display', serif: 'Serif', rounded: 'Bo tròn', script: 'Viết tay', mono: 'Mono', system: 'Hệ thống' };
+
 
 export function uid(prefix = 'n'): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;

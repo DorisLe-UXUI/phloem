@@ -2,6 +2,8 @@
 // Pure parsing lives in analyzeHtml/extractStyle (unit-tested); fetching is guarded against private hosts.
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { request as httpsRequest } from 'node:https';
+import { request as httpRequest } from 'node:http';
 
 const UA = 'Mozilla/5.0 (compatible; PhloemBot/1.0; +https://dorisle-uxui.github.io/phloem/)';
 const GENERIC_FONTS = new Set(['inherit', 'initial', 'unset', 'sans-serif', 'serif', 'monospace', 'system-ui', '-apple-system', 'blinkmacsystemfont', 'segoe ui', 'roboto', 'helvetica neue', 'helvetica', 'arial', 'ui-sans-serif', 'ui-serif', 'ui-monospace', 'cursive', 'fantasy', 'apple color emoji', 'segoe ui emoji', 'segoe ui symbol', 'noto color emoji', 'var', 'times new roman', 'times']);
@@ -12,27 +14,70 @@ function privateV4(ip) {
 }
 function privateV6(ip) {
   const s = ip.toLowerCase();
-  if (s === '::1' || s === '::' ) return true;
+  if (s === '::1' || s === '::') return true;
   if (s.startsWith('::ffff:')) return privateV4(s.slice(7));
   return s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80');
 }
-export async function isPublicHost(host) {
-  const h = String(host || '').toLowerCase();
-  if (!h || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return false;
+/** Resolve a host and return its addresses only when every one of them is public; null otherwise. */
+export async function publicAddrs(host) {
+  const h = String(host || '').toLowerCase().replace(/\.$/, '');
+  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return null;
   const v = isIP(h);
-  if (v === 4) return !privateV4(h);
-  if (v === 6) return !privateV6(h);
+  if (v === 4) return privateV4(h) ? null : [{ address: h, family: 4 }];
+  if (v === 6) return privateV6(h) ? null : [{ address: h, family: 6 }];
   try {
     const addrs = await lookup(h, { all: true });
-    return addrs.length > 0 && addrs.every((a) => (a.family === 4 ? !privateV4(a.address) : !privateV6(a.address)));
-  } catch { return false; }
+    return addrs.length && addrs.every((a) => (a.family === 4 ? !privateV4(a.address) : !privateV6(a.address))) ? addrs : null;
+  } catch { return null; }
+}
+export const isPublicHost = async (host) => !!(await publicAddrs(host));
+
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+const err = (status, message) => Object.assign(new Error(message), { status });
+
+/** One HTTP GET to a vetted address: the socket connects to the address we checked (no second DNS lookup), TLS still validates the hostname. */
+function getOnce(u, addrs, accept, timeout) {
+  return new Promise((resolve, reject) => {
+    const mod = u.protocol === 'https:' ? httpsRequest : httpRequest;
+    const req = mod({
+      protocol: u.protocol, hostname: u.hostname, port: u.port || undefined, path: u.pathname + u.search, method: 'GET', servername: u.hostname,
+      headers: { 'User-Agent': UA, Accept: accept, 'Accept-Encoding': 'identity' }, timeout,
+      lookup: (_host, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } if (opts && opts.all) cb(null, addrs.map((a) => ({ address: a.address, family: a.family }))); else cb(null, addrs[0].address, addrs[0].family); },
+    }, resolve);
+    req.on('timeout', () => req.destroy(err(504, 'hết thời gian chờ')));
+    req.on('error', (e) => reject(e.status ? e : err(502, e.message)));
+    req.end();
+  });
+}
+/** Read a response body up to `limit` bytes without buffering more than that. */
+async function readCapped(res, limit, truncate) {
+  if (!truncate && Number(res.headers['content-length']) > limit) { res.destroy(); throw err(413, 'phản hồi quá lớn'); }
+  const parts = []; let total = 0;
+  for await (const c of res) {
+    parts.push(c); total += c.length;
+    if (total > limit) { res.destroy(); if (!truncate) throw err(413, 'phản hồi quá lớn'); break; }
+  }
+  return Buffer.concat(parts).subarray(0, limit);
+}
+/** GET with every redirect hop re-vetted against private hosts, the connection pinned to the vetted address, and a byte cap. */
+export async function safeGet(url, { accept = '*/*', limit = 2_000_000, timeout = 10_000, truncate = false } = {}) {
+  let u;
+  try { u = new URL(String(url)); } catch { throw err(400, 'URL không hợp lệ'); }
+  for (let hop = 0; hop < 6; hop++) {
+    if (!/^https?:$/.test(u.protocol)) throw err(400, 'chỉ http/https');
+    const addrs = await publicAddrs(u.hostname);
+    if (!addrs) throw err(403, 'không tải địa chỉ nội bộ');
+    const res = await getOnce(u, addrs, accept, timeout);
+    if (REDIRECTS.has(res.statusCode) && res.headers.location) { res.resume(); u = new URL(res.headers.location, u); continue; }
+    if (res.statusCode >= 400) { res.resume(); throw err(502, `HTTP ${res.statusCode}`); }
+    const type = String(res.headers['content-type'] || '').split(';')[0].trim();
+    return { type, buf: await readCapped(res, limit, truncate), url: u.href };
+  }
+  throw err(502, 'quá nhiều redirect');
 }
 
 export async function fetchText(url, { limit = 2_000_000, timeout = 10_000 } = {}) {
-  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'text/html,text/css,*/*;q=0.8' }, redirect: 'follow', signal: AbortSignal.timeout(timeout) });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const buf = Buffer.from(await r.arrayBuffer());
-  return buf.subarray(0, limit).toString('utf8');
+  return (await safeGet(url, { accept: 'text/html,text/css,*/*;q=0.8', limit, timeout, truncate: true })).buf.toString('utf8');
 }
 
 const decode = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
@@ -65,7 +110,7 @@ export function extractStyle(css, googleFamilies = []) {
   const brand = [];
   for (const c of all) {
     if (c.s < 0.25 || c.l < 0.12 || c.l > 0.9) continue;
-    if (brand.some((b) => Math.abs(b.h - c.h) < 18 && Math.abs(b.l - c.l) < 0.25)) continue;
+    if (brand.some((b) => Math.min(Math.abs(b.h - c.h), 360 - Math.abs(b.h - c.h)) < 18 && Math.abs(b.l - c.l) < 0.25)) continue;
     brand.push(c); if (brand.length >= 6) break;
   }
   const darks = all.filter((c) => c.l < 0.2).slice(0, 2).map((c) => c.hex);
@@ -133,23 +178,17 @@ export async function siteProfile(rawUrl) {
   const html = await fetchText(u.href);
   const a = analyzeHtml(html, u.href);
   let css = a._inlineCss;
-  for (const href of a._styles.slice(0, 3)) { try { if (await isPublicHost(new URL(href).hostname)) css += '\n' + (await fetchText(href, { limit: 400_000, timeout: 6000 })); } catch { /* skip sheet */ } }
+  for (const href of a._styles.slice(0, 3)) { try { css += '\n' + (await fetchText(href, { limit: 400_000, timeout: 6000 })); } catch { /* skip sheet */ } }
   const style = extractStyle(css, a._googleFamilies);
-  if (a.themeColor && !style.colors.some((c) => c.hex === a.themeColor)) style.colors.unshift({ hex: a.themeColor, n: 999 });
+  const tc = a.themeColor ? hsl(a.themeColor) : null;
+  if (tc && tc.s >= 0.25 && tc.l >= 0.12 && tc.l <= 0.9 && !style.colors.some((c) => c.hex === a.themeColor)) style.colors.unshift({ hex: a.themeColor, n: 999 });
   const { _styles, _inlineCss, _googleFamilies, ...pub } = a;
   return { url: u.href, ...pub, colors: style.colors.slice(0, 6), darks: style.darks, lights: style.lights, fonts: style.fonts };
 }
 
 /** Image proxy for the Studio: only public hosts, only image/* bodies, ≤ 10 MB. */
 export async function fetchImage(rawUrl) {
-  let u;
-  try { u = new URL(String(rawUrl || '')); if (!/^https?:$/.test(u.protocol)) throw 0; } catch { throw Object.assign(new Error('url không hợp lệ'), { status: 400 }); }
-  if (!(await isPublicHost(u.hostname))) throw Object.assign(new Error('không tải địa chỉ nội bộ'), { status: 403 });
-  const r = await fetch(u.href, { headers: { 'User-Agent': UA, Accept: 'image/*,*/*;q=0.5', Referer: u.origin }, redirect: 'follow', signal: AbortSignal.timeout(12_000) });
-  if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { status: 502 });
-  const type = (r.headers.get('content-type') || '').split(';')[0].trim();
-  if (!type.startsWith('image/')) throw Object.assign(new Error('không phải ảnh'), { status: 415 });
-  const buf = Buffer.from(await r.arrayBuffer());
-  if (buf.length > 10 * 1024 * 1024) throw Object.assign(new Error('ảnh quá lớn (>10MB)'), { status: 413 });
+  const { type, buf } = await safeGet(rawUrl, { accept: 'image/*,*/*;q=0.5', limit: 10 * 1024 * 1024, timeout: 12_000, truncate: false });
+  if (!type.startsWith('image/')) throw err(415, 'không phải ảnh');
   return { type, buf };
 }

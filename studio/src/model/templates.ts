@@ -2,7 +2,7 @@
 // the whole email (bands, cards, eyebrows, prices, buttons, footer). Blocks take optional content so templates and
 // the AI composer can fill real copy, products, images and links.
 import type { BlockKind, TemplateKind } from '../../../src/shared/types';
-import type { Brand, Doc, EmailFields, GroupNode, ImageNode, Node, RectNode, TextNode } from './types';
+import type { Brand, Doc, EmailFields, GroupNode, ImageNode, Node, RectNode, Shadow, TextNode, Vibe } from './types';
 import { uid } from './types';
 import { layoutText, textHeight } from '../render/textLayout';
 import { syncGroup } from './ops';
@@ -10,6 +10,31 @@ import { assets } from '../storage/assets';
 
 export const W = 600;
 const PAD = 24;
+
+/** Design personality derived from brand.vibe: radii, shadows, pills, decorative shapes, headline scale. */
+export interface Theme { radius: number; btnRadius: number; shadow: boolean; glow: boolean; heroScale: number; eyebrowPill: boolean; blobs: boolean; stroke: boolean; btnH: number }
+export function themeFor(vibe?: Vibe): Theme {
+  switch (vibe) {
+    case 'playful': return { radius: 22, btnRadius: 999, shadow: true, glow: true, heroScale: 1.08, eyebrowPill: true, blobs: true, stroke: false, btnH: 50 };
+    case 'bold': return { radius: 14, btnRadius: 999, shadow: true, glow: true, heroScale: 1.22, eyebrowPill: true, blobs: true, stroke: false, btnH: 52 };
+    case 'luxury': return { radius: 4, btnRadius: 4, shadow: false, glow: false, heroScale: 1.12, eyebrowPill: false, blobs: false, stroke: true, btnH: 48 };
+    case 'editorial': return { radius: 6, btnRadius: 6, shadow: false, glow: false, heroScale: 1, eyebrowPill: false, blobs: false, stroke: true, btnH: 46 };
+    default: return { radius: 14, btnRadius: 10, shadow: true, glow: false, heroScale: 1, eyebrowPill: false, blobs: false, stroke: false, btnH: 48 };
+  }
+}
+const cardShadow = (T: Theme): Shadow | null => (T.shadow ? { blur: 24, y: 10, color: '#000000', opacity: 0.1 } : null);
+const cardStroke = (T: Theme): RectNode['stroke'] => (T.stroke ? { color: { token: 'line' }, width: 1 } : null);
+const btnShadow = (T: Theme, brand: Brand): Shadow | null => (T.glow ? { blur: 24, y: 8, color: brand.primary, opacity: 0.38 } : T.shadow ? { blur: 14, y: 6, color: '#000000', opacity: 0.16 } : null);
+/** Decorative translucent circles inside a band (never outside it, so neighbours stay clean). */
+function blobs(T: Theme, y: number, bandH: number, light: boolean): RectNode[] {
+  if (!T.blobs || bandH < 160) return [];
+  const c = light ? '#FFFFFF' : '#000000';
+  return [
+    rect({ x: W - 150, y: y + 18, w: 132, h: 132, fill: c, radius: 999, opacity: 0.1, name: 'Blob' }),
+    rect({ x: W - 232, y: y + bandH - 104, w: 84, h: 84, fill: c, radius: 999, opacity: 0.08, name: 'Blob' }),
+    rect({ x: W - 60, y: y + bandH - 60, w: 40, h: 40, fill: c, radius: 999, opacity: 0.12, name: 'Blob' }),
+  ];
+}
 
 const base = (name: string) => ({ id: uid(), name, visible: true, locked: false, opacity: 1, link: null as string | null, alt: '' });
 
@@ -47,8 +72,9 @@ export function button(brand: Brand, label: string, url: string, x: number, y: n
   const fs = o.fontSize ?? 15;
   const probe = text(brand, label, { x: 0, y: 0, w: 400, fontSize: fs, fontWeight: 700, name: label });
   const wText = Math.min(400, Math.ceil(measureWidth(brand, probe)));
-  const w = o.w ?? wText + 56, h = o.h ?? 48;
-  const bg = rect({ x, y, w, h, fill: { token: o.inverse ? 'bg' : 'primary' }, radius: o.radius ?? 8, name: 'Button bg' });
+  const T = themeFor(brand.vibe);
+  const w = o.w ?? wText + (T.btnRadius >= 999 ? 64 : 56), h = o.h ?? T.btnH;
+  const bg = rect({ x, y, w, h, fill: { token: o.inverse ? 'bg' : 'primary' }, radius: o.radius ?? T.btnRadius, name: 'Button bg', shadow: o.inverse ? (T.shadow ? { blur: 16, y: 6, color: '#000000', opacity: 0.18 } : null) : btnShadow(T, brand) });
   const t = text(brand, label, { x, y, w, h, fontSize: fs, fontWeight: 700, color: { token: o.inverse ? 'primary' : 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: label });
   return group(`Button · ${label}`, [bg, t], { link: url, alt: label });
 }
@@ -78,6 +104,8 @@ export interface BlockContent {
   address?: string;
   unsubscribeUrl?: string;
   preferencesUrl?: string;
+  unsubscribeLabel?: string;
+  preferencesLabel?: string;
   /** Footer social links (label is the network name). */
   social?: LinkC[];
   /** hero-center: 'light' (bg), 'band' (primary), 'gradient' (primary → accent). */
@@ -149,8 +177,20 @@ export function logoNode(brand: Brand, c: BlockContent, x: number, cy: number, h
 export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockContent = {}): GroupNode {
   const kids: Node[] = [];
   let h = 0;
+  const T = themeFor(brand.vibe);
+  const R = T.radius, RI = Math.max(6, T.radius - 4);
   const band = (hh: number, fill: RectNode['fill'] = { token: 'bg' }, name = 'Block bg') => rect({ x: 0, y, w: W, h: hh, fill, name });
   const inner = W - PAD * 2;
+  const hs = (px: number) => Math.round(px * T.heroScale);
+  /** Eyebrow: a pill on playful/bold themes, plain small caps otherwise. Returns nodes and the bottom y. */
+  const eyebrowNodes = (label: string, x: number, yy: number, onBand: boolean): { nodes: Node[]; bottom: number } => {
+    if (!T.eyebrowPill) { const t = text(brand, up(label), { x, y: yy, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: onBand ? { token: 'onPrimary' } : { token: 'primary' }, name: 'Eyebrow', opacity: onBand ? 0.85 : 1 }); return { nodes: [t], bottom: t.y + t.h }; }
+    const t = text(brand, up(label), { x: x + 12, y: yy, w: 300, fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: onBand ? { token: 'primary' } : { token: 'onPrimary' }, name: 'Eyebrow' });
+    const pw = Math.ceil(measureWidth(brand, t)) + 24; t.w = pw - 24;
+    const pill = rect({ x, y: yy, w: pw, h: 26, fill: onBand ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
+    t.y = yy + Math.round((26 - t.h) / 2);
+    return { nodes: [pill, t], bottom: yy + 26 };
+  };
   switch (kind) {
     case 'nav': {
       h = 68;
@@ -172,26 +212,27 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const btnC = c.button ?? d.button;
       const img = image({ x: 0, y, w: W, h: imgH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null });
       let cy = y + imgH + 30;
-      const eyebrow = c.eyebrow !== '' ? text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: cy, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: { token: 'primary' }, name: 'Eyebrow' }) : null;
-      if (eyebrow) cy = eyebrow.y + eyebrow.h + 10;
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: cy, w: inner, fontSize: 32, fontWeight: 800, lineHeight: 1.18, fontFamily: 'heading', name: 'Headline' });
+      const eb = c.eyebrow !== '' ? eyebrowNodes(c.eyebrow || d.eyebrow, PAD, cy, false) : null;
+      if (eb) cy = eb.bottom + 12;
+      const eyebrow = eb ? eb.nodes : null;
+      const head = text(brand, c.headline || d.headline, { x: PAD, y: cy, w: inner, fontSize: hs(32), fontWeight: 800, lineHeight: 1.15, fontFamily: 'heading', name: 'Headline' });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 12, w: inner, fontSize: 16, color: { token: 'muted' }, lineHeight: 1.55, name: 'Subhead' });
       const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + 22);
       h = btn.y + btn.h + 36 - y;
-      kids.push(band(h), img, ...(eyebrow ? [eyebrow] : []), head, sub, btn);
+      kids.push(band(h), img, ...(eyebrow || []), head, sub, btn);
       break;
     }
     case 'hero-band': {
       const d = DEF.band;
       const btnC = c.button ?? d.button;
-      const eyebrow = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: y + 40, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: { token: 'onPrimary' }, name: 'Eyebrow', opacity: 0.8 });
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: eyebrow.y + eyebrow.h + 12, w: inner, fontSize: 38, fontWeight: 800, lineHeight: 1.12, fontFamily: 'heading', color: { token: 'onPrimary' }, name: 'Headline' });
+      const eb = eyebrowNodes(c.eyebrow || d.eyebrow, PAD, y + 40, true);
+      const head = text(brand, c.headline || d.headline, { x: PAD, y: eb.bottom + 14, w: inner, fontSize: hs(38), fontWeight: 800, lineHeight: 1.1, fontFamily: 'heading', color: { token: 'onPrimary' }, name: 'Headline' });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 14, w: inner, fontSize: 16, color: { token: 'onPrimary' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.85 });
       const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + 24, { inverse: true });
       const bandH = btn.y + btn.h + 40 - y;
       const img = image({ x: 0, y: y + bandH, w: W, h: 300, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null });
       h = bandH + img.h;
-      kids.push(band(bandH, { token: 'primary' }, 'Band'), eyebrow, head, sub, btn, img);
+      kids.push(band(bandH, { token: 'primary' }, 'Band'), ...blobs(T, y, bandH, true), ...eb.nodes, head, sub, btn, img);
       break;
     }
     case 'text': {
@@ -215,7 +256,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       btn.x = Math.round((W - btn.w) / 2); const dx = btn.x - btn.children[0].x; btn.children.forEach((k) => { k.x += dx; });
       const cardH = btn.y + btn.h + 28 - cardY;
       h = cardH + 32;
-      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: 12, name: 'Card' }), head, sub, syncGroup(btn));
+      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), head, sub, syncGroup(btn));
       break;
     }
     case 'products-2':
@@ -230,7 +271,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         const x = PAD + i * (cw + gap);
         const url = it.url || 'https://example.com/shop';
         const top = y + 16;
-        const img = image({ x, y: top, w: cw, h: cw, radius: 10, name: `Product image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null });
+        const img = image({ x: x + 8, y: top + 8, w: cw - 16, h: cw - 16, radius: RI, name: `Product image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null });
         const name = text(brand, it.name, { x: x + 12, y: img.y + img.h + 12, w: cw - 24, fontSize: n === 3 ? 14 : 16, fontWeight: 600, name: 'Name' });
         const extra: Node[] = [];
         let last: TextNode = name;
@@ -238,11 +279,11 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         if (it.price) { const pr = text(brand, it.price, { x: x + 12, y: last.y + last.h + (it.oldPrice ? 2 : 4), w: cw - 24, fontSize: n === 3 ? 15 : 16, fontWeight: 800, color: { token: 'primary' }, name: 'Price' }); extra.push(pr); last = pr; }
         if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 200, fontSize: 11, fontWeight: 800, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 16; const bg = rect({ x: x + 8, y: top + 8, w: bw, h: 22, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = x + 16; bt.w = bw - 16; bt.y = top + 8 + Math.round((22 - bt.h) / 2); extra.push(bg, bt); }
         const cardH = last.y + last.h + 14 - top;
-        const card = rect({ x, y: top, w: cw, h: cardH, fill: { token: 'soft' }, radius: 12, name: 'Card' });
+        const card = rect({ x, y: top, w: cw, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
         bottom = Math.max(bottom, top + cardH);
         cards.push(group(`Product ${i + 1}`, [card, img, name, ...extra], { link: url, alt: `${it.name}${it.price ? ' — ' + it.price : ''}` }));
       });
-      h = bottom + 16 - y;
+      h = bottom + 28 - y;
       kids.push(band(h), ...cards);
       break;
     }
@@ -250,14 +291,14 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const d = DEF.feature;
       const linkC = c.link ?? d.link;
       const cardY = y + 12, imgW = 232, imgH = 180;
-      const img = image({ x: PAD + 14, y: cardY + 14, w: imgW, h: imgH, radius: 8, name: 'Feature image', alt: c.imageAlt || d.imageAlt, assetId: c.image ?? null, link: linkC.url });
+      const img = image({ x: PAD + 14, y: cardY + 14, w: imgW, h: imgH, radius: RI, name: 'Feature image', alt: c.imageAlt || d.imageAlt, assetId: c.image ?? null, link: linkC.url });
       const cx = PAD + 14 + imgW + 20, cwid = W - PAD - 14 - cx;
       const head = text(brand, c.heading || d.heading, { x: cx, y: cardY + 24, w: cwid, fontSize: 19, fontWeight: 700, lineHeight: 1.3, fontFamily: 'heading', name: 'Heading' });
       const body = text(brand, c.body || d.body, { x: cx, y: head.y + head.h + 8, w: cwid, fontSize: 14, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
       const more = text(brand, linkC.label, { x: cx, y: body.y + body.h + 12, w: cwid, fontSize: 14, fontWeight: 700, color: { token: 'primary' }, name: 'Link', link: linkC.url });
       const cardH = Math.max(img.y + img.h + 14, more.y + more.h + 22) - cardY;
       h = cardH + 24;
-      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: 12, name: 'Card' }), img, head, body, more);
+      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), img, head, body, more);
       break;
     }
     case 'stats': {
@@ -284,7 +325,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const who = text(brand, c.author || d.author, { x: PAD + 24, y: q.y + q.h + 12, w: inner - 48, fontSize: 13, color: { token: 'muted' }, name: 'Author' });
       const cardH = who.y + who.h + 26 - cardY;
       h = cardH + 32;
-      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: 12, name: 'Card' }), mark, q, who);
+      kids.push(band(h), rect({ x: PAD, y: cardY, w: inner, h: cardH, fill: { token: 'soft' }, radius: R, name: 'Card', stroke: cardStroke(T) }), mark, q, who);
       break;
     }
     case 'hero-overlay': {
@@ -294,7 +335,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const btn = button(brand, btnC.label, btnC.url, PAD, y + H - 30 - 48);
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: 0, w: inner - 40, fontSize: 16, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
       sub.y = btn.y - 18 - sub.h;
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: 0, w: inner - 20, fontSize: 40, fontWeight: 800, lineHeight: 1.08, fontFamily: 'heading', color: '#FFFFFF', name: 'Headline' });
+      const head = text(brand, c.headline || d.headline, { x: PAD, y: 0, w: inner - 20, fontSize: hs(40), fontWeight: 800, lineHeight: 1.06, fontFamily: 'heading', color: '#FFFFFF', name: 'Headline' });
       head.y = sub.y - 12 - head.h;
       const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD + 12, y: 0, w: 300, fontSize: 11, fontWeight: 700, letterSpacing: 1.4, color: { token: 'onPrimary' }, name: 'Eyebrow' });
       const pw = Math.ceil(measureWidth(brand, pillT)) + 26; pillT.w = pw - 24;
@@ -322,17 +363,17 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Tính năng chính', body: 'Một câu nói kết quả người dùng nhận được, không nói tính năng.', url: `${B0}/a` }, { name: 'Nhanh hơn 2×', body: 'Một số liệu hoặc lợi ích ngắn.', url: `${B0}/b` }, { name: 'Dùng thử 14 ngày', body: 'Không cần thẻ.', url: `${B0}/c` }]).slice(0, 3);
       const gap = 12, colW = Math.floor((inner - gap) / 2), top = y + 16;
       const big = items[0];
-      const bigImg = image({ x: PAD, y: top, w: colW, h: 190, radius: 14, name: 'Bento image', alt: big.alt || big.name, assetId: big.image ?? null });
+      const bigImg = image({ x: PAD + 8, y: top + 8, w: colW - 16, h: 182, radius: RI, name: 'Bento image', alt: big.alt || big.name, assetId: big.image ?? null });
       const bigH1 = text(brand, big.name, { x: PAD + 16, y: bigImg.y + bigImg.h + 14, w: colW - 32, fontSize: 18, fontWeight: 700, fontFamily: 'heading', lineHeight: 1.25, name: 'Heading' });
       const bigB = text(brand, big.body || big.price || '', { x: PAD + 16, y: bigH1.y + bigH1.h + 6, w: colW - 32, fontSize: 13, color: { token: 'muted' }, lineHeight: 1.5, name: 'Body' });
       const bigCardH = bigB.y + bigB.h + 18 - top;
-      const bigCard = rect({ x: PAD, y: top, w: colW, h: bigCardH, fill: { token: 'soft' }, radius: 14, name: 'Card' });
+      const bigCard = rect({ x: PAD, y: top, w: colW, h: bigCardH, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) });
       const smallH = Math.floor((bigCardH - gap) / 2);
       const cards: Node[] = [group('Bento 1', [bigCard, bigImg, bigH1, bigB], { link: big.url || null, alt: big.name })];
       [items[1], items[2]].forEach((it, i) => {
         if (!it) return;
         const sy = top + i * (smallH + gap), sx = PAD + colW + gap;
-        const card = rect({ x: sx, y: sy, w: colW, h: smallH, fill: i === 0 ? { token: 'primary' } : { token: 'soft' }, radius: 14, name: 'Card' });
+        const card = rect({ x: sx, y: sy, w: colW, h: smallH, fill: i === 0 ? { token: 'primary' } : { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: i === 0 ? null : cardStroke(T) });
         const hT = text(brand, it.name, { x: sx + 16, y: sy + 18, w: colW - 32, fontSize: 17, fontWeight: 700, fontFamily: 'heading', lineHeight: 1.25, color: i === 0 ? { token: 'onPrimary' } : { token: 'ink' }, name: 'Heading' });
         const bT = text(brand, it.body || it.price || '', { x: sx + 16, y: hT.y + hT.h + 6, w: colW - 32, fontSize: 13, color: i === 0 ? { token: 'onPrimary' } : { token: 'muted' }, lineHeight: 1.45, name: 'Body', opacity: i === 0 ? 0.85 : 1 });
         cards.push(group(`Bento ${i + 2}`, [card, hT, bT], { link: it.url || null, alt: it.name }));
@@ -347,7 +388,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const ts = pills.map((pl) => text(brand, [pl.value, pl.label].filter(Boolean).join(' '), { x: 0, y: 0, w: 300, fontSize: 13, fontWeight: 700, color: { token: 'primary' }, name: 'Pill' }));
       const ws = ts.map((t) => Math.ceil(measureWidth(brand, t)) + 28);
       let x = Math.round((W - (ws.reduce((a, b) => a + b, 0) + gap * (ws.length - 1))) / 2);
-      ts.forEach((t, i) => { const r = rect({ x, y: y + 14, w: ws[i], h: ph, fill: { token: 'soft' }, radius: 999, name: 'Pill bg', stroke: { color: { token: 'line' }, width: 1 } }); t.x = x + 14; t.w = ws[i] - 28; t.y = y + 14 + Math.round((ph - t.h) / 2); nodes.push(r, t); x += ws[i] + gap; });
+      ts.forEach((t, i) => { const r = rect({ x, y: y + 14, w: ws[i], h: ph, fill: { token: 'soft' }, radius: 999, name: 'Pill bg', stroke: { color: { token: 'line' }, width: 1 }, shadow: T.shadow ? { blur: 12, y: 4, color: '#000000', opacity: 0.08 } : null }); t.x = x + 14; t.w = ws[i] - 28; t.y = y + 14 + Math.round((ph - t.h) / 2); nodes.push(r, t); x += ws[i] + gap; });
       h = ph + 28;
       kids.push(band(h), ...nodes);
       break;
@@ -355,11 +396,11 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     case 'dark-band': {
       const d = DEF.band; const btnC = c.button ?? d.button;
       const eyebrow = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD, y: y + 44, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.8, color: { token: 'primary' }, name: 'Eyebrow' });
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: eyebrow.y + eyebrow.h + 14, w: inner, fontSize: 44, fontWeight: 800, lineHeight: 1.02, fontFamily: 'heading', color: { token: 'bg' }, name: 'Headline' });
+      const head = text(brand, c.headline || d.headline, { x: PAD, y: eyebrow.y + eyebrow.h + 14, w: inner, fontSize: hs(44), fontWeight: 800, lineHeight: 1.02, fontFamily: 'heading', color: { token: 'bg' }, name: 'Headline' });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: head.y + head.h + 16, w: inner - 60, fontSize: 15, color: { token: 'bg' }, lineHeight: 1.5, name: 'Subhead', opacity: 0.75 });
       const btn = button(brand, btnC.label, btnC.url, PAD, sub.y + sub.h + 26);
       h = btn.y + btn.h + 48 - y;
-      kids.push(band(h, { token: 'ink' }, 'Band'), eyebrow, head, sub, btn);
+      kids.push(band(h, { token: 'ink' }, 'Band'), ...blobs(T, y, h, true), eyebrow, head, sub, btn);
       break;
     }
     case 'categories': {
@@ -389,7 +430,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     case 'cta-wide': {
       const d = DEF.cta; const btnC = c.button ?? d.button;
       const bh = 58;
-      const bg = rect({ x: PAD, y: y + 20, w: inner, h: bh, fill: { token: 'primary' }, radius: 12, name: 'Button bg' });
+      const bg = rect({ x: PAD, y: y + 20, w: inner, h: bh, fill: { token: 'primary' }, radius: T.btnRadius >= 999 ? 999 : Math.max(R, 12), name: 'Button bg', shadow: btnShadow(T, brand) });
       const t = text(brand, btnC.label, { x: PAD, y: y + 20, w: inner, h: bh, fontSize: 17, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: btnC.label });
       const btn = group(`Button · ${btnC.label}`, [bg, t], { link: btnC.url, alt: btnC.label });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: y + 20 + bh + 12, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Sub' });
@@ -400,7 +441,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     case 'gallery': {
       const items: ItemC[] = (c.items && c.items.length ? c.items : [1, 2, 3].map((i) => ({ name: `Ảnh ${i}`, url: `${B0}/gallery/${i}` }))).slice(0, 3);
       const gap = 12, n = items.length, size = Math.floor((inner - gap * (n - 1)) / n);
-      const nodes = items.map((it, i) => image({ x: PAD + i * (size + gap), y: y + 16, w: size, h: size, radius: 10, name: `Gallery ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, link: it.url || null }));
+      const nodes = items.map((it, i) => image({ x: PAD + i * (size + gap), y: y + 16, w: size, h: size, radius: R, shadow: cardShadow(T), name: `Gallery ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, link: it.url || null }));
       h = size + 32;
       kids.push(band(h), ...nodes);
       break;
@@ -414,7 +455,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const pw = Math.ceil(measureWidth(brand, pillT)) + 28;
       const pill = rect({ x: Math.round((W - pw) / 2), y: y + 36, w: pw, h: 28, fill: onBand ? { token: 'bg' } : { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
       pillT.x = pill.x; pillT.w = pw; pillT.y = pill.y + Math.round((28 - pillT.h) / 2);
-      const head = text(brand, c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 18, w: inner, fontSize: 46, fontWeight: 800, lineHeight: 1.05, fontFamily: 'heading', color: fg, align: 'center', name: 'Headline' });
+      const head = text(brand, c.headline || d.headline, { x: PAD, y: pill.y + pill.h + 18, w: inner, fontSize: hs(46), fontWeight: 800, lineHeight: 1.05, fontFamily: 'heading', color: fg, align: 'center', name: 'Headline' });
       const sub = text(brand, c.subhead || d.subhead, { x: PAD + 30, y: head.y + head.h + 14, w: inner - 60, fontSize: 16, color: onBand ? { token: 'onPrimary' } : { token: 'muted' }, lineHeight: 1.5, align: 'center', name: 'Subhead', opacity: onBand ? 0.85 : 1 });
       const btn = button(brand, btnC.label, btnC.url, 0, sub.y + sub.h + 22, { inverse: onBand });
       btn.x = Math.round((W - btn.w) / 2); const dx = btn.x - btn.children[0].x; btn.children.forEach((k) => { k.x += dx; });
@@ -422,18 +463,18 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const img = c.image === null && !c.imageAlt ? null : image({ x: 0, y: y + bandH, w: W, h: 300, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null });
       h = bandH + (img ? img.h : 0);
       const bg = style === 'gradient' ? rect({ x: 0, y, w: W, h: bandH, fill: null, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: 135 }, name: 'Band' }) : band(bandH, style === 'band' ? { token: 'primary' } : { token: 'bg' }, 'Band');
-      kids.push(bg, pill, pillT, head, sub, syncGroup(btn), ...(img ? [img] : []));
+      kids.push(bg, ...(onBand ? blobs(T, y, bandH, true) : []), pill, pillT, head, sub, syncGroup(btn), ...(img ? [img] : []));
       break;
     }
     case 'icon-row': {
       const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Xem video', body: '▶', url: `${B0}/videos` }, { name: 'Đọc sách', body: '📘', url: `${B0}/books` }, { name: 'Chơi game', body: '🎮', url: `${B0}/games` }, { name: 'Học cùng nhau', body: '💛', url: `${B0}/learn` }]).slice(0, 4);
-      const n = items.length, cw = Math.floor(inner / n), sz = 60;
+      const n = items.length, cw = Math.floor(inner / n), sz = T.eyebrowPill ? 66 : 60;
       const nodes: Node[] = [];
       items.forEach((it, i) => {
         const cx = PAD + i * cw + cw / 2;
-        const circ = rect({ x: Math.round(cx - sz / 2), y: y + 22, w: sz, h: sz, fill: { token: 'soft' }, radius: 999, name: 'Icon bg', stroke: { color: { token: 'line' }, width: 1 } });
-        const g = text(brand, it.body || it.name.slice(0, 1), { x: circ.x, y: circ.y, w: sz, h: sz, fontSize: 24, align: 'center', autoHeight: false, vAlign: 'middle', color: { token: 'primary' }, name: 'Icon' });
-        const label = text(brand, it.name, { x: PAD + i * cw, y: circ.y + sz + 10, w: cw, fontSize: 12, fontWeight: 600, align: 'center', color: { token: 'ink' }, name: 'Label' });
+        const circ = rect({ x: Math.round(cx - sz / 2), y: y + 22, w: sz, h: sz, fill: { token: 'soft' }, radius: 999, name: 'Icon bg', stroke: T.shadow ? null : { color: { token: 'line' }, width: 1 }, shadow: T.shadow ? { blur: 14, y: 6, color: '#000000', opacity: 0.1 } : null });
+        const g = text(brand, it.body || it.name.slice(0, 1), { x: circ.x, y: circ.y, w: sz, h: sz, fontSize: T.eyebrowPill ? 28 : 24, align: 'center', autoHeight: false, vAlign: 'middle', color: { token: 'primary' }, name: 'Icon' });
+        const label = text(brand, it.name, { x: PAD + i * cw, y: circ.y + sz + 10, w: cw, fontSize: 12, fontWeight: 700, align: 'center', color: { token: 'ink' }, name: 'Label' });
         nodes.push(group(`Icon · ${it.name}`, [circ, g, label], { link: it.url || null, alt: it.name }));
       });
       h = 22 + sz + 10 + 36 + 16;
@@ -464,7 +505,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       if (c.heading) { const hd = text(brand, c.heading, { x: PAD, y: cy, w: inner, fontSize: 13, fontWeight: 700, color: { token: 'muted' }, align: 'center', name: 'Countdown label' }); nodes.push(hd); cy = hd.y + hd.h + 10; }
       units.forEach((u, i) => {
         const x = PAD + i * (tw + gap);
-        nodes.push(rect({ x, y: cy, w: tw, h: th, fill: { token: 'soft' }, radius: 12, name: 'Tile', stroke: { color: { token: 'line' }, width: 1 } }));
+        nodes.push(rect({ x, y: cy, w: tw, h: th, fill: { token: 'soft' }, radius: Math.min(R, 16), name: 'Tile', stroke: cardStroke(T), shadow: cardShadow(T) }));
         nodes.push(text(brand, u.value, { x, y: cy + 12, w: tw, fontSize: 28, fontWeight: 800, fontFamily: 'heading', align: 'center', color: { token: 'ink' }, name: 'Number' }));
         nodes.push(text(brand, u.label, { x, y: cy + 50, w: tw, fontSize: 11, color: { token: 'muted' }, align: 'center', name: 'Unit' }));
       });
@@ -476,7 +517,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const label = text(brand, up(c.eyebrow || 'Dùng mã'), { x: PAD, y: y + 24, w: inner, fontSize: 11, fontWeight: 700, letterSpacing: 1.6, color: { token: 'muted' }, align: 'center', name: 'Code label' });
       const codeT = text(brand, up(c.headline || 'PHLOEM20'), { x: 0, y: 0, w: 300, fontSize: 22, fontWeight: 800, letterSpacing: 3, color: { token: 'ink' }, align: 'center', name: 'Code', fontFamily: 'heading' });
       const cw = Math.ceil(measureWidth(brand, codeT)) + 72;
-      const box = rect({ x: Math.round((W - cw) / 2), y: label.y + label.h + 10, w: cw, h: 52, fill: { token: 'bg' }, radius: 10, stroke: { color: { token: 'primary' }, width: 2 }, name: 'Code box' });
+      const box = rect({ x: Math.round((W - cw) / 2), y: label.y + label.h + 10, w: cw, h: 52, fill: { token: 'bg' }, radius: Math.min(R, 14), stroke: { color: { token: 'primary' }, width: 2 }, name: 'Code box', shadow: T.glow ? { blur: 20, y: 6, color: brand.primary, opacity: 0.25 } : cardShadow(T) });
       codeT.x = box.x + 16; codeT.w = cw - 60; codeT.y = box.y + Math.round((52 - codeT.h) / 2);
       const copy = text(brand, '⧉', { x: box.x + cw - 40, y: box.y, w: 28, h: 52, fontSize: 18, color: { token: 'primary' }, align: 'center', autoHeight: false, vAlign: 'middle', name: 'Copy' });
       const note = c.subhead ? text(brand, c.subhead, { x: PAD, y: box.y + box.h + 10, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Note' }) : null;
@@ -491,7 +532,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const nodes: Node[] = [];
       items.forEach((st, i) => {
         const x = PAD + (i % cols) * (tw + gap), ty = y + 16 + Math.floor(i / cols) * (th + gap);
-        nodes.push(rect({ x, y: ty, w: tw, h: th, fill: { token: 'soft' }, radius: 14, name: 'Tile' }));
+        nodes.push(rect({ x, y: ty, w: tw, h: th, fill: { token: 'soft' }, radius: R, name: 'Tile', shadow: cardShadow(T), stroke: cardStroke(T) }));
         nodes.push(text(brand, st.value, { x: x + 16, y: ty + 16, w: tw - 32, fontSize: 30, fontWeight: 800, fontFamily: 'heading', color: { token: 'primary' }, name: 'Value' }));
         nodes.push(text(brand, st.label, { x: x + 16, y: ty + 58, w: tw - 32, fontSize: 12, color: { token: 'muted' }, name: 'Label' }));
       });
@@ -506,7 +547,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       let bottom = y;
       items.forEach((it, i) => {
         const x = PAD + i * (cw + gap), top = y + 16;
-        const img = image({ x, y: top, w: cw, h: ih, radius: 10, name: `Article image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null });
+        const img = image({ x, y: top, w: cw, h: ih, radius: RI, name: `Article image ${i + 1}`, alt: it.alt || it.name, assetId: it.image ?? null, shadow: cardShadow(T) });
         const parts: Node[] = [img];
         if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 120, fontSize: 10, fontWeight: 800, letterSpacing: 0.5, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 14; const bg = rect({ x: x + 8, y: top + 8, w: bw, h: 20, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = x + 15; bt.w = bw - 14; bt.y = top + 8 + Math.round((20 - bt.h) / 2); parts.push(bg, bt); }
         const title = text(brand, it.name, { x, y: top + ih + 10, w: cw, fontSize: 14, fontWeight: 700, lineHeight: 1.3, name: 'Title' });
@@ -533,8 +574,8 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const d = DEF.footer;
       const brandT = logoNode(brand, c, PAD, y + 40, 24, 'center', c.links?.[0]?.url || 'https://example.com');
       const addr = text(brand, c.address || d.address, { x: PAD, y: brandT.y + brandT.h + 10, w: inner, fontSize: 12, color: { token: 'muted' }, align: 'center', name: 'Address' });
-      const unsub = text(brand, 'Huỷ đăng ký', { x: 0, y: addr.y + addr.h + 12, w: 90, fontSize: 12, color: { token: 'muted' }, align: 'right', underline: true, name: 'Unsubscribe', link: c.unsubscribeUrl || d.unsubscribeUrl });
-      const prefs = text(brand, 'Cập nhật thông tin', { x: 0, y: unsub.y, w: 120, fontSize: 12, color: { token: 'muted' }, align: 'left', underline: true, name: 'Preferences', link: c.preferencesUrl || d.preferencesUrl });
+      const unsub = text(brand, c.unsubscribeLabel || 'Huỷ đăng ký', { x: 0, y: addr.y + addr.h + 12, w: 90, fontSize: 12, color: { token: 'muted' }, align: 'right', underline: true, name: 'Unsubscribe', link: c.unsubscribeUrl || d.unsubscribeUrl });
+      const prefs = text(brand, c.preferencesLabel || 'Cập nhật thông tin', { x: 0, y: unsub.y, w: 120, fontSize: 12, color: { token: 'muted' }, align: 'left', underline: true, name: 'Preferences', link: c.preferencesUrl || d.preferencesUrl });
       const uw = Math.ceil(measureWidth(brand, unsub)) + 2, pw = Math.ceil(measureWidth(brand, prefs)) + 2;
       unsub.w = uw; prefs.w = pw;
       const total = uw + 20 + pw; unsub.x = Math.round((W - total) / 2); prefs.x = unsub.x + uw + 20;
@@ -579,7 +620,7 @@ const footer = { brand: sampleBrand, address: 'Terra Co. · 123 Lê Lợi, Quậ
 
 export const TEMPLATES: TemplateDef[] = [
   {
-    kind: 'newsletter', name: 'Newsletter', desc: 'Hero ảnh · câu chuyện · 2 bài · số liệu · CTA', preset: 'Forest', brand: { headingFamily: 'Lora', name: 'Terra' },
+    kind: 'newsletter', name: 'Newsletter', desc: 'Hero ảnh · câu chuyện · 2 bài · số liệu · CTA', preset: 'Forest', brand: { vibe: 'editorial', headingFamily: 'Lora', name: 'Terra' },
     fields: { campaignName: 'Newsletter tháng 10', subject: 'Tháng này ở Terra: 3 điều đáng xem', preheader: 'Bộ sưu tập thu, cửa hàng mới và một câu chuyện nhỏ' },
     blocks: [
       { kind: 'nav', content: { brand: sampleBrand, links: navLinks } },
@@ -669,7 +710,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'digest', name: 'Bản tin biên tập', desc: 'Mở đầu · 3 bài viết · divider · CTA đọc tiếp', preset: 'Mono', brand: { headingFamily: 'Lora', name: 'Terra Journal' },
+    kind: 'digest', name: 'Bản tin biên tập', desc: 'Mở đầu · 3 bài viết · divider · CTA đọc tiếp', preset: 'Mono', brand: { vibe: 'editorial', headingFamily: 'Lora', name: 'Terra Journal' },
     fields: { campaignName: 'Digest tuần 42', subject: '3 bài đáng đọc tuần này', preheader: 'Men tro trấu, bàn ăn kiểu Nhật, và cách rửa gốm đúng' },
     blocks: [
       { kind: 'nav', content: { brand: `${sampleBrand} Journal`, links: [{ label: 'Bài mới', url: `${B}/journal` }, { label: 'Chủ đề', url: `${B}/journal/topics` }, { label: 'Cửa hàng', url: `${B}/shop` }] } },
@@ -720,7 +761,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'drop', name: 'Streetwear drop', desc: 'Dải tối chữ khổ lớn · nhãn · gallery · 3 món · CTA to', preset: 'Neon', tag: 'trend', brand: { headingFamily: 'Space Grotesk', name: 'VOLT' },
+    kind: 'drop', name: 'Streetwear drop', desc: 'Dải tối chữ khổ lớn · nhãn · gallery · 3 món · CTA to', preset: 'Neon', tag: 'trend', brand: { vibe: 'bold', headingFamily: 'Space Grotesk', name: 'VOLT' },
     fields: { campaignName: 'Drop 03', subject: 'DROP 03 mở bán 24.10 · 48 giờ', preheader: 'Áo khoác gió VOLT Wind, 300 chiếc, không restock' },
     blocks: [
       { kind: 'nav', content: { brand: 'VOLT', links: [{ label: 'Drop', url: `${B}/drop` }, { label: 'Lookbook', url: `${B}/lookbook` }, { label: 'Size', url: `${B}/size` }] } },
@@ -745,7 +786,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'luxe', name: 'Beauty tối giản', desc: 'Chia đôi · câu chuyện · 2 sản phẩm · trích dẫn', preset: 'Linen', tag: 'trend', brand: { headingFamily: 'Playfair Display', name: 'Sóng' },
+    kind: 'luxe', name: 'Beauty tối giản', desc: 'Chia đôi · câu chuyện · 2 sản phẩm · trích dẫn', preset: 'Linen', tag: 'trend', brand: { vibe: 'luxury', headingFamily: 'Playfair Display', name: 'Sóng' },
     fields: { campaignName: 'Sóng · Serum mới', subject: 'Serum Sóng No.3: 12 tuần, da đều màu', preheader: 'Công thức mới, giá ra mắt đến 31/10' },
     blocks: [
       { kind: 'nav', content: { brand: 'Sóng', links: [{ label: 'Da mặt', url: `${B}/face` }, { label: 'Cơ thể', url: `${B}/body` }, { label: 'Triết lý', url: `${B}/about` }] } },
@@ -772,7 +813,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'food', name: 'Nhà hàng · F&B', desc: 'Chia đôi · nhãn · 3 món · social proof · CTA', preset: 'Sunset', tag: 'trend', brand: { headingFamily: 'Montserrat', name: 'Bếp Nhà' },
+    kind: 'food', name: 'Nhà hàng · F&B', desc: 'Chia đôi · nhãn · 3 món · social proof · CTA', preset: 'Sunset', tag: 'trend', brand: { vibe: 'playful', headingFamily: 'Montserrat', name: 'Bếp Nhà' },
     fields: { campaignName: 'Menu thu', subject: 'Menu thu đã lên: 6 món mới, giao nóng 30 phút', preheader: 'Giảm 20% đơn đầu qua app, hết 31/10' },
     blocks: [
       { kind: 'nav', content: { brand: 'Bếp Nhà', links: [{ label: 'Menu', url: `${B}/menu` }, { label: 'Đặt bàn', url: `${B}/book` }, { label: 'Giao hàng', url: `${B}/delivery` }] } },
@@ -785,7 +826,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'flash', name: 'Flash sale', desc: 'Nhãn · dải màu · 3 món · CTA to', preset: 'Coral', tag: 'trend', brand: { headingFamily: 'Montserrat', name: 'Terra' },
+    kind: 'flash', name: 'Flash sale', desc: 'Nhãn · dải màu · 3 món · CTA to', preset: 'Coral', tag: 'trend', brand: { vibe: 'bold', headingFamily: 'Montserrat', name: 'Terra' },
     fields: { campaignName: 'Flash sale 6 giờ', subject: '⚡ 6 giờ: giảm 40% ba món bán chạy', preheader: 'Từ 18:00 đến 24:00 hôm nay, hết là hết' },
     blocks: [
       { kind: 'nav', content: { brand: 'Terra', links: navLinks } },
@@ -797,7 +838,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'fitness', name: 'Fitness · app', desc: 'Dải tối · số liệu · bento · trích dẫn · CTA to', preset: 'Mint', tag: 'trend', brand: { headingFamily: 'Space Grotesk', name: 'Fitly' },
+    kind: 'fitness', name: 'Fitness · app', desc: 'Dải tối · số liệu · bento · trích dẫn · CTA to', preset: 'Mint', tag: 'trend', brand: { vibe: 'bold', headingFamily: 'Space Grotesk', name: 'Fitly' },
     fields: { campaignName: 'Thử thách 21 ngày', subject: 'Thử thách 21 ngày bắt đầu thứ Hai', preheader: '15 phút mỗi sáng, có huấn luyện viên nhắn mỗi ngày' },
     blocks: [
       { kind: 'nav', content: { brand: 'Fitly', links: [{ label: 'Chương trình', url: `${B}/programs` }, { label: 'HLV', url: `${B}/coaches` }, { label: 'Cộng đồng', url: `${B}/community` }] } },
@@ -810,7 +851,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'kids', name: 'Giáo dục trẻ em', desc: 'Hero giữa · hàng icon · tập mới · checklist · footer social', preset: 'Candy', tag: 'trend', brand: { headingFamily: 'Be Vietnam Pro', name: 'DorisEdu Kids' },
+    kind: 'kids', name: 'Giáo dục trẻ em', desc: 'Hero giữa · hàng icon · tập mới · checklist · footer social', preset: 'Candy', tag: 'trend', brand: { vibe: 'playful', headingFamily: 'Be Vietnam Pro', name: 'DorisEdu Kids' },
     fields: { campaignName: 'Welcome DorisEdu', subject: 'Chào mừng đến DorisEdu Kids!', preheader: 'Video, sách, trò chơi cho bé từ 3–8 tuổi, an toàn 100%' },
     blocks: [
       { kind: 'nav', content: { brand: 'DorisEdu Kids', links: [{ label: 'Học', url: `${B}/learn` }, { label: 'Video', url: `${B}/videos` }, { label: 'Sách', url: `${B}/books` }, { label: 'Shop', url: `${B}/shop` }] } },
@@ -837,7 +878,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'agency', name: 'Agency · dịch vụ', desc: 'Hero phủ ảnh · 4 dịch vụ · tiles kết quả · trích dẫn · CTA', preset: 'Neon', tag: 'trend', brand: { headingFamily: 'Space Grotesk', name: 'Phloem Studio' },
+    kind: 'agency', name: 'Agency · dịch vụ', desc: 'Hero phủ ảnh · 4 dịch vụ · tiles kết quả · trích dẫn · CTA', preset: 'Neon', tag: 'trend', brand: { vibe: 'bold', headingFamily: 'Space Grotesk', name: 'Phloem Studio' },
     fields: { campaignName: 'Agency intro', subject: 'Email đẹp. Chiến lược rõ. Chuyển đổi cao.', preheader: 'Case study: +320% doanh thu từ email trong 3 tháng' },
     blocks: [
       { kind: 'nav', content: { brand: 'Phloem Studio', links: [{ label: 'Dịch vụ', url: `${B}/services` }, { label: 'Dự án', url: `${B}/work` }, { label: 'Giới thiệu', url: `${B}/about` }] } },
@@ -863,7 +904,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'portfolio', name: 'Portfolio · case study', desc: 'Hero ảnh · tiles kết quả · 3 dự án · trích dẫn · CTA', preset: 'Lavender', tag: 'trend', brand: { headingFamily: 'Playfair Display', name: 'Doris' },
+    kind: 'portfolio', name: 'Portfolio · case study', desc: 'Hero ảnh · tiles kết quả · 3 dự án · trích dẫn · CTA', preset: 'Lavender', tag: 'trend', brand: { vibe: 'luxury', headingFamily: 'Playfair Display', name: 'Doris' },
     fields: { campaignName: 'Case study tháng 10', subject: 'Từ ý tưởng đến thế giới sống động', preheader: 'Case study: website 3D giúp thương hiệu tăng 2.8× chuyển đổi' },
     blocks: [
       { kind: 'nav', content: { brand: 'Doris', links: [{ label: 'Dự án', url: `${B}/work` }, { label: 'Dịch vụ', url: `${B}/services` }, { label: 'Liên hệ', url: `${B}/contact` }] } },
@@ -876,7 +917,7 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'appkids', name: 'Game · app cho bé', desc: 'Hero giữa dải màu · hàng icon · mã quà · CTA to · footer social', preset: 'Sky', tag: 'trend', brand: { headingFamily: 'Be Vietnam Pro', name: 'HappyTown' },
+    kind: 'appkids', name: 'Game · app cho bé', desc: 'Hero giữa dải màu · hàng icon · mã quà · CTA to · footer social', preset: 'Sky', tag: 'trend', brand: { vibe: 'playful', headingFamily: 'Be Vietnam Pro', name: 'HappyTown' },
     fields: { campaignName: 'HappyTown update', subject: 'Khám phá vùng đất mới trong HappyTown!', preheader: 'Nông trại, trang trí, câu cá, đua xe. Mã HAPPYTOWN25 tặng 50.000 xu' },
     blocks: [
       { kind: 'nav', content: { brand: 'HappyTown', links: [{ label: 'Chơi', url: `${B}/play` }, { label: 'Tin mới', url: `${B}/news` }, { label: 'Cộng đồng', url: `${B}/community` }] } },

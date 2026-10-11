@@ -63,7 +63,8 @@ process.on('uncaughtException', (e) => console.error('[relay] uncaught:', e?.mes
 const server = createServer(async (req, res) => {
   cors(res);
   if (req.method === 'OPTIONS') return end(res, 204);
-  const url = new URL(req.url, PUBLIC_URL);
+  let url;
+  try { url = new URL(req.url, PUBLIC_URL); } catch { return json(res, 400, { error: 'URL không hợp lệ' }); }
   try {
     if (url.pathname === '/' && req.method === 'GET') {
       return json(res, 200, {
@@ -84,11 +85,11 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
     if (url.pathname.startsWith('/db/')) return await dbRoute(url, req, res);
-    if (url.pathname === '/site' && req.method === 'POST') return await siteRoute(await body(req), res);
-    if (url.pathname === '/image' && req.method === 'GET') return await imageRoute(url.searchParams.get('url') || '', res);
+    if (url.pathname === '/site' && req.method === 'POST') { if (!gate(req, res)) return; return await siteRoute(await body(req), res); }
+    if (url.pathname === '/image' && req.method === 'GET') { if (!gate(req, res)) return; return await imageRoute(url.searchParams.get('url') || '', res); }
     if (url.pathname === '/proxy' && req.method === 'POST') return await proxy(await body(req), res);
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
-    if (url.pathname === '/ai' && req.method === 'POST') return await ai(await body(req), res);
+    if (url.pathname === '/ai' && req.method === 'POST') { if (!gate(req, res)) return; return await ai(await body(req), res); }
     if (url.pathname === '/oauth/start' && req.method === 'POST') return oauthStart(await body(req), res);
     if (url.pathname.startsWith('/oauth/poll/') && req.method === 'GET') return oauthPoll(url.pathname.split('/').pop(), res);
     if (url.pathname === '/oauth/refresh' && req.method === 'POST') return await oauthRefresh(await body(req), res);
@@ -107,8 +108,6 @@ async function proxy(p, res) {
   const { provider, method = 'GET', path = '/', query, headers = {}, body: reqBody, multipart, auth } = p || {};
   if (!auth) return json(res, 400, { error: 'thiếu auth' });
   if (!path.startsWith('/')) return json(res, 400, { error: 'path phải bắt đầu bằng /' });
-  if (FORBIDDEN.some((re) => re.test(path))) return json(res, 403, { error: 'Phloem không bao giờ gửi email. Hãy duyệt và bấm gửi trong Mailchimp/Klaviyo.' });
-
   let base, h = { Accept: 'application/json', ...headers };
   if (provider === 'mailchimp') {
     const dc = auth.dc || (auth.apiKey || '').split('-').pop();
@@ -122,6 +121,10 @@ async function proxy(p, res) {
   } else return json(res, 400, { error: 'provider không hỗ trợ' });
 
   const target = new URL(base + path);
+  // Guard on the canonical path (dot-segments resolved, percent-escapes decoded) so no spelling of a send endpoint slips through.
+  let canon; try { canon = decodeURIComponent(target.pathname); } catch { return json(res, 400, { error: 'path không hợp lệ' }); }
+  if (!canon.startsWith(new URL(base).pathname + '/') && canon !== new URL(base).pathname) return json(res, 400, { error: 'path ra ngoài API' });
+  if (FORBIDDEN.some((re) => re.test(canon)) || /\\/.test(path)) return json(res, 403, { error: 'Phloem không bao giờ gửi email. Hãy duyệt và bấm gửi trong Mailchimp/Klaviyo.' });
   if (query) for (const [k, v] of Object.entries(query)) target.searchParams.set(k, String(v));
 
   let fetchBody;
@@ -281,8 +284,8 @@ async function oauthRefresh(p, res) {
 async function authRoute(action, req, res) {
   try {
     const agent = String(req.headers['user-agent'] || '');
-    if (action === 'register' && req.method === 'POST') return json(res, 200, AUTH.register(await body(req), agent));
-    if (action === 'login' && req.method === 'POST') return json(res, 200, AUTH.login(await body(req), agent));
+    if (action === 'register' && req.method === 'POST') return json(res, 200, await AUTH.register(await body(req), agent));
+    if (action === 'login' && req.method === 'POST') return json(res, 200, await AUTH.login(await body(req), agent));
     if (action === 'me' && req.method === 'GET') {
       const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
       const user = m ? AUTH.me(m[1]) : null;
@@ -295,6 +298,15 @@ async function authRoute(action, req, res) {
 
 const bearer = (req) => { const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || ''); return m ? m[1] : ''; };
 function requireUser(req, res) { const u = AUTH.me(bearer(req)); if (!u) json(res, 401, { error: 'Cần đăng nhập.', code: 'expired' }); return u; }
+/** Routes that spend money or reach out to the internet: a signed-in user, or the relay token when one is configured. */
+function gate(req, res) { if (RELAY_TOKEN && req.headers['x-phloem-token'] === RELAY_TOKEN) return true; return !!requireUser(req, res); }
+const USER_QUOTA = Number(process.env.USER_QUOTA_MB || 500) * 1048576;
+const TOTAL_QUOTA = Number(process.env.TOTAL_QUOTA_MB || 5000) * 1048576;
+function checkQuota(res, userId, delta) {
+  const used = Number(DB.assets.usage(userId).bytes) + Number(DB.projects.count(userId).bytes);
+  if (used + delta > USER_QUOTA || DB.usageAll() + delta > TOTAL_QUOTA) { json(res, 413, { error: 'Hết dung lượng lưu trữ. Hãy xoá ảnh hoặc email cũ.', code: 'quota' }); return false; }
+  return true;
+}
 function raw(req, limit) {
   return new Promise((resolve, reject) => {
     const chunks = []; let size = 0;
@@ -313,7 +325,7 @@ async function dbRoute(url, req, res) {
     if (kind === 'projects') {
       if (m === 'GET' && !id) return json(res, 200, { projects: DB.projects.list(u.id) });
       if (m === 'GET') { const p = DB.projects.get(u.id, id); return p ? json(res, 200, { project: p }) : json(res, 404, { error: 'không có project này' }); }
-      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); return json(res, 200, DB.projects.put(u.id, p)); }
+      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); const prev = DB.projects.list(u.id).find((x) => x.id === id); if (!checkQuota(res, u.id, JSON.stringify(p).length - (prev?.size || 0))) return; return json(res, 200, DB.projects.put(u.id, p)); }
       if (m === 'DELETE' && id) { DB.projects.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'assets') {
@@ -323,6 +335,7 @@ async function dbRoute(url, req, res) {
         const data = await raw(req, 15 * 1024 * 1024);
         const meta = { id, name: decodeURIComponent(String(req.headers['x-asset-name'] || 'image')), mime: String(req.headers['content-type'] || 'application/octet-stream').split(';')[0], w: Number(req.headers['x-asset-w'] || 0), h: Number(req.headers['x-asset-h'] || 0) };
         if (!meta.mime.startsWith('image/')) return json(res, 415, { error: 'chỉ nhận ảnh' });
+        if (!checkQuota(res, u.id, data.length - (DB.assets.meta(u.id, id)?.bytes || 0))) return;
         return json(res, 200, { asset: DB.assets.put(u.id, meta, data) });
       }
       if (m === 'DELETE' && id) { DB.assets.remove(u.id, id); return json(res, 200, { ok: true }); }

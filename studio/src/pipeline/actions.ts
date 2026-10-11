@@ -217,25 +217,27 @@ export function deleteMobileVariant() { patchProject({ mobile: null }); setVaria
 
 // ---------- brand ----------
 export function applyBrand(b: Partial<Brand>) {
-  const p = get().project; if (!p) return;
+  const st = get(); const p = st.project; if (!p) return;
   const nb = { ...p.brand, ...b };
   ensureFonts([nb.fontFamily, nb.headingFamily]);
   patchProject({ brand: nb });
-  if (nb.logoAssetId !== p.brand.logoAssetId || nb.name !== p.brand.name) {
-    const d = doc();
-    const next = swapLogos(d, nb);
-    if (next !== d) commit(next);
-  }
+  // Brand is project-wide: rewrite the active doc (with history) and the other variant (without).
+  const other: 'desktop' | 'mobile' = st.variant === 'mobile' && p.mobile ? 'desktop' : 'mobile';
+  const both = (fn: (d: Doc) => Doc) => {
+    const d = doc(); const next = fn(d); if (next !== d) commit(next);
+    const od = get().project![other]; if (od) { const on = fn(od); if (on !== od) patchProject({ [other]: on } as Partial<Project>); }
+  };
+  if (nb.logoAssetId !== p.brand.logoAssetId || nb.name !== p.brand.name) both((d) => swapLogos(d, nb));
   if ((nb.gradient?.angle ?? null) !== (p.brand.gradient?.angle ?? null)) {
-    const d = doc();
     const isBrandGrad = (n: Node) => n.type === 'rect' && !!n.gradient && typeof n.gradient.from === 'object' && n.gradient.from.token === 'primary' && typeof n.gradient.to === 'object' && n.gradient.to.token === 'accent';
-    const next = ops.mapNodes(d, (n) => {
-      if (n.type !== 'rect') return n;
+    // Only full-width bands (hero band, dark band, CTA strips): buttons, pills and badges keep their flat fill.
+    const isBand = (n: Node) => n.type === 'rect' && n.w >= 560;
+    both((d) => ops.mapNodes(d, (n) => {
+      if (n.type !== 'rect' || !isBand(n)) return n;
       const tok = n.fill && typeof n.fill === 'object' ? n.fill.token : null;
-      if (nb.gradient) return tok === 'primary' && (!n.gradient || isBrandGrad(n)) ? { ...n, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: nb.gradient.angle } } : n;
-      return isBrandGrad(n) ? { ...n, gradient: null } : n;
-    });
-    if (next !== d) commit(next);
+      if (nb.gradient) return (tok === 'primary' || (!n.fill && isBrandGrad(n))) && (!n.gradient || isBrandGrad(n)) ? { ...n, gradient: { from: { token: 'primary' }, to: { token: 'accent' }, angle: nb.gradient.angle } } : n;
+      return isBrandGrad(n) ? { ...n, gradient: null, fill: n.fill ?? { token: 'primary' } } : n;
+    }));
   }
   remeasureAll();
 }
@@ -358,7 +360,7 @@ export async function importProjectJson(file: File) {
 export async function syncNow() {
   const r = await cloud.syncAll(ownerId());
   if (r.assets.length) assets.registerRemote(r.assets);
-  if (r.profiles.length) set({ profiles: r.profiles });
+  if (r.profiles) set({ profiles: r.profiles });
   await refreshProjects();
 }
 export async function signUp(input: auth.Credentials) {
@@ -378,6 +380,7 @@ export async function signIn(input: auth.Credentials) {
 }
 export async function signOut() {
   if (get().dirty) await saveProject();
+  await cloud.flush();
   auth.logout();
   set({ user: null, route: { name: 'home' }, project: null, selection: [], modal: null, sync: { state: 'off' } });
   toast('Đã đăng xuất.', 'ok');
@@ -389,7 +392,17 @@ export async function restoreSession() {
   set({ user: s?.user ?? null });
   if (s) void syncNow();
   auth.onAuthChange((n) => { if ((n?.user.id || '') !== (get().user?.id || '')) { set({ user: n?.user ?? null }); void syncNow(); } });
-  addEventListener('storage', (e) => { if (e.key === 'phloem.session') { const n = auth.getSession(); if ((n?.user.id || '') !== (get().user?.id || '')) { set({ user: n?.user ?? null }); void refreshProjects(); } } });
+  addEventListener('storage', (e) => {
+    if (e.key !== 'phloem.session') return;
+    const n = auth.getSession();
+    if ((n?.user.id || '') === (get().user?.id || '')) return;
+    void (async () => {
+      if (get().dirty) await saveProject(); // still stamped with the old owner
+      await cloud.flush();
+      set({ user: n?.user ?? null, route: { name: 'home' }, project: null, selection: [], modal: null });
+      await syncNow();
+    })();
+  });
 }
 export async function claimGuestProjects() {
   const id = ownerId(); if (!id) return;

@@ -6,12 +6,12 @@ import { join } from 'node:path';
 import { createAuth, hashPassword, signToken, validate, verifyPassword, verifyToken } from '../server/src/auth.mjs';
 import { decrypt, encrypt, openDb } from '../server/src/db.mjs';
 
-test('password hashes are salted and verify only the right password', () => {
-  const a = hashPassword('correct horse'), b = hashPassword('correct horse');
+test('password hashes are salted and verify only the right password', async () => {
+  const a = await hashPassword('correct horse'), b = await hashPassword('correct horse');
   assert.notEqual(a, b);
-  assert.ok(verifyPassword('correct horse', a));
-  assert.ok(!verifyPassword('wrong horse', a));
-  assert.ok(!verifyPassword('correct horse', 'garbage'));
+  assert.ok(await verifyPassword('correct horse', a));
+  assert.ok(!(await verifyPassword('wrong horse', a)));
+  assert.ok(!(await verifyPassword('correct horse', 'garbage')));
 });
 
 test('tokens round-trip, expire, and reject tampering', () => {
@@ -30,17 +30,17 @@ test('validate returns the first failing field', () => {
   assert.equal(validate({ email: 'a@b.co', password: '12345678' }), null);
 });
 
-test('createAuth: register, duplicates, login, me, revocable sessions, persisted in SQLite', () => {
+test('createAuth: register, duplicates, login, me, revocable sessions, persisted in SQLite', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phloem-auth-'));
   const auth = createAuth({ dataDir: dir });
-  const s = auth.register({ name: 'Khanh', email: 'K@Example.com ', password: 'passw0rd!', brand: 'Terra' }, 'test-agent');
+  const s = await auth.register({ name: 'Khanh', email: 'K@Example.com ', password: 'passw0rd!', brand: 'Terra' }, 'test-agent');
   assert.equal(s.user.email, 'k@example.com');
   assert.equal(s.user.brand, 'Terra');
   assert.ok(!('password' in s.user));
-  assert.throws(() => auth.register({ name: 'Dup', email: 'k@example.com', password: 'passw0rd!' }), (e) => e.status === 409 && e.code === 'exists');
-  assert.throws(() => auth.login({ email: 'k@example.com', password: 'wrongpass' }), (e) => e.status === 401 && e.code === 'badpass');
-  assert.throws(() => auth.login({ email: 'nobody@example.com', password: 'whatever1' }), (e) => e.code === 'notfound');
-  const l = auth.login({ email: 'k@example.com', password: 'passw0rd!' });
+  await assert.rejects(auth.register({ name: 'Dup', email: 'k@example.com', password: 'passw0rd!' }), (e) => e.status === 409 && e.code === 'exists');
+  await assert.rejects(auth.login({ email: 'k@example.com', password: 'wrongpass' }), (e) => e.status === 401 && e.code === 'badpass');
+  await assert.rejects(auth.login({ email: 'nobody@example.com', password: 'whatever1' }), (e) => e.code === 'notfound');
+  const l = await auth.login({ email: 'k@example.com', password: 'passw0rd!' });
   assert.equal(auth.me(l.token)?.id, s.user.id);
   assert.equal(auth.me('bad.token'), null);
   assert.match(auth.db.users.byEmail('k@example.com').password, /^[0-9a-f]{32}:[0-9a-f]{64}$/);
@@ -53,16 +53,16 @@ test('createAuth: register, duplicates, login, me, revocable sessions, persisted
   // a second instance on the same data dir reuses the generated secret and the same database
   const again = createAuth({ dataDir: dir });
   assert.equal(again.count(), 1);
-  const l2 = again.login({ email: 'k@example.com', password: 'passw0rd!' });
+  const l2 = await again.login({ email: 'k@example.com', password: 'passw0rd!' });
   assert.equal(auth.me(l2.token)?.email, 'k@example.com', 'sessions are shared through the database');
 });
 
-test('createAuth migrates a legacy users.json once', () => {
+test('createAuth migrates a legacy users.json once', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phloem-auth-legacy-'));
-  writeFileSync(join(dir, 'users.json'), JSON.stringify([{ id: 'u_old', name: 'Old', email: 'old@example.com', brand: '', password: hashPassword('oldpass123'), createdAt: '2026-01-01T00:00:00.000Z' }]));
+  writeFileSync(join(dir, 'users.json'), JSON.stringify([{ id: 'u_old', name: 'Old', email: 'old@example.com', brand: '', password: await hashPassword('oldpass123'), createdAt: '2026-01-01T00:00:00.000Z' }]));
   const auth = createAuth({ dataDir: dir });
   assert.equal(auth.count(), 1);
-  assert.equal(auth.login({ email: 'old@example.com', password: 'oldpass123' }).user.id, 'u_old');
+  assert.equal((await auth.login({ email: 'old@example.com', password: 'oldpass123' })).user.id, 'u_old');
   assert.ok(!existsSync(join(dir, 'users.json')) && existsSync(join(dir, 'users.json.migrated')));
 });
 

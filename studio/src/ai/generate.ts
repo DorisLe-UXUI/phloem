@@ -1,6 +1,6 @@
 // "Give me images and copy, get 3 layouts": Claude composes block specs, Phloem renders them deterministically.
 import type { EmailFields, Brand, Doc } from '../model/types';
-import { BRAND_PRESETS, DEFAULT_BRAND } from '../model/types';
+import { BRAND_PRESETS, DEFAULT_BRAND, FONTS, VIBES, type Vibe } from '../model/types';
 import { buildDoc, type BlockSpec } from '../model/templates';
 import { assets } from '../storage/assets';
 import { askClaude, extractJson, type AiImage } from './client';
@@ -22,7 +22,7 @@ export interface GenInput {
   language?: 'auto' | 'vi' | 'en';
 }
 
-export interface Variant { name: string; why: string; palette: string; fields: EmailFields; blocks: BlockSpec[] }
+export interface Variant { name: string; why: string; palette: string; vibe?: Vibe; headingFont?: string; bodyFont?: string; fields: EmailFields; blocks: BlockSpec[] }
 
 const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - nav: {brand, links:[{label,url}] (2–4 link)}
@@ -53,7 +53,7 @@ const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - products-2/3 cũng nhận oldPrice ("$2.000") + badge ("-20%") để hiện giá cũ gạch ngang và nhãn
 - footer nhận social:[{label:"YouTube"|"Instagram"|"TikTok"|"Facebook"|"LinkedIn"|"X", url}]
 - divider: {} · spacer: {}
-- footer: {brand, address, unsubscribeUrl, preferencesUrl}`;
+- footer: {brand, address, unsubscribeUrl, preferencesUrl, unsubscribeLabel ("Huỷ đăng ký" | "Unsubscribe"), preferencesLabel ("Cập nhật thông tin" | "Update preferences") theo ngôn ngữ copy}`;
 
 const INDUSTRY_DOC = `Trước khi dựng, XÁC ĐỊNH NGÀNH và cá tính thương hiệu từ website/nội dung/ảnh (game & trẻ em, giáo dục, agency/studio sáng tạo, SaaS/app, bán lẻ thời trang, F&B, làm đẹp, du lịch, bất động sản, tổ chức…). Mỗi ngành có công thức riêng, KHÔNG dùng một bố cục cho mọi ngành:
 - Game / trẻ em / giải trí: hero-overlay với ảnh nhân vật hoặc thế giới game (ảnh thật từ web), headline ngắn vui; icon-row 4–5 hoạt động/tính năng (body là 1 emoji); categories hoặc gallery các "vùng đất"/hoạt động; code + badges cho quà tặng; cta-wide "Vào chơi ngay"; palette tươi (Candy, Sky, Sunset, Web). Giọng hào hứng, câu ngắn.
@@ -64,24 +64,34 @@ const INDUSTRY_DOC = `Trước khi dựng, XÁC ĐỊNH NGÀNH và cá tính th�
 - Du lịch / lifestyle / sự kiện: hero-overlay ảnh toàn khung; split; gallery; countdown cho sự kiện; cta. Giọng gợi cảm xúc.
 Ba phương án phải khác nhau về CẤU TRÚC và CẢM XÚC (ví dụ "Chào mừng" / "Khuyến mãi" / "Kể chuyện", hay "Hero ảnh" / "Dải màu" / "Tối giản"), không chỉ khác màu. Mỗi phương án có một block anchor khác loại.`;
 
-function systemPrompt(presetNames: string[]): string {
+const DESIGN_DOC = `HỆ THỐNG THIẾT KẾ (Phloem vẽ email thành ảnh, nên mọi hiệu ứng đều hiển thị đúng ở mọi hộp thư):
+- vibe quyết định bo góc, bóng đổ, pill, hình trang trí, cỡ tiêu đề: ${VIBES.map((v) => `"${v.v}" (${v.hint})`).join('; ')}. Chọn vibe theo ngành: trẻ em/game/F&B → playful; agency/tech/streetwear/sale lớn → bold; làm đẹp/thời trang cao cấp/khách sạn → luxury; báo chí/media/giáo dục → editorial; còn lại → clean.
+- headingFont / bodyFont chọn từ: ${FONTS.filter((f) => f.cat !== 'system').map((f) => `${f.family}${f.vi ? '' : ' (không có tiếng Việt)'}`).join(', ')}. Khi copy tiếng Việt CHỈ dùng font có tiếng Việt. Gợi ý: playful → Baloo 2 / Nunito / Quicksand; bold → Unbounded / Space Grotesk / Anton / Oswald; luxury → Playfair Display / Cormorant Garamond / Fraunces; editorial → Lora / Merriweather / Roboto Slab; clean → Inter / Manrope / Be Vietnam Pro / Plus Jakarta Sans. Heading và body nên khác nhau (display + sans).
+- Hiệu ứng có sẵn và nên dùng: hero-overlay (ảnh toàn khung + lớp tối dần + chữ trắng), hero-center style "gradient" (dải gradient primary → accent + hình tròn trang trí), dark-band (chữ khổ lớn nền tối), nút pill phát sáng (playful/bold), card bo góc có bóng, pill badges, countdown tiles, code box. Kết hợp 2–3 hiệu ứng mỗi email, không dùng tất cả.
+- Nhịp điệu: anchor khổ lớn → hàng icon/badges → nội dung chính (sản phẩm/bài viết/feature) → social proof → CTA lặp lại → footer. Khoảng trắng rộng, mỗi block một ý.`;
+
+function systemPrompt(presetNames: string[], lang: 'vi' | 'en' = 'vi'): string {
   return `Bạn là art director email cho Phloem Studio. Nhiệm vụ: từ website, nội dung và ảnh người dùng đưa, dựng 3 phương án email marketing KHÁC NHAU RÕ RỆT về cấu trúc và nhịp điệu, mỗi phương án 7–10 block, luôn bắt đầu bằng nav và kết thúc bằng footer.
 
 ${INDUSTRY_DOC}
 
+${DESIGN_DOC}
+
 ${BLOCK_DOC}
 
 Quy tắc:
-- Viết tiếng Việt tự nhiên, ngắn, cụ thể, đúng chính tả. Không dùng lorem ipsum. Không bịa số liệu nếu nội dung không có; nếu thiếu thì dùng stats về chính sách (đổi trả, giao hàng) có trong nội dung hoặc bỏ block stats.
+- Toàn bộ copy (fields + mọi block, kể cả nhãn nút, eyebrow, label countdown/stats, footer) viết bằng ${lang === 'en' ? 'English tự nhiên, ngắn gọn, đúng marketing English (các ví dụ tiếng Việt trong tài liệu block chỉ minh hoạ cấu trúc: hãy viết English)' : 'tiếng Việt tự nhiên, ngắn, cụ thể'}, đúng chính tả. Không dùng lorem ipsum. Không bịa số liệu nếu nội dung không có; nếu thiếu thì dùng stats về chính sách (đổi trả, giao hàng) có trong nội dung hoặc bỏ block stats.
 - Chỉ dùng imageId có trong danh sách ảnh được cung cấp, đúng chuỗi id. Mỗi ảnh dùng tối đa 2 lần. Nếu không có ảnh phù hợp, để image: null (Phloem tự vẽ placeholder).
 - Lấy URL từ nội dung nếu có; nếu không, dùng https://example.com/… có nghĩa.
 - Mỗi phương án đặt tên ngắn (ví dụ "Tối giản", "Dải màu nổi bật", "Kể chuyện") và một câu "why" giải thích chọn cấu trúc đó cho mục tiêu nào.
-- Chọn palette cho mỗi phương án từ: ${presetNames.join(', ')}. Ưu tiên khác nhau giữa các phương án trừ khi người dùng đã chọn. Palette "Web" (nếu có) là màu lấy từ chính website: dùng cho ít nhất 2 trong 3 phương án.
+- Chọn palette cho mỗi phương án từ: ${presetNames.join(', ')}. Ưu tiên khác nhau giữa các phương án trừ khi người dùng đã chọn. Palette "Web" (nếu có) là màu lấy từ chính website: dùng cho ít nhất 2 trong 3 phương án, trừ khi người dùng đã chọn bảng màu khác.
 - Thiết kế theo xu hướng hiện nay: một block "anchor" khổ lớn (hero-overlay / dark-band / hero-band / hero-center), hàng icon hoặc badges ngay dưới hero, khoảng trắng rộng, 1 CTA chính lặp lại ở cuối bằng cta-wide, social proof ngắn, footer có social, không quá 2 block chữ dài. Khuyến mãi: thêm code + countdown + giá cũ/mới.
 - fields: campaignName (ngắn), subject (30–55 ký tự, nói thẳng lợi ích), preheader (40–90 ký tự, nối tiếp subject, không lặp).
+- Mỗi phương án có vibe, headingFont, bodyFont riêng (khác nhau giữa 3 phương án khi hợp lý). Nếu website dùng font có trong danh sách thì ưu tiên font đó.
+- ẢNH: nếu có ảnh thì hero PHẢI dùng ảnh (hero-overlay / hero / hero-band / split), không để null. Ảnh tên "og-image" thường đã có chữ in sẵn: không dùng làm nền hero-overlay (chữ đè chữ), chỉ dùng ở hero/hero-band/split nếu không còn ảnh khác. Mỗi card sản phẩm/bài viết/bento/categories dùng một ảnh khác nhau. Chỉ để null khi thật sự không có ảnh phù hợp.
 
 Trả lời CHỈ bằng JSON hợp lệ, không giải thích thêm:
-{"variants":[{"name":"…","why":"…","palette":"…","fields":{"campaignName":"…","subject":"…","preheader":"…"},"blocks":[{"kind":"nav","content":{…}},…]}]}`;
+{"variants":[{"name":"…","why":"…","palette":"…","vibe":"playful|bold|luxury|editorial|clean","headingFont":"…","bodyFont":"…","fields":{"campaignName":"…","subject":"…","preheader":"…"},"blocks":[{"kind":"nav","content":{…}},…]}]}`;
 }
 
 async function thumbOf(assetId: string): Promise<AiImage | null> {
@@ -121,7 +131,7 @@ export async function generateVariants(inp: GenInput): Promise<Variant[]> {
     `Nội dung thô (tiêu đề, sản phẩm, giá, link, ngày…):\n${inp.content || '(không có — hãy viết copy mẫu hợp lý cho loại email này)'}`,
     imageLines.length ? `Ảnh có sẵn (${imageLines.length}):\n${imageLines.join('\n')}` : 'Ảnh: không có — dùng image: null.',
   ].filter(Boolean).join('\n\n');
-  const text = await askClaude({ system: systemPrompt(presets), turns: [{ role: 'user', text: prompt, images }], maxTokens: 16000, effort: 'medium' });
+  const text = await askClaude({ system: systemPrompt(presets, lang), turns: [{ role: 'user', text: prompt, images }], maxTokens: 20000, effort: 'high' });
   const parsed = extractJson<{ variants?: Variant[] }>(text);
   const variants = (parsed.variants || []).filter((v) => v && Array.isArray(v.blocks) && v.blocks.length).slice(0, 3);
   if (!variants.length) throw new Error('AI không trả về phương án nào. Thử mô tả nội dung rõ hơn.');
@@ -133,7 +143,12 @@ export async function generateVariants(inp: GenInput): Promise<Variant[]> {
       if (c.image && !validIds.has(String(c.image))) c.image = null;
       if (c.items) for (const it of c.items) if (it.image && !validIds.has(String(it.image))) it.image = null;
     }
-    if (!presets.includes(v.palette)) v.palette = inp.palette !== 'auto' ? inp.palette : 'Forest';
+    if (inp.palette !== 'auto') v.palette = presets.includes(inp.palette) ? inp.palette : 'Forest';
+    else if (!presets.includes(v.palette)) v.palette = 'Forest';
+    if (!VIBES.some((x) => x.v === v.vibe)) v.vibe = 'clean';
+    const okFont = (f?: string) => !!f && FONTS.some((x) => x.family.toLowerCase() === f.toLowerCase() && (lang !== 'vi' || x.vi));
+    v.headingFont = okFont(v.headingFont) ? FONTS.find((x) => x.family.toLowerCase() === v.headingFont!.toLowerCase())!.family : undefined;
+    v.bodyFont = okFont(v.bodyFont) ? FONTS.find((x) => x.family.toLowerCase() === v.bodyFont!.toLowerCase())!.family : undefined;
     v.fields = { campaignName: v.fields?.campaignName || 'Email', subject: v.fields?.subject || '', preheader: v.fields?.preheader || '' };
   }
   return variants;
@@ -143,6 +158,12 @@ export function brandForPalette(name: string, base: Brand = DEFAULT_BRAND, web?:
   if (name === 'Web' && web) return { ...base, ...web, name: base.name || web.name || 'BRAND', logoAssetId: base.logoAssetId ?? null };
   const p = BRAND_PRESETS.find((x) => x.name === name);
   return { ...base, ...(p ? p.brand : {}) };
+}
+
+/** Brand for a variant: palette + vibe + fonts the AI chose, on top of the user's base (name, logo, web colours). */
+export function brandForVariant(v: Variant, base: Brand = DEFAULT_BRAND, web?: Partial<Brand> | null): Brand {
+  const b = brandForPalette(v.palette, base, web);
+  return { ...b, vibe: v.vibe ?? b.vibe ?? 'clean', ...(v.headingFont ? { headingFamily: v.headingFont } : {}), ...(v.bodyFont ? { fontFamily: v.bodyFont } : {}) };
 }
 
 export function variantToDoc(v: Variant, brand: Brand): Doc {

@@ -65,13 +65,14 @@ export function openDb(file) {
     projList: q('SELECT id, name, updated_at, created_at, thumb, thumb_mobile, provider, length(json) AS size FROM projects WHERE owner = ? ORDER BY updated_at DESC'),
     projGet: q('SELECT * FROM projects WHERE owner = ? AND id = ?'),
     projPut: q(`INSERT INTO projects (id, owner, name, json, thumb, thumb_mobile, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at WHERE projects.owner = excluded.owner`),
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at WHERE projects.owner = excluded.owner AND excluded.updated_at >= projects.updated_at`),
     projDel: q('DELETE FROM projects WHERE owner = ? AND id = ?'), projCount: q('SELECT COUNT(*) AS n, COALESCE(SUM(length(json)), 0) AS bytes FROM projects WHERE owner = ?'),
     assetList: q('SELECT id, name, mime, w, h, bytes, created_at FROM assets WHERE owner = ? ORDER BY created_at DESC'),
     assetGet: q('SELECT * FROM assets WHERE owner = ? AND id = ?'), assetMeta: q('SELECT id, name, mime, w, h, bytes, created_at FROM assets WHERE owner = ? AND id = ?'),
     assetPut: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime, w = excluded.w, h = excluded.h, bytes = excluded.bytes, data = excluded.data WHERE assets.owner = excluded.owner`),
     assetDel: q('DELETE FROM assets WHERE owner = ? AND id = ?'), assetUsage: q('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes FROM assets WHERE owner = ?'),
+    usageAll: q('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM assets) + (SELECT COALESCE(SUM(length(json)), 0) FROM projects) + (SELECT COALESCE(SUM(length(enc)), 0) FROM profiles) AS bytes'),
     profGet: q('SELECT enc, updated_at FROM profiles WHERE owner = ?'),
     profPut: q('INSERT INTO profiles (owner, enc, updated_at) VALUES (?, ?, ?) ON CONFLICT(owner) DO UPDATE SET enc = excluded.enc, updated_at = excluded.updated_at'),
   };
@@ -118,6 +119,7 @@ export function openDb(file) {
       put: (owner, secret, profiles) => { const t = now(); S.profPut.run(owner, encrypt(secret, JSON.stringify(profiles)), t); return { updatedAt: t }; },
     },
     stats: (owner) => ({ projects: S.projCount.get(owner), assets: S.assetUsage.get(owner), sessions: S.sessList.all(owner).length }),
+    usageAll: () => Number(S.usageAll.get().bytes),
     close: () => db.close(),
   };
 }

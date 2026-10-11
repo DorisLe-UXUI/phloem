@@ -12,3 +12,6 @@ brand/
 
 # relay accounts (users.json, auth-secret)
 server/data/
+
+# stock photo candidates (local only)
+dev/stock/

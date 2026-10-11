@@ -4,6 +4,7 @@ import type { Brand } from '../model/types';
 import { FONTS } from '../model/types';
 import { assets } from '../storage/assets';
 import { get } from '../store';
+import { getSession } from '../auth/core';
 
 export interface SiteImage { url: string; alt: string; w: number; h: number }
 export interface SiteProfile {
@@ -15,7 +16,8 @@ export interface SiteProfile {
 function relay(): { url: string; headers: Record<string, string> } | null {
   const s = get().settings; const url = (s.relayUrl || '').replace(/\/$/, '');
   if (!url) return null;
-  return { url, headers: s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {} };
+  const ses = getSession();
+  return { url, headers: { ...(ses?.mode === 'relay' ? { Authorization: `Bearer ${ses.token}` } : {}), ...(s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {}) } };
 }
 
 export async function analyzeSite(site: string): Promise<SiteProfile> {
@@ -26,6 +28,7 @@ export async function analyzeSite(site: string): Promise<SiteProfile> {
   try { res = await fetch(`${r.url}/site`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...r.headers }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(30_000) }); }
   catch { throw new Error('Không gọi được relay. Relay có đang chạy không?'); }
   const j = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new Error('Đăng nhập tài khoản relay (hoặc đặt Relay token trong Cài đặt) để AI đọc web.');
   if (!res.ok) throw new Error(j.error || `Relay trả ${res.status}`);
   return j as SiteProfile;
 }
@@ -54,7 +57,8 @@ export function mapFont(name: string | undefined, kind: 'body' | 'heading'): str
 /** Brand tokens from the site's colours and fonts. Primary = most used saturated colour, accent = a different hue. */
 export function brandFromSite(p: SiteProfile): Partial<Brand> {
   const primary = p.colors[0]?.hex || p.themeColor || '#0F3D2E';
-  const accentC = p.colors.find((c) => Math.abs(hue(c.hex) - hue(primary)) > 25)?.hex;
+  const dHue = (a: number, b: number) => { const d = Math.abs(a - b); return Math.min(d, 360 - d); };
+  const accentC = p.colors.find((c) => dHue(hue(c.hex), hue(primary)) > 25)?.hex;
   const accent = accentC || mix(primary, lum(primary) > 0.3 ? '#000000' : '#ffffff', 0.35);
   const onPrimary = lum(primary) > 0.45 ? '#111111' : '#FFFFFF';
   const dark = p.darks[0] && lum(p.darks[0]) < 0.08 ? p.darks[0] : '#141414';
@@ -66,15 +70,29 @@ export function brandFromSite(p: SiteProfile): Partial<Brand> {
   };
 }
 
+/** Chromium's createImageBitmap cannot decode SVG blobs; rasterise via <img> + canvas (240px tall, aspect kept). */
+async function svgToPng(svg: Blob): Promise<Blob> {
+  const u = URL.createObjectURL(svg);
+  try {
+    const img = new Image();
+    await new Promise<void>((ok, no) => { img.onload = () => ok(); img.onerror = () => no(new Error('svg')); img.src = u; });
+    const h = 240, w = Math.max(1, Math.round(h * ((img.naturalWidth || 3) / (img.naturalHeight || 1))));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d')!.drawImage(img, 0, 0, w, h);
+    return await new Promise<Blob>((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error('png'))), 'image/png'));
+  } finally { URL.revokeObjectURL(u); }
+}
+
 /** Pull the logo and up to `max` images through the relay into the asset library. */
-export async function importSiteImages(p: SiteProfile, max = 8, onProgress?: (done: number, total: number) => void): Promise<{ logoId: string | null; imageIds: string[] }> {
+export async function importSiteImages(p: SiteProfile, max = 8, onProgress?: (done: number, total: number) => void, skipLogo = false): Promise<{ logoId: string | null; imageIds: string[] }> {
   const r = relay(); if (!r) return { logoId: null, imageIds: [] };
   const grab = async (url: string, name: string) => {
     try {
       const res = await fetch(`${r.url}/image?url=${encodeURIComponent(url)}`, { headers: r.headers, signal: AbortSignal.timeout(20_000) });
       if (!res.ok) return null;
-      const blob = await res.blob(); if (!blob.type.startsWith('image/') || blob.size < 1500) return null;
-      return (await assets.add(blob, name)).id;
+      const blob = await res.blob(); if (!blob.type.startsWith('image/') || blob.size < 600) return null;
+      const file = blob.type === 'image/svg+xml' ? await svgToPng(blob) : blob;
+      return (await assets.add(file, name)).id;
     } catch { return null; }
   };
   const urls: { url: string; name: string }[] = [];
@@ -83,9 +101,11 @@ export async function importSiteImages(p: SiteProfile, max = 8, onProgress?: (do
   if (p.ogImage) push(p.ogImage, 'og-image');
   for (const im of p.images) push(im.url, im.alt || im.url.split('/').pop()?.split('?')[0] || 'image');
   const list = urls.slice(0, max);
-  const total = list.length + (p.logo || p.icon ? 1 : 0);
+  const wantLogo = !skipLogo && !!(p.logo || p.icon);
+  const total = list.length + (wantLogo ? 1 : 0);
   let done = 0;
-  const logoId = p.logo || p.icon ? await grab(p.logo || p.icon, 'logo') : null; done++; onProgress?.(done, total);
+  const logoId = wantLogo ? await grab(p.logo || p.icon, 'logo') : null;
+  if (wantLogo) { done++; onProgress?.(done, total); }
   const imageIds: string[] = [];
   for (let i = 0; i < list.length; i += 3) {
     const ids = await Promise.all(list.slice(i, i + 3).map((x) => grab(x.url, x.name)));

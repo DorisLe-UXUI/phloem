@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Profile, Provider, TemplateKind } from '../../../src/shared/types';
 import { DEFAULT_UTM, newProfile } from '../../../src/shared/types';
 import type { Brand } from '../model/types';
-import { BRAND_PRESETS, DEFAULT_BRAND, FONTS } from '../model/types';
+import { BRAND_PRESETS, DEFAULT_BRAND, FONTS, FONT_CAT_LABEL, VIBES } from '../model/types';
 import { makeTemplate, TEMPLATES, templateBrand } from '../model/templates';
 import { thumbnail } from '../render/renderer';
 import { ensureFonts } from '../render/fonts';
@@ -92,7 +92,7 @@ function BrandModal({ onClose }: { onClose: () => void }) {
   const s = useStore();
   const b = s.project!.brand;
   const up = (patch: Partial<Brand>) => A.applyBrand(patch);
-  const fontOpts = FONTS.map((f) => ({ v: f.family, label: f.label }));
+  const fontOpts = FONTS.map((f) => ({ v: f.family, label: `${f.label} · ${FONT_CAT_LABEL[f.cat]}${f.vi ? '' : ' · không có tiếng Việt'}` }));
   const tokens: { k: keyof Brand; label: string; hint: string }[] = [
     { k: 'primary', label: 'Primary', hint: 'nút, link nổi bật' }, { k: 'accent', label: 'Accent', hint: 'đầu kia của gradient, điểm nhấn' }, { k: 'onPrimary', label: 'Chữ trên primary', hint: 'chữ trong nút' }, { k: 'ink', label: 'Chữ chính', hint: 'tiêu đề, đoạn' }, { k: 'muted', label: 'Chữ phụ', hint: 'mô tả, footer' },
     { k: 'bg', label: 'Nền', hint: 'nền email' }, { k: 'soft', label: 'Nền phụ', hint: 'footer, khối nhấn' }, { k: 'line', label: 'Đường kẻ', hint: 'divider, viền' },
@@ -110,6 +110,10 @@ function BrandModal({ onClose }: { onClose: () => void }) {
           </Field>
         ))}
       </div>
+      <Eyebrow>Phong cách</Eyebrow>
+      <Field label="Vibe" hint="áp cho block thêm mới và mẫu AI">
+        <Select value={b.vibe || 'clean'} options={VIBES.map((v) => ({ v: v.v, label: `${v.label} — ${v.hint}` }))} onChange={(v) => up({ vibe: v as Brand['vibe'] })} />
+      </Field>
       <Eyebrow>Gradient</Eyebrow>
       <Toggle checked={!!b.gradient} onChange={(v) => up({ gradient: v ? { angle: b.gradient?.angle ?? 135 } : null })} label="Dải màu dùng gradient primary → accent" sub="Áp cho mọi dải nền màu primary: hero band, dark band, CTA to. Tắt là về màu phẳng." />
       {b.gradient && <div class="grid2"><Num label="Góc" value={b.gradient.angle} min={0} max={360} suffix="°" onChange={(v) => up({ gradient: { angle: Math.round(v) } })} /><div class="small muted" style={{ alignSelf: 'end' }}>135° = chéo, 90° = dọc, 0° = ngang</div></div>}
@@ -132,7 +136,7 @@ function BrandModal({ onClose }: { onClose: () => void }) {
         <Field label="Font nội dung"><Select value={b.fontFamily} options={fontOpts} onChange={(v) => { ensureFonts([v]); up({ fontFamily: v }); }} /></Field>
         <Field label="Font tiêu đề"><Select value={b.headingFamily} options={fontOpts} onChange={(v) => { ensureFonts([v]); up({ headingFamily: v }); }} /></Field>
       </div>
-      <div class="dim small">Chữ trong email là ảnh, nên dùng font nào cũng hiển thị đúng ở mọi hộp thư. Font Google tải tự động.</div>
+      <div class="dim small">Chữ trong email là ảnh, nên dùng font nào cũng hiển thị đúng ở mọi hộp thư. {FONTS.length} font Google tải tự động; font ghi "không có tiếng Việt" sẽ thiếu dấu.</div>
     </Modal>
   );
 }

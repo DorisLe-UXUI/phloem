@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeHtml, extractStyle, isPublicHost } from '../server/src/site.mjs';
+import { analyzeHtml, extractStyle, isPublicHost, safeGet } from '../server/src/site.mjs';
+import { createServer } from 'node:http';
 
 const HTML = `<!doctype html><html lang="vi"><head><title>Terra Gốm · Gốm thủ công</title>
 <meta name="description" content="Gốm thủ công từ Bát Tràng." /><meta property="og:site_name" content="Terra" /><meta property="og:image" content="/img/og.jpg" />
@@ -45,4 +46,14 @@ test('extractStyle ranks brand colours (no greys), merges case, finds fonts', ()
 test('isPublicHost refuses loopback, private ranges and local names', async () => {
   for (const h of ['localhost', '127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.1.1', '::1', 'printer.local', '0.0.0.0']) assert.equal(await isPublicHost(h), false, h);
   assert.equal(await isPublicHost('8.8.8.8'), true);
+});
+
+test('safeGet refuses a redirect into a private host and caps the body', async () => {
+  // a loopback server standing in for "internal"; safeGet must refuse it both directly and via redirect
+  const srv = createServer((req, res) => { res.end('SECRET'); });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const port = srv.address().port;
+  await assert.rejects(safeGet(`http://127.0.0.1:${port}/`), (e) => e.status === 403);
+  await assert.rejects(safeGet(`http://localhost:${port}/`), (e) => e.status === 403);
+  srv.close();
 });

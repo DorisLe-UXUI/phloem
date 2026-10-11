@@ -3,6 +3,7 @@
 //   2. the relay (`POST /ai`, server holds ANTHROPIC_API_KEY)
 //   3. the claude.ai artifact `sample` capability (no key needed inside claude.ai)
 import Anthropic from '@anthropic-ai/sdk';
+import { getSession } from '../auth/core';
 import { get } from '../store';
 
 export interface AiImage { name: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; base64: string }
@@ -28,11 +29,15 @@ function messagesOf(req: AiRequest): Anthropic.MessageParam[] {
   return req.turns.map((t) => ({ role: t.role, content: t.role === 'user' ? toBlocks(t) : t.text }));
 }
 
+/** Relay routes that spend money need the signed-in relay account (or the shared relay token). */
+export function relayAuth(): Record<string, string> { const ses = getSession(); const s = get().settings; return { ...(ses?.mode === 'relay' ? { Authorization: `Bearer ${ses.token}` } : {}), ...(s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {}) }; }
+export function relayUsable(): boolean { const s = get().settings; return !!s.relayUrl.trim() && (getSession()?.mode === 'relay' || !!s.relayToken); }
+
 export async function aiTransport(): Promise<AiTransport> {
   const s = get().settings;
   if (s.anthropicKey.trim() === 'mock') return 'key';
   if (s.anthropicKey.trim()) return 'key';
-  if (s.relayUrl.trim()) {
+  if (relayUsable()) {
     try {
       const r = await fetch(s.relayUrl.replace(/\/$/, '') + '/', { headers: s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {} });
       const j = await r.json();
@@ -75,7 +80,7 @@ export async function askClaude(req: AiRequest): Promise<string> {
   }
   if (t === 'relay') {
     const r = await fetch(s.relayUrl.replace(/\/$/, '') + '/ai', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...(s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {}) },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() },
       body: JSON.stringify({ model, max_tokens: maxTokens, effort: req.effort ?? 'medium', system: req.system, messages: messagesOf(req) }),
     });
     const j = await r.json().catch(() => ({}));

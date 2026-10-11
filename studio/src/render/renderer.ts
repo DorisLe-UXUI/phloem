@@ -30,10 +30,20 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 
 function col(c: Color | null | undefined, brand: Brand): string | null { return resolveColor(c, brand); }
 
+function withShadow(ctx: CanvasRenderingContext2D, sh: { blur: number; y: number; color: string; opacity: number } | null | undefined, s: number, draw: () => void) {
+  if (!sh || sh.opacity <= 0) { draw(); return; }
+  ctx.save();
+  const [r, g, b] = hexRgb(sh.color);
+  ctx.shadowColor = `rgba(${r},${g},${b},${Math.min(1, sh.opacity)})`; ctx.shadowBlur = sh.blur * s; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = sh.y * s;
+  draw();
+  ctx.restore();
+}
+
 function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: number) {
   const x = n.x * s, y = n.y * s, w = n.w * s, h = n.h * s;
   const fill = col(n.fill, brand);
-  if (fill) { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = fill; ctx.fill(); }
+  if (fill) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = fill; ctx.fill(); });
+  else if (n.shadow && n.gradient) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.gradient!.from, brand) || '#000'; ctx.fill(); });
   if (n.gradient) {
     const a = ((n.gradient.angle || 0) * Math.PI) / 180;
     const cx = x + w / 2, cy = y + h / 2, len = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
@@ -117,6 +127,7 @@ function drawPlaceholder(ctx: CanvasRenderingContext2D, x: number, y: number, w:
 function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s: number, src: ImageSource, editor: boolean) {
   const x = n.x * s, y = n.y * s, w = n.w * s, h = n.h * s;
   const img = n.assetId ? src.image(n.assetId) : undefined;
+  if (n.shadow) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.fill, brand) || '#ffffff'; ctx.fill(); });
   ctx.save();
   rr(ctx, x, y, w, h, n.radius * s);
   ctx.clip();

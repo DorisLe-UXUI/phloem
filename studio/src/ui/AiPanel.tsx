@@ -55,7 +55,7 @@ export function AiPanel() {
             <a class="btn primary sm" href={CLAUDE_AI_URL} target="_blank" rel="noopener"><Icon name="sparkle" /> Mở bản claude.ai, AI sẵn</a>
             <Btn sm icon="settings" onClick={() => set({ modal: 'settings' })}>Dán API key Anthropic</Btn>
           </div>
-          <div class="dim small">Có key: Cài đặt → AI → dán sk-ant-… (chỉ lưu trong trình duyệt này). Hoặc chạy relay có ANTHROPIC_API_KEY.</div>
+          <div class="dim small">Có key: Cài đặt → AI → dán sk-ant-… (chỉ lưu trong trình duyệt này). Hoặc chạy relay có ANTHROPIC_API_KEY rồi <b>đăng nhập tài khoản relay</b> (relay chỉ chi tiền AI cho người đã đăng nhập).</div>
         </div>
       )}
       <div class="row wrap">{QUICK.map((q) => <Btn key={q.label} xs disabled={busy || transport === null} onClick={() => send(q.q)}>{q.label}</Btn>)}</div>
