@@ -22,9 +22,6 @@
   const fan = document.getElementById('fan');
   if (fan) new IntersectionObserver((es) => { for (const e of es) fan.classList.toggle('in', e.isIntersecting); }, { threshold: 0.3 }).observe(fan);
 
-  // ---------- marquee ----------
-  document.querySelectorAll('[data-marquee] .track').forEach((t) => { t.innerHTML += t.innerHTML; });
-
   // ---------- counters ----------
   const cio = new IntersectionObserver((es) => {
     for (const e of es) {
@@ -163,31 +160,14 @@
     else { update(); addEventListener('scroll', update, { passive: true }); }
   }
 
-  // ---------- RING: 3D carousel (wheel pushed back so the front card renders 1:1) ----------
-  const ringWrap = document.getElementById('ringWrap');
-  const ring = document.getElementById('ring');
-  if (ring && ringWrap) {
-    const items = Array.from(ring.children);
-    const n = items.length, step = 360 / n;
-    const radius = () => Math.round((ring.offsetWidth + 18) / 2 / Math.tan(Math.PI / n));
-    const idle = reduce ? 0 : 0.1;
-    let angle = 0, vel = idle, dragging = false, lastX = 0, lastT = 0, moved = 0, ringVisible = false, raf = 0;
-    const layout = () => {
-      const R = radius();
-      items.forEach((it, i) => { const a = i * step + angle; it.style.transform = `rotateY(${a}deg) translateZ(${R}px)`; });
-      ring.style.transform = `translateZ(${-R}px) rotateX(-5deg)`;
-    };
-    const tick = () => { raf = 0; if (!ringVisible) return; if (!dragging) { angle += vel; vel = lerp(vel, idle, 0.02); } layout(); if (!reduce || dragging || Math.abs(vel) > 0.01) raf = requestAnimationFrame(tick); };
-    const kick = () => { if (!raf) raf = requestAnimationFrame(tick); };
-    layout();
-    new IntersectionObserver((es) => { ringVisible = es[0].isIntersecting; if (ringVisible) kick(); }, { threshold: 0 }).observe(ringWrap);
-    addEventListener('resize', layout);
-    ringWrap.addEventListener('dragstart', (e) => e.preventDefault());
-    ringWrap.addEventListener('pointerdown', (e) => { dragging = true; moved = 0; lastX = e.clientX; lastT = performance.now(); ringWrap.classList.add('drag'); try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ } kick(); });
-    ringWrap.addEventListener('pointermove', (e) => { if (!dragging) return; const dx = e.clientX - lastX; angle += dx * 0.3; moved += Math.abs(dx); const now = performance.now(); vel = (dx * 0.3) / Math.max(1, now - lastT) * 16; lastX = e.clientX; lastT = now; });
-    const end = () => { dragging = false; ringWrap.classList.remove('drag'); kick(); };
-    ringWrap.addEventListener('pointerup', end); ringWrap.addEventListener('pointercancel', end);
-    items.forEach((it) => it.addEventListener('click', (e) => { if (moved > 6) e.preventDefault(); }));
+  // ---------- PALETTE DEMO: one render, hue follows the chosen palette ----------
+  const palSw = document.getElementById('palSw'), palImg = document.getElementById('palImg'), palName = document.getElementById('palName');
+  if (palSw && palImg) {
+    const btns = Array.from(palSw.querySelectorAll('button'));
+    let auto = null, idx = 0;
+    const pick = (b) => { btns.forEach((x) => x.classList.toggle('on', x === b)); palImg.style.filter = `hue-rotate(${b.dataset.h}deg)`; palName.textContent = b.dataset.n; };
+    palSw.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; clearInterval(auto); auto = null; idx = btns.indexOf(b); pick(b); });
+    if (!reduce) new IntersectionObserver((es) => { if (es[0].isIntersecting && auto === null) auto = setInterval(() => { idx = (idx + 1) % btns.length; pick(btns[idx]); }, 2200); else if (!es[0].isIntersecting && auto) { clearInterval(auto); auto = null; } }, { threshold: 0.4 }).observe(palSw);
   }
 
   // ---------- ACCOUNT: sign up / sign in straight into Studio ----------
