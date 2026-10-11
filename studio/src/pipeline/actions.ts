@@ -16,6 +16,9 @@ import { db } from '../storage/idb';
 import { assets } from '../storage/assets';
 import { get, history, set, toast, type Variant } from '../store';
 import { downloadBytes } from '../../../src/ui/clipboard';
+import * as auth from '../auth/core';
+
+const ownerId = () => get().user?.id || '';
 
 // ---------- document access ----------
 export function doc(): Doc {
@@ -60,14 +63,14 @@ export async function saveProject(): Promise<void> {
   try { thumb = thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); } catch { /* fonts/images not ready */ }
   const provider = (Object.values(p.drafts || {})[0] as DraftRecord | undefined)?.provider;
   try {
-    await db.putProject({ ...p, thumb, thumbMobile, provider });
+    await db.putProject({ ...p, thumb, thumbMobile, provider, owner: ownerId() });
     set({ project: p, dirty: false, savedAt: p.updatedAt });
     void refreshProjects();
   } catch (e) { toast(`Không lưu được: ${(e as Error).message}`, 'err'); }
 }
 
 export async function refreshProjects() {
-  try { set({ projects: await db.listProjects() }); } catch { /* ignore */ }
+  try { const o = ownerId(); set({ projects: await db.listProjects(o), guestProjects: o ? await db.countProjects('') : 0 }); } catch { /* ignore */ }
 }
 
 export function undo() { const prev = history.undo(doc()); if (prev) { commit(prev, false); set({ selection: get().selection.filter((id) => ops.findNode(prev, id)) }); } }
@@ -286,7 +289,8 @@ export async function openProject(id: string) {
 }
 
 export async function newProject(kind: TemplateKind, brandOverride?: Partial<Brand>, name?: string) {
-  const b = { ...DEFAULT_BRAND, ...(brandOverride || {}) };
+  const own = get().user?.brand;
+  const b = { ...DEFAULT_BRAND, ...(own ? { name: own } : {}), ...(brandOverride || {}) };
   ensureFonts([b.fontFamily, b.headingFamily]);
   await document.fonts.ready;
   const t = makeTemplate(kind, b);
@@ -302,7 +306,7 @@ export async function deleteProject(id: string) { try { await db.deleteProject(i
 export async function duplicateProject(id: string) {
   const p = await db.getProject(id); if (!p) return;
   const now = new Date().toISOString();
-  await db.putProject({ ...p, id: uid('p'), name: `${p.name} (bản sao)`, createdAt: now, updatedAt: now, drafts: {} });
+  await db.putProject({ ...p, id: uid('p'), name: `${p.name} (bản sao)`, createdAt: now, updatedAt: now, drafts: {}, owner: ownerId() });
   await refreshProjects();
 }
 export function renameProject(name: string) { patchProject({ name: name.trim() || 'Email' }); }
@@ -328,9 +332,44 @@ export async function importProjectJson(file: File) {
   }
   const remap = (d: Doc): Doc => ops.mapNodes(d, (n) => (n.type === 'image' && n.assetId && idMap.has(n.assetId) ? { ...n, assetId: idMap.get(n.assetId)! } : n));
   const p: Project = { ...payload.project, id: uid('p'), desktop: remap(payload.project.desktop), mobile: payload.project.mobile ? remap(payload.project.mobile) : null, updatedAt: new Date().toISOString(), drafts: {} };
-  await db.putProject(p);
+  await db.putProject({ ...p, owner: ownerId() });
   await refreshProjects();
   await openProject(p.id);
+}
+
+// ---------- accounts ----------
+export async function signUp(input: auth.Credentials) {
+  const s = await auth.register(input);
+  set({ user: s.user, modal: null });
+  toast(`Chào ${s.user.name}. Tài khoản ${s.mode === 'relay' ? 'đã tạo trên relay' : 'lưu trên trình duyệt này'}.`, 'ok');
+  await refreshProjects();
+}
+export async function signIn(input: auth.Credentials) {
+  if (get().dirty) await saveProject();
+  const s = await auth.login(input);
+  set({ user: s.user, modal: null, route: { name: 'home' }, project: null, selection: [] });
+  toast(`Đã đăng nhập: ${s.user.name}.`, 'ok');
+  await refreshProjects();
+}
+export async function signOut() {
+  if (get().dirty) await saveProject();
+  auth.logout();
+  set({ user: null, route: { name: 'home' }, project: null, selection: [], modal: null });
+  toast('Đã đăng xuất.', 'ok');
+  await refreshProjects();
+}
+/** Re-validate the stored session on boot and follow sign-in changes made in another tab or on the landing page. */
+export async function restoreSession() {
+  const s = await auth.restore();
+  set({ user: s?.user ?? null });
+  auth.onAuthChange((n) => { if ((n?.user.id || '') !== (get().user?.id || '')) { set({ user: n?.user ?? null }); void refreshProjects(); } });
+  addEventListener('storage', (e) => { if (e.key === 'phloem.session') { const n = auth.getSession(); if ((n?.user.id || '') !== (get().user?.id || '')) { set({ user: n?.user ?? null }); void refreshProjects(); } } });
+}
+export async function claimGuestProjects() {
+  const id = ownerId(); if (!id) return;
+  const n = await db.claimProjects(id);
+  toast(n ? `Đã chuyển ${n} email vào tài khoản.` : 'Không có email nào của khách.', 'ok');
+  await refreshProjects();
 }
 
 function blobToDataUrl(b: Blob): Promise<string> { return new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(b); }); }

@@ -18,6 +18,7 @@ import { Icon } from './icons';
 import { ask, isArtifact } from './confirm';
 import { AiModal } from './AiModal';
 import { AI_MODELS } from '../ai/client';
+import * as auth from '../auth/core';
 
 export function Modals() {
   const s = useStore();
@@ -31,6 +32,7 @@ export function Modals() {
     case 'shortcuts': return <ShortcutsModal onClose={close} />;
     case 'figma': return <FigmaModal onClose={close} />;
     case 'ai': return <AiModal onClose={close} />;
+    case 'auth': return <AuthModal onClose={close} />;
     default: return null;
   }
 }
@@ -336,6 +338,48 @@ function FigmaModal({ onClose }: { onClose: () => void }) {
       <Field label="Link frame" hint="chọn frame email trong Figma → Copy link (có node-id)"><TextInput mono value={url} onCommit={setUrl} onInput={setUrl} placeholder="https://www.figma.com/design/XXXX/Email?node-id=12-34" /></Field>
       <div class="small muted">Token chỉ lưu trong trình duyệt này và gửi thẳng tới api.figma.com. Ảnh render của Figma nằm trên S3 không có CORS, nên cần Relay URL trong Cài đặt để tải về.</div>
       {logs.length > 0 && <div class="log">{logs.map((l, i) => <div key={i} class={l.startsWith('Lỗi') ? 'er' : ''}>{l}</div>)}</div>}
+    </Modal>
+  );
+}
+
+
+// ---------------- Account ----------------
+export function AuthModal({ onClose }: { onClose: () => void }) {
+  const s = useStore();
+  const [tab, setTab] = useState<'login' | 'register'>(s.authTab);
+  const [f, setF] = useState({ name: '', email: '', password: '', brand: '' });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [mode, setMode] = useState<'local' | 'relay' | 'checking'>('checking');
+  useEffect(() => { void auth.detectMode().then(setMode); }, [s.settings.relayUrl]);
+  const up = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+  const submit = async () => {
+    setErr(''); setBusy(true);
+    try { if (tab === 'register') await A.signUp(f); else await A.signIn(f); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  const reg = tab === 'register';
+  return (
+    <Modal narrow icon="leaf" title={reg ? 'Tạo tài khoản' : 'Đăng nhập'} onClose={onClose}
+      footer={<><Btn onClick={onClose}>Đóng</Btn><Btn kind="primary" disabled={busy} onClick={submit}>{busy ? 'Đang xử lý…' : reg ? 'Tạo tài khoản' : 'Đăng nhập'}</Btn></>}>
+      <div class="seg authtabs">
+        <button type="button" class={reg ? 'on' : ''} onClick={() => { setTab('register'); setErr(''); }}>Đăng ký</button>
+        <button type="button" class={!reg ? 'on' : ''} onClick={() => { setTab('login'); setErr(''); }}>Đăng nhập</button>
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} class="props" style={{ gap: 10 }}>
+        {reg && <Field label="Tên"><TextInput value={f.name} onInput={up('name')} onCommit={up('name')} placeholder="Tên của bạn" /></Field>}
+        <Field label="Email"><TextInput type="email" value={f.email} onInput={up('email')} onCommit={up('email')} placeholder="ban@congty.com" /></Field>
+        <Field label="Mật khẩu" hint="≥ 8 ký tự"><TextInput type="password" value={f.password} onInput={up('password')} onCommit={up('password')} placeholder="••••••••" /></Field>
+        {reg && <Field label="Tên thương hiệu" hint="tuỳ chọn, điền sẵn vào email mới"><TextInput value={f.brand} onInput={up('brand')} onCommit={up('brand')} placeholder="TERRA" /></Field>}
+        <button type="submit" style={{ display: 'none' }} />
+      </form>
+      {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
+      <div class="dim small">
+        {mode === 'checking' ? 'Đang kiểm tra relay…'
+          : mode === 'relay' ? 'Tài khoản tạo trên relay của bạn: đăng nhập được từ mọi máy.'
+          : 'Chưa có relay: tài khoản lưu trong trình duyệt này. Chạy relay (npm run relay) và đặt Relay URL trong Cài đặt để dùng chung nhiều máy.'}
+      </div>
     </Modal>
   );
 }

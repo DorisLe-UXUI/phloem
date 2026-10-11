@@ -9,3 +9,6 @@ landing/showcase/*
 !landing/showcase/*-h.jpg
 !landing/showcase/*-t.jpg
 brand/
+
+# relay accounts (users.json, auth-secret)
+server/data/

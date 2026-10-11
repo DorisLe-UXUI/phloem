@@ -166,6 +166,17 @@ Bản tĩnh trên GitHub Pages không chứa khoá API. Có ba cách để AI ch
 
 Relay cũng là nơi giữ khoá Mailchimp/Klaviyo cho OAuth và chặn mọi lệnh gửi/lên lịch.
 
+## Tài khoản (đăng ký / đăng nhập)
+
+Landing có mục **Đăng ký** (`#signup`); Studio có nút Đăng nhập / Đăng ký trên trang chủ. Đăng ký xong là vào Studio đã đăng nhập; email, brand kit và client tách theo tài khoản (email tạo khi chưa đăng nhập có thể "Chuyển vào tài khoản").
+
+| Chế độ | Khi nào | Dữ liệu ở đâu |
+| --- | --- | --- |
+| Trên máy (mặc định) | Không có relay, ví dụ bản GitHub Pages | Tài khoản trong IndexedDB của trình duyệt, mật khẩu băm PBKDF2 (WebCrypto). Chỉ đăng nhập được trên trình duyệt đó |
+| Relay | Studio → Cài đặt có Relay URL và relay đang chạy | `POST /auth/register`, `/auth/login`, `GET /auth/me`. Người dùng trong `server/data/users.json` (mật khẩu băm scrypt), token ký HMAC bằng `AUTH_SECRET` (tự sinh vào `server/data/auth-secret` nếu không đặt). Thư mục `server/data/` không lên repo |
+
+Mã dùng chung: `studio/src/auth/core.ts`; landing nạp bản build `studio/dist/auth.js` (`window.PhloemAuth`). Relay không gửi email xác nhận và không có quên mật khẩu; muốn thêm thì nối vào `server/src/auth.mjs`.
+
 ## Import từ Figma
 
 Studio → Import Figma cần Personal access token có quyền **File content: Read** (tuỳ chọn thêm Dev resources: Read). Token thiếu quyền này bị Figma trả `403 Invalid scope(s)`; tạo token mới trong Figma → Settings → Security → Personal access tokens và tick quyền đó.

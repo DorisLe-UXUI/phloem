@@ -190,6 +190,46 @@
     items.forEach((it) => it.addEventListener('click', (e) => { if (moved > 6) e.preventDefault(); }));
   }
 
+  // ---------- ACCOUNT: sign up / sign in straight into Studio ----------
+  const form = document.getElementById('signupForm');
+  const A = window.PhloemAuth;
+  if (form && A) {
+    const $ = (id) => document.getElementById(id);
+    const t = (k) => { const d = (window.PHLOEM_I18N && window.PHLOEM_I18N[document.documentElement.lang]) || {}; return d[k] || k; };
+    const navLogin = $('navLogin'), navUser = $('navUser'), err = $('suErr'), btn = $('suBtn'), btnText = $('suBtnText'), modeEl = $('suMode');
+    let tab = 'register', busy = false;
+    const paint = () => {
+      const s = A.getSession();
+      btnText.textContent = busy ? t('su_busy') : t(tab === 'login' ? 'su_submit_login' : 'su_submit_reg');
+      btn.disabled = busy;
+      $('suSigned').hidden = !s; form.querySelector('.su-fields').hidden = !!s; form.querySelector('.su-tabs').hidden = !!s;
+      navLogin.hidden = !!s; navUser.hidden = !s;
+      if (s) { const ini = (s.user.name || '?').trim().slice(0, 1).toUpperCase(); $('suName').textContent = s.user.name; $('suEmail').textContent = s.user.email; $('suAvatar').textContent = ini; navUser.querySelector('.av').textContent = ini; navUser.querySelector('span').textContent = s.user.name; }
+    };
+    const setTab = (next) => { tab = next; form.classList.toggle('login', tab === 'login'); form.querySelectorAll('.su-tabs button').forEach((b) => { const on = b.dataset.tab === tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); }); form.elements.password.autocomplete = tab === 'login' ? 'current-password' : 'new-password'; err.hidden = true; paint(); };
+    window.__phloemAuthUi = paint;
+    paint();
+    A.detectMode().then((m) => { const k = m === 'relay' ? 'su_mode_relay' : 'su_mode_local'; modeEl.setAttribute('data-i', k); modeEl.textContent = t(k); });
+    A.restore().then(paint).catch(() => {});
+    form.querySelectorAll('.su-tabs button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+    navLogin.addEventListener('click', () => { setTab('login'); setTimeout(() => form.elements.email.focus(), 450); });
+    $('suLogout').addEventListener('click', () => { A.logout(); paint(); });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault(); if (busy) return;
+      const f = form.elements, input = { name: f.name.value, email: f.email.value, password: f.password.value, brand: f.brand.value };
+      busy = true; err.hidden = true; paint();
+      try {
+        await (tab === 'login' ? A.login(input) : A.register(input));
+        location.href = 'studio/';
+      } catch (ex) {
+        const code = ex && ex.code ? ex.code : 'server';
+        err.textContent = t('err_' + code); err.hidden = false;
+        const field = f[code === 'exists' || code === 'notfound' ? 'email' : code === 'badpass' ? 'password' : code];
+        if (field && field.focus) field.focus();
+      } finally { busy = false; paint(); }
+    });
+  }
+
   // ---------- blobs parallax ----------
   if (!reduce) {
     const blobs = document.querySelectorAll('.blob');

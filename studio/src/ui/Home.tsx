@@ -9,7 +9,7 @@ import { set, useStore, toast } from '../store';
 import * as A from '../pipeline/actions';
 import { Btn } from './components';
 import { Icon, Logo } from './icons';
-import { ask } from './confirm';
+import { ask, isArtifact } from './confirm';
 
 let thumbCache: Record<string, string> | null = null;
 
@@ -64,8 +64,22 @@ export function Home() {
   return (
     <div class="home">
       <div class="home-top">
-        <Logo size={20} />
+        <Logo size={20} onClick={isArtifact() ? undefined : () => { location.href = '../'; }} />
+        {!isArtifact() && <a class="btn ghost sm" href="../" title="Về trang giới thiệu"><Icon name="external" /> Trang giới thiệu</a>}
         <span class="grow" />
+        {s.user ? (
+          <div class="acct" title={s.user.email}>
+            <div class="avatar">{(s.user.name || '?').trim().slice(0, 1).toUpperCase()}</div>
+            <div class="who"><b>{s.user.name}</b><span>{s.user.brand || s.user.email}</span></div>
+            <Btn kind="ghost" sm onClick={() => void A.signOut()}>Đăng xuất</Btn>
+          </div>
+        ) : (
+          <>
+            <Btn kind="ghost" sm onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập</Btn>
+            <Btn kind="primary" sm icon="leaf" onClick={() => set({ modal: 'auth', authTab: 'register' })}>Đăng ký</Btn>
+          </>
+        )}
+        <span class="sep" />
         <Btn kind="ghost" sm icon="figma" onClick={() => set({ modal: 'figma' })}>Import từ Figma</Btn>
         <Btn kind="ghost" sm icon="upload" onClick={() => file.current?.click()}>Mở file .phloem.json</Btn>
         <Btn kind="ghost" sm icon="mail" onClick={() => set({ modal: 'clients' })}>Client</Btn>
@@ -73,6 +87,9 @@ export function Home() {
         <input ref={file} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={async (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) { try { await A.importProjectJson(f); } catch (err) { toast((err as Error).message, 'err'); } } (e.target as HTMLInputElement).value = ''; }} />
       </div>
       <div class="home-body">
+        {s.user && s.guestProjects > 0 && (
+          <div class="claim"><Icon name="info" /><span class="grow">Có {s.guestProjects} email được tạo khi chưa đăng nhập trên máy này.</span><Btn sm kind="primary" onClick={() => void A.claimGuestProjects()}>Chuyển vào tài khoản</Btn></div>
+        )}
         <div class="hero">
           <div>
             <h1>Thiết kế email. Bấm một nút.<br />Có draft trong <em>Mailchimp</em> hoặc <em>Klaviyo</em>.</h1>

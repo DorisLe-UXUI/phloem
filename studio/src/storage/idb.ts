@@ -28,15 +28,22 @@ function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) 
   }));
 }
 
-export interface StoredProject extends Project { thumb?: string; thumbMobile?: string; provider?: string }
+export interface StoredProject extends Project { thumb?: string; thumbMobile?: string; provider?: string; /** account id, '' for guest */ owner?: string }
 
 export const db = {
   putProject: (p: StoredProject) => tx<IDBValidKey>('projects', 'readwrite', (s) => s.put(p)),
   getProject: (id: string) => tx<StoredProject | undefined>('projects', 'readonly', (s) => s.get(id)),
   deleteProject: (id: string) => tx<undefined>('projects', 'readwrite', (s) => s.delete(id)),
-  listProjects: async (): Promise<ProjectMeta[]> => {
+  listProjects: async (owner = ''): Promise<ProjectMeta[]> => {
     const all = await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll());
-    return all.map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, thumb: p.thumb, thumbMobile: p.thumbMobile, provider: p.provider })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return all.filter((p) => (p.owner || '') === owner).map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, thumb: p.thumb, thumbMobile: p.thumbMobile, provider: p.provider })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  },
+  countProjects: async (owner = ''): Promise<number> => (await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll())).filter((p) => (p.owner || '') === owner).length,
+  /** Move every project of `from` (default: guest) to `to`. Returns how many moved. */
+  claimProjects: async (to: string, from = ''): Promise<number> => {
+    const all = (await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll())).filter((p) => (p.owner || '') === from);
+    for (const p of all) await tx('projects', 'readwrite', (s) => s.put({ ...p, owner: to }));
+    return all.length;
   },
   putAsset: async (a: Asset, blob: Blob) => { await tx('assets', 'readwrite', (s) => s.put(a)); await tx('blobs', 'readwrite', (s) => s.put(blob, a.id)); },
   getBlob: (id: string) => tx<Blob | undefined>('blobs', 'readonly', (s) => s.get(id)),

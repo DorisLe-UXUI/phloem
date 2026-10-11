@@ -32,6 +32,8 @@
   <div class="nav-cta">
     <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="vi" onclick="applyLang('vi')">VI</button><button type="button" data-lang="en" onclick="applyLang('en')">EN</button></div>
     <a class="btn ghost sm" href="https://github.com/DorisLe-UXUI/phloem" target="_blank" rel="noopener">GitHub</a>
+    <a class="btn ghost sm" href="#signup" id="navLogin" data-i="nav_login">Đăng nhập</a>
+    <a class="btn ghost sm acct-chip" href="studio/" id="navUser" hidden><i class="av"></i><span></span></a>
     <a class="btn primary sm" href="studio/"><span data-i="nav_open">Mở Studio</span> <span class="arr">→</span></a>
   </div>
 </header>
@@ -48,6 +50,7 @@
         <a class="btn primary lg" href="studio/"><span data-i="hero_cta1">Mở Studio miễn phí</span> <span class="arr">→</span></a>
         <a class="btn ghost lg" href="#templates" data-i="hero_cta2">Xem 24 mẫu</a>
       </div>
+      <div class="hero-sub small"><span data-i="hero_su1">Có tài khoản thì project theo bạn đi mọi máy.</span> <a href="#signup" class="neon" data-i="hero_su2">Đăng ký miễn phí →</a></div>
       <div class="trust"><span data-i="hero_trust">Chạy đúng ở</span><b>Gmail</b><b>Outlook</b><b>Apple Mail</b><b>Mailchimp</b><b>Klaviyo</b></div>
     </div>
     <div class="stage-wrap">
@@ -234,6 +237,43 @@
     <div><b>0</b><span data-i="s5">lần tự gửi</span></div>
   </section>
 
+  <!-- SIGN UP: account that carries projects, brand kit and clients into Studio -->
+  <section class="signup" id="signup">
+    <div class="signup-copy reveal">
+      <div class="eyebrow" data-i="su_eyebrow">Tài khoản</div>
+      <h2 data-ih="su_h2">Đăng ký một lần, <span class="neon">mọi thứ theo bạn</span>.</h2>
+      <p data-i="su_p">Project, brand kit, client Mailchimp/Klaviyo và lịch sử draft gắn với tài khoản. Tạo xong là vào Studio làm luôn.</p>
+      <ul class="checks">
+        <li data-i="su_l1">Miễn phí, không cần thẻ</li>
+        <li data-i="su_l2">Email và brand kit tách theo tài khoản</li>
+        <li data-i="su_l3">Bật relay là đăng nhập được từ mọi máy</li>
+      </ul>
+    </div>
+    <form class="signup-card reveal" id="signupForm" novalidate>
+      <div class="su-tabs" role="tablist">
+        <button type="button" class="on" data-tab="register" role="tab" aria-selected="true" data-i="su_tab_reg">Đăng ký</button>
+        <button type="button" data-tab="login" role="tab" aria-selected="false" data-i="su_tab_login">Đăng nhập</button>
+      </div>
+      <div class="su-fields">
+        <label class="su-f reg"><span data-i="su_name">Tên</span><input name="name" type="text" autocomplete="name" /></label>
+        <label class="su-f"><span>Email</span><input name="email" type="email" autocomplete="email" inputmode="email" /></label>
+        <label class="su-f"><span data-i="su_pw">Mật khẩu</span><input name="password" type="password" autocomplete="new-password" minlength="8" /></label>
+        <label class="su-f reg"><span data-i="su_brand">Tên thương hiệu (tuỳ chọn)</span><input name="brand" type="text" autocomplete="organization" /></label>
+        <div class="su-err" id="suErr" role="alert" hidden></div>
+        <button class="btn primary lg" type="submit" id="suBtn"><span id="suBtnText" data-i="su_submit_reg">Tạo tài khoản và mở Studio</span> <span class="arr">→</span></button>
+        <div class="dim small" id="suMode" data-i="su_mode_local">Tài khoản lưu trên trình duyệt này. Bật relay để dùng chung nhiều máy.</div>
+      </div>
+      <div class="su-signed" id="suSigned" hidden>
+        <div class="avatar" id="suAvatar"></div>
+        <div class="who"><span class="dim small" data-i="su_signed">Đang đăng nhập là</span><b id="suName"></b><span class="mono small" id="suEmail"></span></div>
+        <div class="cta-row">
+          <a class="btn primary lg" href="studio/"><span data-i="su_open">Mở Studio</span> <span class="arr">→</span></a>
+          <button class="btn ghost lg" type="button" id="suLogout" data-i="su_logout">Đăng xuất</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
   <!-- CTA -->
   <section class="final reveal">
     <div class="final-card">
@@ -256,6 +296,7 @@
   <div class="dim small" data-i="foot_line">Thiết kế email · Figma plugin · relay Mailchimp/Klaviyo · không bao giờ tự gửi</div>
 </footer>
 
+<script src="studio/dist/auth.js" defer></script>
 <script src="landing/landing.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,7 @@
+{
+  "_": "Test account used when exercising sign-up/sign-in on localhost. Not a real person. Local mode stores it in the browser's IndexedDB only.",
+  "name": "Khanh Test",
+  "email": "test@phloem.local",
+  "password": "phloem-test-123",
+  "brand": "TERRA"
+}

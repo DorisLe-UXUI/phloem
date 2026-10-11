@@ -26,7 +26,8 @@ createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (p === '/') p = existsSync(join(root, 'index.html')) ? '/index.html' : '/dev/preview.html';
   if (p === '/preview' || p === '/preview/') p = '/dev/preview.html';
-  const file = join(root, p);
+  let file = join(root, p);
+  if (file.startsWith(root) && existsSync(file) && statSync(file).isDirectory()) { if (!p.endsWith('/')) { res.statusCode = 302; res.setHeader('Location', p + '/'); return res.end(); } file = join(file, 'index.html'); }
   if (!file.startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) { res.statusCode = 404; return res.end('404'); }
   res.setHeader('Content-Type', types[extname(file)] || 'application/octet-stream');
   res.setHeader('Cache-Control', 'no-store');

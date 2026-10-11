@@ -1,4 +1,5 @@
 // Tiny observable store for Preact. Subscribers are notified once per animation frame.
+import { getSession, type User } from './auth/core';
 import { useEffect, useState } from 'preact/hooks';
 import type { Profile, Settings } from '../../src/shared/types';
 import { DEFAULT_SETTINGS } from '../../src/shared/types';
@@ -8,7 +9,7 @@ import type { ProjectMeta } from './storage/idb';
 
 export type Tool = 'select' | 'rect' | 'text' | 'image' | 'hand';
 export type Variant = 'desktop' | 'mobile';
-export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai';
+export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai' | 'auth';
 export type RightTab = 'design' | 'email' | 'export' | 'ai';
 export type LeftTab = 'layers' | 'blocks' | 'assets';
 
@@ -42,6 +43,11 @@ export interface State {
   result: { text: string; url?: string } | null;
   clipboard: unknown[] | null;
   fontsLoaded: number;
+  /** Signed-in account (local or relay). Projects are listed per account. */
+  user: User | null;
+  authTab: 'login' | 'register';
+  /** Projects created while signed out, offered for claiming after sign-in. */
+  guestProjects: number;
 }
 
 const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings';
@@ -61,6 +67,9 @@ export const initialState: State = {
   editingText: null,
   enteredGroup: null,
   modal: null,
+  user: getSession()?.user ?? null,
+  authTab: 'login',
+  guestProjects: 0,
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),

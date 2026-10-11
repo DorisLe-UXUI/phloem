@@ -2,12 +2,17 @@ import { render } from 'preact';
 import { App } from './ui/App';
 import { ensureFonts } from './render/fonts';
 import { assets } from './storage/assets';
-import { refreshProjects } from './pipeline/actions';
+import { refreshProjects, restoreSession } from './pipeline/actions';
+import { set } from './store';
 
 ensureFonts(['Inter']);
 void assets.ready.then(async () => {
+  await restoreSession();
   await refreshProjects();
-  const t = new URLSearchParams(location.search).get('t');
+  const params = new URLSearchParams(location.search);
+  const authParam = params.get('auth');
+  if (authParam === 'login' || authParam === 'register') { history.replaceState(null, '', location.pathname); set({ modal: 'auth', authTab: authParam }); }
+  const t = params.get('t');
   if (t) {
     const { TEMPLATES: T, templateBrand } = await import('./model/templates');
     const { BRAND_PRESETS, DEFAULT_BRAND } = await import('./model/types');

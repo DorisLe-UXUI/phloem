@@ -68,9 +68,12 @@ const studioCfg = {
   loader: { '.css': 'css' },
 };
 
+const authCfg = { entryPoints: ['studio/src/auth/standalone.ts'], bundle: true, format: 'iife', target: 'es2020', outfile: 'studio/dist/auth.js', minify: true, logLevel: 'info' };
+
 async function buildStudio() {
   mkdirSync('studio/dist', { recursive: true });
   await esbuild.build(studioCfg);
+  await esbuild.build(authCfg);
   await esbuild.build({ entryPoints: ['studio/styles.css'], bundle: true, outfile: 'studio/dist/studio.css', logLevel: 'info' });
   await import('./studio/make-artifact.mjs');
 }
@@ -78,6 +81,7 @@ async function buildStudio() {
 if (studioOnly) {
   if (watch) {
     const c1 = await esbuild.context(studioCfg); await c1.watch();
+    const c3 = await esbuild.context(authCfg); await c3.watch();
     const c2 = await esbuild.context({ entryPoints: ['studio/styles.css'], bundle: true, outfile: 'studio/dist/studio.css' }); await c2.watch();
     console.log('watching studio…');
   } else await buildStudio();

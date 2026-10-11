@@ -419,3 +419,17 @@ select.in { appearance: none; background-image: linear-gradient(45deg, transpare
 .feature .go { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--text); display: grid; place-items: center; cursor: pointer; }
 .feature .go:hover { border-color: var(--neon); color: var(--neon); }
 .tpl-strip { grid-auto-columns: 248px; }
+
+
+/* ---------- account ---------- */
+.home-top .sep { width: 1px; height: 18px; background: var(--line-2); margin: 0 2px; }
+.acct { display: flex; align-items: center; gap: 8px; }
+.acct .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--neon); color: #04140a; font-weight: 800; font-size: 12px; display: grid; place-items: center; }
+.acct .who { display: flex; flex-direction: column; line-height: 1.1; }
+.acct .who b { font-size: 12px; }
+.acct .who span { font-size: 10.5px; color: var(--muted); font-family: var(--mono); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.authtabs { width: 100%; margin-bottom: 12px; height: 32px; }
+.authtabs button.on { background: var(--neon-soft); color: var(--neon); }
+.claim { display: flex; align-items: center; gap: 10px; margin: 16px 20px 0; padding: 10px 14px; border: 1px solid var(--neon-line); background: var(--neon-soft); border-radius: var(--r); font-size: 13px; }
+.claim svg { color: var(--neon); }
+@media (max-width: 720px) { .acct .who { display: none; } .home-top .btn.ghost.sm[href] { display: none; } }

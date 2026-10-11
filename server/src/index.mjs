@@ -8,6 +8,7 @@
 import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
+import { createAuth } from './auth.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -20,6 +21,8 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replac
 const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', import.meta.url).pathname);
+const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '' });
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 const OAUTH = {
@@ -68,11 +71,14 @@ const server = createServer(async (req, res) => {
         tokenRequired: !!RELAY_TOKEN,
         klaviyoRevision: KLAVIYO_REVISION,
         ai: !!anthropic,
+        auth: true,
+        users: AUTH.count(),
       });
     }
     if (url.pathname.startsWith('/oauth/callback/')) return await oauthCallback(url, res);
     if (RELAY_TOKEN && req.headers['x-phloem-token'] !== RELAY_TOKEN) return json(res, 401, { error: 'relay token sai hoặc thiếu' });
 
+    if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
     if (url.pathname === '/proxy' && req.method === 'POST') return await proxy(await body(req), res);
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
     if (url.pathname === '/ai' && req.method === 'POST') return await ai(await body(req), res);
@@ -264,10 +270,25 @@ async function oauthRefresh(p, res) {
 }
 
 // ---------- helpers ----------
+// Accounts: register / login / me / logout. Tokens are HMAC-signed, users live in DATA_DIR/users.json.
+async function authRoute(action, req, res) {
+  try {
+    if (action === 'register' && req.method === 'POST') return json(res, 200, AUTH.register(await body(req)));
+    if (action === 'login' && req.method === 'POST') return json(res, 200, AUTH.login(await body(req)));
+    if (action === 'me' && req.method === 'GET') {
+      const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+      const user = m ? AUTH.me(m[1]) : null;
+      return json(res, user ? 200 : 401, user ? { user } : { error: 'Phiên đăng nhập hết hạn.', code: 'expired' });
+    }
+    if (action === 'logout' && req.method === 'POST') return json(res, 200, { ok: true });
+    return json(res, 404, { error: 'không có route auth này' });
+  } catch (e) { return json(res, e.status || 500, { error: e.message, code: e.code || 'server' }); }
+}
+
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Phloem-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Phloem-Token, Authorization');
   res.setHeader('Access-Control-Max-Age', '600');
 }
 function end(res, code) { res.statusCode = code; res.end(); }

@@ -7,6 +7,14 @@ window.PHLOEM_I18N = {
     hero_lead: 'Email bạn vẽ ra sao, hộp thư nhận y vậy. Phloem cắt thiết kế thành lát ảnh chuẩn mọi hộp thư, giữ link và alt, rồi tạo bản nháp trong Mailchimp hoặc Klaviyo. Không dựng lại. Không bao giờ tự gửi.',
     hero_cta1: 'Mở Studio miễn phí', hero_cta2: 'Xem 24 mẫu', hero_trust: 'Chạy đúng ở', hero_scroll: 'Cuộn để xem',
     ai_s1: '1. Giảm 30% đến hết Chủ nhật', ai_s2: '2. Ba ngày, ba món, giảm 30%',
+    nav_login: 'Đăng nhập', hero_su1: 'Có tài khoản thì project theo bạn đi mọi máy.', hero_su2: 'Đăng ký miễn phí →',
+    su_eyebrow: 'Tài khoản', su_h2: 'Đăng ký một lần, <span class="neon">mọi thứ theo bạn</span>.', su_p: 'Project, brand kit, client Mailchimp/Klaviyo và lịch sử draft gắn với tài khoản. Tạo xong là vào Studio làm luôn.',
+    su_l1: 'Miễn phí, không cần thẻ', su_l2: 'Email và brand kit tách theo tài khoản', su_l3: 'Bật relay là đăng nhập được từ mọi máy',
+    su_tab_reg: 'Đăng ký', su_tab_login: 'Đăng nhập', su_name: 'Tên', su_pw: 'Mật khẩu', su_brand: 'Tên thương hiệu (tuỳ chọn)',
+    su_submit_reg: 'Tạo tài khoản và mở Studio', su_submit_login: 'Đăng nhập và mở Studio', su_busy: 'Đang xử lý…',
+    su_mode_local: 'Tài khoản lưu trên trình duyệt này. Bật relay để dùng chung nhiều máy.', su_mode_relay: 'Tài khoản tạo trên relay: đăng nhập được từ mọi máy.',
+    su_signed: 'Đang đăng nhập là', su_open: 'Mở Studio', su_logout: 'Đăng xuất',
+    err_name: 'Tên cần ít nhất 2 ký tự.', err_email: 'Email không hợp lệ.', err_password: 'Mật khẩu cần ít nhất 8 ký tự.', err_exists: 'Email này đã có tài khoản. Hãy đăng nhập.', err_notfound: 'Chưa có tài khoản với email này.', err_badpass: 'Mật khẩu không đúng.', err_network: 'Không gọi được relay. Kiểm tra Relay URL hoặc mạng.', err_secure: 'Trình duyệt chặn mã hoá mật khẩu trên trang không https.', err_storage: 'Trình duyệt không cho lưu dữ liệu (chế độ riêng tư?).', err_server: 'Có lỗi, thử lại sau.',
     chip_draft: 'Draft Klaviyo đã tạo', chip_slices: '38 lát · 331 KB · PNG 2×', chip_ai: 'AI · 3 phương án',
     ui_tab1: 'Thiết kế', ui_tab2: 'Mobile', ui_export: 'Tạo draft', ui_templates: 'Mẫu', ui_empty: 'Chọn một mẫu để bắt đầu', ui_palette: 'Bảng màu', ui_checks: 'Kiểm tra', ui_chk1: 'Link & alt đủ', ui_chk2: '≤ 102 KB / lát', ui_chk3: 'Mobile 375px', ui_dest: 'Đích', ui_mobile: 'Mobile · 375px',
     toast_draft: 'Draft Mailchimp đã tạo', toast_nosend: 'Không bao giờ tự gửi', toast_nosend_s: 'Bạn bấm gửi trong Mailchimp', st1: 'Chọn mẫu', st2: 'Đổi màu', st3: 'Cắt lát', st4: 'Draft sẵn',
@@ -47,6 +55,14 @@ window.PHLOEM_I18N = {
     hero_lead: 'What you draw is what the inbox gets. Phloem slices your design into image slices that render in every mail client, keeps links and alt text, and creates a draft in Mailchimp or Klaviyo. No rebuilding. It never sends on its own.',
     hero_cta1: 'Open Studio, free', hero_cta2: 'See 24 templates', hero_trust: 'Renders right in', hero_scroll: 'Scroll',
     ai_s1: '1. 30% off until Sunday night', ai_s2: '2. Three days, three dishes, 30% off',
+    nav_login: 'Sign in', hero_su1: 'With an account your projects follow you to any machine.', hero_su2: 'Sign up free →',
+    su_eyebrow: 'Account', su_h2: 'Sign up once, <span class="neon">everything follows you</span>.', su_p: 'Projects, brand kit, Mailchimp/Klaviyo clients and draft history live on your account. Sign up and you are in Studio.',
+    su_l1: 'Free, no card', su_l2: 'Emails and brand kits per account', su_l3: 'Turn on the relay and sign in from any machine',
+    su_tab_reg: 'Sign up', su_tab_login: 'Sign in', su_name: 'Name', su_pw: 'Password', su_brand: 'Brand name (optional)',
+    su_submit_reg: 'Create account and open Studio', su_submit_login: 'Sign in and open Studio', su_busy: 'Working…',
+    su_mode_local: 'Accounts are stored in this browser. Turn on the relay to share them across machines.', su_mode_relay: 'Accounts live on your relay: sign in from any machine.',
+    su_signed: 'Signed in as', su_open: 'Open Studio', su_logout: 'Sign out',
+    err_name: 'Name needs at least 2 characters.', err_email: 'That email does not look right.', err_password: 'Password needs at least 8 characters.', err_exists: 'This email already has an account. Sign in instead.', err_notfound: 'No account with this email yet.', err_badpass: 'Wrong password.', err_network: 'Could not reach the relay. Check the Relay URL or your network.', err_secure: 'The browser blocks password hashing on non-https pages.', err_storage: 'The browser refuses to store data (private mode?).', err_server: 'Something went wrong, try again.',
     chip_draft: 'Klaviyo draft created', chip_slices: '38 slices · 331 KB · PNG 2×', chip_ai: 'AI · 3 variants',
     ui_tab1: 'Design', ui_tab2: 'Mobile', ui_export: 'Create draft', ui_templates: 'Templates', ui_empty: 'Pick a template to start', ui_palette: 'Palette', ui_checks: 'Checks', ui_chk1: 'Links & alt OK', ui_chk2: '≤ 102 KB / slice', ui_chk3: 'Mobile 375px', ui_dest: 'Destination', ui_mobile: 'Mobile · 375px',
     toast_draft: 'Mailchimp draft created', toast_nosend: 'Never sends by itself', toast_nosend_s: 'You hit send inside Mailchimp', st1: 'Pick a template', st2: 'Recolor', st3: 'Slice', st4: 'Draft ready',
@@ -90,6 +106,7 @@ window.applyLang = function (lang) {
   document.querySelectorAll('[data-lang]').forEach((b) => { const on = b.getAttribute('data-lang') === lang; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   document.title = lang === 'en' ? 'Phloem Studio — design emails, one click, a draft' : 'Phloem Studio — thiết kế email, bấm một nút, có draft';
   try { localStorage.setItem('phloem.lang', lang); } catch (e) { /* ignore */ }
+  if (typeof window.__phloemAuthUi === 'function') window.__phloemAuthUi();
 };
 
 (function () {
