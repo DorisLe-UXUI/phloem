@@ -60,7 +60,7 @@ h1, h2, h3 { font-family: var(--display); letter-spacing: -0.02em; text-wrap: ba
 .cta-row.center { justify-content: center; }
 
 /* ---------- HERO: product story (CSS 3D laptop) ---------- */
-.hero { position: relative; isolation: isolate; min-height: calc(100vh - 64px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(20px, 4vw, 56px); align-items: center; padding: clamp(28px, 5vh, 64px) var(--gutter) 40px; max-width: 1400px; margin: 0 auto; }
+.hero { position: relative; isolation: isolate; overflow: clip; min-height: calc(100vh - 64px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(20px, 4vw, 56px); align-items: center; padding: clamp(28px, 5vh, 64px) var(--gutter) 40px; max-width: 1400px; margin: 0 auto; }
 .hero-copy { position: relative; z-index: 2; max-width: 600px; will-change: transform, opacity; }
 .hero-floor { position: absolute; left: 50%; top: 58%; width: 180vw; height: 70vh; transform: translateX(-50%) perspective(640px) rotateX(74deg); transform-origin: 50% 0; z-index: 0; pointer-events: none; opacity: 0.75;
   background-image: linear-gradient(rgba(57, 255, 20, 0.22) 1.5px, transparent 1.5px), linear-gradient(90deg, rgba(57, 255, 20, 0.22) 1.5px, transparent 1.5px); background-size: 90px 90px;

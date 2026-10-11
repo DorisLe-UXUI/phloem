@@ -208,6 +208,7 @@
     };
     const setTab = (next) => { tab = next; form.classList.toggle('login', tab === 'login'); form.querySelectorAll('.su-tabs button').forEach((b) => { const on = b.dataset.tab === tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); }); form.elements.password.autocomplete = tab === 'login' ? 'current-password' : 'new-password'; err.hidden = true; paint(); };
     window.__phloemAuthUi = paint;
+    A.onAuthChange(paint);
     paint();
     A.detectMode().then((m) => { const k = m === 'relay' ? 'su_mode_relay' : 'su_mode_local'; modeEl.setAttribute('data-i', k); modeEl.textContent = t(k); });
     A.restore().then(paint).catch(() => {});
