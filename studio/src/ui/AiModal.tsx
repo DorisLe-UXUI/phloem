@@ -30,6 +30,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   });
   const [transport, setTransport] = useState<AiTransport | 'checking'>('checking');
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState('');
   const [variants, setVariants] = useState<Variant[]>([]);
   const [thumbs, setThumbs] = useState<string[]>([]);
   const [err, setErr] = useState('');
@@ -73,7 +74,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
         const r = await analyzeNow(); if (r) input = r;
       }
       await document.fonts.ready;
-      const vs = await generateVariants(input);
+      const vs = await generateVariants(input, setStage);
       setVariants(vs);
       ensureFonts(vs.flatMap((v) => [v.headingFont || '', v.bodyFont || '']).filter(Boolean));
       await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]);
@@ -81,7 +82,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       setThumbs(render());
       setTimeout(() => setThumbs(render()), 2500); // once web fonts are in
     } catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setStage(''); }
   };
 
   const use = async (v: Variant) => {
@@ -172,7 +173,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
         {BRAND_PRESETS.map((p) => <button key={p.name} class={`preset ${form.palette === p.name ? 'on' : ''}`} onClick={() => upd({ palette: p.name })}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}
       </div>
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span>{/đăng nhập/i.test(err) && <Btn sm kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập</Btn>}</div>}
-      {busy && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">AI đang đọc nội dung và ảnh, dựng 3 phương án…</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Thường mất 20–60 giây. Kết quả là block Phloem thật, không phải ảnh mockup.</div></div>}
+      {busy && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage === 'refine' ? 'Creative director AI đang duyệt và sửa lại 3 phương án…' : 'AI đang đọc nội dung và ảnh, dựng 3 phương án…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Thường mất 20–60 giây. Kết quả là block Phloem thật, không phải ảnh mockup.</div></div>}
       {variants.length > 0 && (
         <>
           <Eyebrow>3 phương án</Eyebrow>

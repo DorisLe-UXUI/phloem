@@ -20,6 +20,8 @@ export interface GenInput {
   webBrand?: Partial<Brand> | null;
   logoAssetId?: string | null;
   language?: 'auto' | 'vi' | 'en';
+  /** Second creative-director pass (default on). */
+  refine?: boolean;
 }
 
 export interface Variant { name: string; why: string; palette: string; vibe?: Vibe; headingFont?: string; bodyFont?: string; fields: EmailFields; blocks: BlockSpec[] }
@@ -52,6 +54,10 @@ const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - articles: {items:[{name:"tiêu đề", badge:"EP01", body:"Đọc thêm →", url, image}]} (3 thẻ bài viết / tập video / dự án)
 - products-2/3 cũng nhận oldPrice ("$2.000") + badge ("-20%") để hiện giá cũ gạch ngang và nhãn
 - footer nhận social:[{label:"YouTube"|"Instagram"|"TikTok"|"Facebook"|"LinkedIn"|"X", url}]
+- spotlight: {headline, body, button:{label,url}, items:[{name, price, badge, url, image}]} một sản phẩm/dịch vụ "ngôi sao": ảnh lớn bo góc, tag giá nổi, nhãn, mô tả, nút. Rất hợp sản phẩm chủ lực / ra mắt.
+- glass-hero: {eyebrow, headline, subhead, button, image, imageAlt} ảnh toàn khung + thẻ kính mờ chứa chữ (cao cấp, lifestyle, khách sạn, làm đẹp).
+- steps: {heading, items:[{name, body}]} 3–4 card đánh số 1·2·3 (quy trình, cách dùng, onboarding).
+- collage: {items:[{name, url, image}]} 3 ảnh xếp lệch (1 lớn trái, 2 nhỏ phải): bộ sưu tập, không gian, hậu trường.
 - divider: {} · spacer: {}
 - footer: {brand, address, unsubscribeUrl, preferencesUrl, unsubscribeLabel ("Huỷ đăng ký" | "Unsubscribe"), preferencesLabel ("Cập nhật thông tin" | "Update preferences") theo ngôn ngữ copy}`;
 
@@ -68,7 +74,8 @@ const DESIGN_DOC = `HỆ THỐNG THIẾT KẾ (Phloem vẽ email thành ảnh, n
 - vibe quyết định bo góc, bóng đổ, pill, hình trang trí, cỡ tiêu đề: ${VIBES.map((v) => `"${v.v}" (${v.hint})`).join('; ')}. Chọn vibe theo ngành: trẻ em/game/F&B → playful; agency/tech/streetwear/sale lớn → bold; làm đẹp/thời trang cao cấp/khách sạn → luxury; báo chí/media/giáo dục → editorial; còn lại → clean.
 - headingFont / bodyFont chọn từ: ${FONTS.filter((f) => f.cat !== 'system').map((f) => `${f.family}${f.vi ? '' : ' (không có tiếng Việt)'}`).join(', ')}. Khi copy tiếng Việt CHỈ dùng font có tiếng Việt. Gợi ý: playful → Baloo 2 / Nunito / Quicksand; bold → Unbounded / Space Grotesk / Anton / Oswald; luxury → Playfair Display / Cormorant Garamond / Fraunces; editorial → Lora / Merriweather / Roboto Slab; clean → Inter / Manrope / Be Vietnam Pro / Plus Jakarta Sans. Heading và body nên khác nhau (display + sans).
 - Hiệu ứng có sẵn và nên dùng: hero-overlay (ảnh toàn khung + lớp tối dần + chữ trắng), hero-center style "gradient" (dải gradient primary → accent + hình tròn trang trí), dark-band (chữ khổ lớn nền tối), nút pill phát sáng (playful/bold), card bo góc có bóng, pill badges, countdown tiles, code box. Kết hợp 2–3 hiệu ứng mỗi email, không dùng tất cả.
-- Nhịp điệu: anchor khổ lớn → hàng icon/badges → nội dung chính (sản phẩm/bài viết/feature) → social proof → CTA lặp lại → footer. Khoảng trắng rộng, mỗi block một ý.`;
+- Nhịp điệu: anchor khổ lớn → hàng icon/badges → nội dung chính (sản phẩm/bài viết/feature) → social proof → CTA lặp lại → footer. Khoảng trắng rộng, mỗi block một ý.
+CHECKLIST PREMIUM (tự kiểm trước khi trả): headline ≤ 8 từ, nói một lợi ích cụ thể, không mở đầu bằng "Chào mừng bạn đến với"; không câu sáo rỗng ("chất lượng cao", "giá tốt nhất"); mỗi block một ý, không lặp ý; số liệu/giá/mã lấy từ nguồn thật; hero và mọi card có ảnh nếu có ảnh; 1 CTA chính, lặp ở cuối với cùng lời kêu gọi; eyebrow ngắn (2–4 từ); subject và preheader bổ sung nhau; 3 phương án khác nhau cả cấu trúc, vibe lẫn font; ít nhất một phương án dùng block "mới" (spotlight / glass-hero / collage / steps) khi ngành phù hợp.`;
 
 function systemPrompt(presetNames: string[], lang: 'vi' | 'en' = 'vi'): string {
   return `Bạn là art director email cho Phloem Studio. Nhiệm vụ: từ website, nội dung và ảnh người dùng đưa, dựng 3 phương án email marketing KHÁC NHAU RÕ RỆT về cấu trúc và nhịp điệu, mỗi phương án 7–10 block, luôn bắt đầu bằng nav và kết thúc bằng footer.
@@ -111,7 +118,30 @@ async function thumbOf(assetId: string): Promise<AiImage | null> {
   } catch { return null; }
 }
 
-export async function generateVariants(inp: GenInput): Promise<Variant[]> {
+const CRITIC = `Bạn là creative director khó tính của một agency email hàng đầu. Bạn nhận JSON 3 phương án email (cùng schema bạn sẽ trả về). Hãy chấm từng phương án theo checklist premium và SỬA TRỰC TIẾP những chỗ yếu: headline nhạt hoặc dài → viết lại sắc hơn; copy sáo rỗng → cụ thể; block thừa hoặc lặp ý → bỏ/thay; thiếu ảnh ở hero/card khi có imageId → gán ảnh hợp ngữ cảnh; 2 phương án quá giống nhau → đổi cấu trúc một cái; vibe/font không hợp ngành → đổi; subject/preheader yếu → viết lại. Giữ nguyên imageId, URL, giá, tên sản phẩm thật. Trả về CHỈ JSON cùng schema {"variants":[…]}, không giải thích.`;
+
+function normalizeVariants(parsed: { variants?: Variant[] } | null, inp: GenInput, presets: string[], lang: 'vi' | 'en'): Variant[] {
+  const variants = (parsed?.variants || []).filter((v) => v && Array.isArray(v.blocks) && v.blocks.length).slice(0, 3);
+  const validIds = new Set(inp.imageIds);
+  for (const v of variants) {
+    v.blocks = v.blocks.filter((b) => b && typeof b.kind === 'string');
+    for (const b of v.blocks) {
+      const c = (b.content ||= {});
+      if (c.image && !validIds.has(String(c.image))) c.image = null;
+      if (c.items) for (const it of c.items) if (it.image && !validIds.has(String(it.image))) it.image = null;
+    }
+    if (inp.palette !== 'auto') v.palette = presets.includes(inp.palette) ? inp.palette : 'Forest';
+    else if (!presets.includes(v.palette)) v.palette = 'Forest';
+    if (!VIBES.some((x) => x.v === v.vibe)) v.vibe = 'clean';
+    const okFont = (f?: string) => !!f && FONTS.some((x) => x.family.toLowerCase() === f.toLowerCase() && (lang !== 'vi' || x.vi));
+    v.headingFont = okFont(v.headingFont) ? FONTS.find((x) => x.family.toLowerCase() === v.headingFont!.toLowerCase())!.family : undefined;
+    v.bodyFont = okFont(v.bodyFont) ? FONTS.find((x) => x.family.toLowerCase() === v.bodyFont!.toLowerCase())!.family : undefined;
+    v.fields = { campaignName: v.fields?.campaignName || 'Email', subject: v.fields?.subject || '', preheader: v.fields?.preheader || '' };
+  }
+  return variants;
+}
+
+export async function generateVariants(inp: GenInput, onStage?: (s: string) => void): Promise<Variant[]> {
   const presets = [...(inp.webBrand ? ['Web'] : []), ...BRAND_PRESETS.map((p) => p.name)];
   const images: AiImage[] = [];
   const imageLines: string[] = [];
@@ -132,25 +162,19 @@ export async function generateVariants(inp: GenInput): Promise<Variant[]> {
     `Nội dung thô (tiêu đề, sản phẩm, giá, link, ngày…):\n${inp.content || '(không có — hãy viết copy mẫu hợp lý cho loại email này)'}`,
     imageLines.length ? `Ảnh có sẵn (${imageLines.length}):\n${imageLines.join('\n')}` : 'Ảnh: không có — dùng image: null.',
   ].filter(Boolean).join('\n\n');
+  onStage?.('draft');
   const text = await askClaude({ system: systemPrompt(presets, lang), turns: [{ role: 'user', text: prompt, images }], maxTokens: 20000, effort: 'high' });
-  const parsed = extractJson<{ variants?: Variant[] }>(text);
-  const variants = (parsed.variants || []).filter((v) => v && Array.isArray(v.blocks) && v.blocks.length).slice(0, 3);
+  let variants = normalizeVariants(extractJson<{ variants?: Variant[] }>(text), inp, presets, lang);
   if (!variants.length) throw new Error('AI không trả về phương án nào. Thử mô tả nội dung rõ hơn.');
-  const validIds = new Set(inp.imageIds);
-  for (const v of variants) {
-    v.blocks = v.blocks.filter((b) => b && typeof b.kind === 'string');
-    for (const b of v.blocks) {
-      const c = (b.content ||= {});
-      if (c.image && !validIds.has(String(c.image))) c.image = null;
-      if (c.items) for (const it of c.items) if (it.image && !validIds.has(String(it.image))) it.image = null;
-    }
-    if (inp.palette !== 'auto') v.palette = presets.includes(inp.palette) ? inp.palette : 'Forest';
-    else if (!presets.includes(v.palette)) v.palette = 'Forest';
-    if (!VIBES.some((x) => x.v === v.vibe)) v.vibe = 'clean';
-    const okFont = (f?: string) => !!f && FONTS.some((x) => x.family.toLowerCase() === f.toLowerCase() && (lang !== 'vi' || x.vi));
-    v.headingFont = okFont(v.headingFont) ? FONTS.find((x) => x.family.toLowerCase() === v.headingFont!.toLowerCase())!.family : undefined;
-    v.bodyFont = okFont(v.bodyFont) ? FONTS.find((x) => x.family.toLowerCase() === v.bodyFont!.toLowerCase())!.family : undefined;
-    v.fields = { campaignName: v.fields?.campaignName || 'Email', subject: v.fields?.subject || '', preheader: v.fields?.preheader || '' };
+  // Second pass: a demanding creative director rewrites weak copy, fixes structure, assigns images. Falls back to the draft on any error.
+  if (inp.refine !== false) {
+    onStage?.('refine');
+    try {
+      const ctx = [`Ngôn ngữ copy: ${lang === 'en' ? 'English' : 'tiếng Việt'}`, `Palette hợp lệ: ${presets.join(', ')}`, inp.site ? siteSummary(inp.site, inp.webBrand || {}) : `Thương hiệu: ${inp.brandName || 'BRAND'}`, imageLines.length ? `Ảnh hợp lệ (imageId):\n${imageLines.join('\n')}` : 'Không có ảnh: image phải là null.'].join('\n\n');
+      const t2 = await askClaude({ system: `${CRITIC}\n\n${DESIGN_DOC}\n\n${BLOCK_DOC}`, turns: [{ role: 'user', text: `${ctx}\n\nJSON cần duyệt và sửa:\n${JSON.stringify({ variants })}` }], maxTokens: 20000, effort: 'high' });
+      const better = normalizeVariants(extractJson<{ variants?: Variant[] }>(t2), inp, presets, lang);
+      if (better.length === variants.length) variants = better;
+    } catch { /* keep the draft */ }
   }
   return variants;
 }

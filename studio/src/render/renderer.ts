@@ -70,20 +70,35 @@ function mix(a: string, b: string, t: number): string {
 }
 function seedOf(id: string): number { let h = 2166136261; for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; }
 
-/** Placeholder "art": a brand-tinted gradient with soft shapes, so templates look designed before real photos arrive. */
+/** Placeholder "art": a brand-tinted gradient with soft lit shapes, a highlight sweep and a fine grid, so templates look
+ *  designed before real photos arrive. Deterministic per node id. */
 function drawArt(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, s: number, brand: Brand, seed: number, editor: boolean) {
   const r = (k: number) => ((seed >>> (k * 5)) & 31) / 31; // 0..1 pseudo-random per slot
-  const g = ctx.createLinearGradient(x, y, x + w, y + h);
-  g.addColorStop(0, mix(brand.primary, brand.bg, 0.78));
-  g.addColorStop(1, mix(brand.primary, brand.bg, 0.45));
-  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  const light = mix(brand.primary, brand.bg, 0.86), mid = mix(brand.primary, brand.bg, 0.55), deep = mix(brand.primary, brand.accent, 0.35);
   ctx.save();
-  ctx.globalAlpha = 0.5;
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const g = ctx.createLinearGradient(x, y, x + w, y + h);
+  g.addColorStop(0, light); g.addColorStop(0.55, mid); g.addColorStop(1, deep);
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  // soft lit orbs (radial gradients read as blurred shapes)
   for (let i = 0; i < 3; i++) {
-    const cx = x + w * (0.15 + 0.7 * r(i)), cy = y + h * (0.2 + 0.6 * r(i + 3)), rad = Math.min(w, h) * (0.18 + 0.28 * r(i + 6));
-    ctx.fillStyle = i === 2 ? mix(brand.primary, brand.bg, 0.2) : mix(brand.primary, brand.bg, 0.62 + 0.1 * i);
-    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
+    const cx = x + w * (0.15 + 0.7 * r(i)), cy = y + h * (0.2 + 0.6 * r(i + 3)), rad = Math.min(w, h) * (0.22 + 0.3 * r(i + 6));
+    const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+    const c = i === 2 ? mix(brand.accent, brand.bg, 0.25) : mix(brand.bg, brand.primary, 0.1 + 0.15 * i);
+    rg.addColorStop(0, c); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalAlpha = i === 2 ? 0.55 : 0.75; ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
   }
+  // diagonal highlight sweep
+  ctx.globalAlpha = 0.18;
+  const sw = ctx.createLinearGradient(x, y, x + w * 0.6, y + h);
+  sw.addColorStop(0.35, 'rgba(255,255,255,0)'); sw.addColorStop(0.5, 'rgba(255,255,255,0.9)'); sw.addColorStop(0.65, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sw; ctx.fillRect(x, y, w, h);
+  // thin ring + fine dot grid for texture
+  ctx.globalAlpha = 0.22; ctx.strokeStyle = brand.bg; ctx.lineWidth = Math.max(1, 1.2 * s);
+  ctx.beginPath(); ctx.arc(x + w * (0.7 + 0.2 * r(9)), y + h * (0.3 + 0.3 * r(10)), Math.min(w, h) * 0.28, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 0.1; ctx.fillStyle = brand.ink;
+  const step = 22 * s;
+  for (let gx = x + step / 2; gx < x + w; gx += step) for (let gy = y + step / 2; gy < y + h; gy += step) { ctx.beginPath(); ctx.arc(gx, gy, 0.8 * s, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();
   if (editor && h > 56 * s && w > 120 * s) {
     const label = `Ảnh ${Math.round(w / s)}×${Math.round(h / s)} · kéo ảnh vào`;

@@ -139,6 +139,10 @@ export const BLOCKS: { kind: BlockKind; name: string; desc: string }[] = [
   { kind: 'code', name: 'Mã giảm giá', desc: 'Khung mã + nút copy' },
   { kind: 'stat-tiles', name: 'Tiles số liệu', desc: '+320% doanh thu…' },
   { kind: 'articles', name: 'Bài viết / tập', desc: '3 thẻ ảnh + tiêu đề + badge' },
+  { kind: 'spotlight', name: 'Spotlight', desc: 'Ảnh sản phẩm lớn + tag giá nổi' },
+  { kind: 'glass-hero', name: 'Hero thẻ kính', desc: 'Ảnh toàn khung, thẻ kính mờ chứa chữ' },
+  { kind: 'steps', name: 'Các bước', desc: '1 · 2 · 3 card đánh số' },
+  { kind: 'collage', name: 'Collage', desc: '3 ảnh xếp lệch' },
   { kind: 'divider', name: 'Divider', desc: 'Đường kẻ mảnh' },
   { kind: 'spacer', name: 'Spacer', desc: 'Khoảng trống 24px' },
   { kind: 'footer', name: 'Footer', desc: 'Địa chỉ, huỷ đăng ký' },
@@ -510,6 +514,76 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         nodes.push(text(brand, u.label, { x, y: cy + 50, w: tw, fontSize: 11, color: { token: 'muted' }, align: 'center', name: 'Unit' }));
       });
       h = cy + th + 18 - y;
+      kids.push(band(h), ...nodes);
+      break;
+    }
+    case 'spotlight': {
+      const it: ItemC = (c.items && c.items[0]) || { name: c.heading || 'Tên sản phẩm', price: '', badge: '', url: c.button?.url || `${B0}/shop`, image: c.image ?? null };
+      const btnC = c.button ?? { label: 'Xem chi tiết', url: it.url || `${B0}/shop` };
+      const img = image({ x: PAD, y: y + 20, w: inner, h: 300, radius: R, name: 'Spotlight image', alt: it.alt || it.name, assetId: it.image ?? c.image ?? null, link: it.url || btnC.url, shadow: cardShadow(T) });
+      const tagT = text(brand, it.name + (it.price ? `  ·  ${it.price}` : ''), { x: 0, y: 0, w: 320, fontSize: 13, fontWeight: 800, name: 'Tag' });
+      const tw = Math.min(inner - 40, Math.ceil(measureWidth(brand, tagT)) + 28);
+      const tag = rect({ x: PAD + inner - tw - 16, y: img.y + img.h - 52, w: tw, h: 36, fill: { token: 'bg' }, radius: T.btnRadius >= 999 ? 999 : Math.min(R, 12), name: 'Tag bg', shadow: { blur: 18, y: 6, color: '#000000', opacity: 0.22 } });
+      tagT.x = tag.x + 14; tagT.w = tw - 28; tagT.y = tag.y + Math.round((36 - tagT.h) / 2);
+      const parts: Node[] = [img, tag, tagT];
+      if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 200, fontSize: 11, fontWeight: 800, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 18; const bg = rect({ x: PAD + 14, y: img.y + 14, w: bw, h: 24, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = bg.x + 9; bt.w = bw - 18; bt.y = bg.y + Math.round((24 - bt.h) / 2); parts.push(bg, bt); }
+      const head = text(brand, c.headline || c.heading || it.name, { x: PAD, y: img.y + img.h + 22, w: inner, fontSize: hs(26), fontWeight: 800, lineHeight: 1.15, fontFamily: 'heading', name: 'Heading' });
+      const body = text(brand, c.body || c.subhead || it.body || 'Một đoạn mô tả ngắn: chất liệu, cảm giác, lý do nên có.', { x: PAD, y: head.y + head.h + 10, w: inner, fontSize: 15, color: { token: 'muted' }, lineHeight: 1.55, name: 'Body' });
+      const btn = button(brand, btnC.label, btnC.url, PAD, body.y + body.h + 18);
+      h = btn.y + btn.h + 32 - y;
+      kids.push(band(h), ...parts, head, body, btn);
+      break;
+    }
+    case 'glass-hero': {
+      const d = DEF.hero; const btnC = c.button ?? d.button;
+      const H = 480;
+      const img = image({ x: 0, y, w: W, h: H, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: '#07100b', opacity: 0.28 } });
+      const cardX = PAD, cardW = inner, pad = 22;
+      const btn = button(brand, btnC.label, btnC.url, cardX + pad, 0);
+      const sub = text(brand, c.subhead || d.subhead, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 15, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
+      const head = text(brand, c.headline || d.headline, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: hs(34), fontWeight: 800, lineHeight: 1.08, fontFamily: 'heading', color: '#FFFFFF', name: 'Headline' });
+      const eb = text(brand, up(c.eyebrow || d.eyebrow), { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 11, fontWeight: 800, letterSpacing: 1.6, color: '#FFFFFF', name: 'Eyebrow', opacity: 0.85 });
+      const cardH = pad + eb.h + 10 + head.h + 10 + sub.h + 18 + btn.h + pad;
+      const cardY = y + H - 24 - cardH;
+      const glass = rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: '#FFFFFF', opacity: 0.16, radius: R, name: 'Glass', stroke: { color: '#FFFFFF', width: 1 } });
+      const glass2 = rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: null, radius: R, name: 'Glass edge', stroke: { color: '#FFFFFF', width: 1 }, opacity: 0.45 });
+      eb.y = cardY + pad; head.y = eb.y + eb.h + 10; sub.y = head.y + head.h + 10;
+      const by = sub.y + sub.h + 18; btn.children.forEach((k) => { k.y += by; }); btn.y = by;
+      h = H;
+      kids.push(img, glass, glass2, eb, head, sub, syncGroup(btn));
+      break;
+    }
+    case 'steps': {
+      const items: ItemC[] = (c.items && c.items.length ? c.items : [{ name: 'Chọn', body: 'Chọn mẫu hoặc tải ảnh lên.' }, { name: 'Chỉnh', body: 'Đổi chữ, màu, logo trong vài phút.' }, { name: 'Gửi', body: 'Tạo draft, duyệt và bấm gửi.' }]).slice(0, 4);
+      const n = items.length, gap = 12, cw = Math.floor((inner - gap * (n - 1)) / n);
+      let cy = y + 24;
+      const nodes: Node[] = [];
+      if (c.heading) { const hd = text(brand, c.heading, { x: PAD, y: cy, w: inner, fontSize: 24, fontWeight: 800, fontFamily: 'heading', lineHeight: 1.2, align: 'center', name: 'Heading' }); nodes.push(hd); cy = hd.y + hd.h + 18; }
+      let bottom = cy;
+      const cards: GroupNode[] = [];
+      items.forEach((it, i) => {
+        const x = PAD + i * (cw + gap);
+        const num = rect({ x: x + 16, y: cy + 16, w: 34, h: 34, fill: { token: 'primary' }, radius: 999, name: 'Step no bg' });
+        const numT = text(brand, String(i + 1), { x: num.x, y: num.y, w: 34, h: 34, fontSize: 15, fontWeight: 800, color: { token: 'onPrimary' }, align: 'center', autoHeight: false, vAlign: 'middle', fontFamily: 'heading', name: 'Step no' });
+        const nm = text(brand, it.name, { x: x + 16, y: num.y + num.h + 12, w: cw - 32, fontSize: 16, fontWeight: 700, fontFamily: 'heading', lineHeight: 1.25, name: 'Step name' });
+        const bd = text(brand, it.body || '', { x: x + 16, y: nm.y + nm.h + 6, w: cw - 32, fontSize: 13, color: { token: 'muted' }, lineHeight: 1.5, name: 'Step body' });
+        const ch = bd.y + bd.h + 18 - cy;
+        bottom = Math.max(bottom, cy + ch);
+        cards.push(group(`Step ${i + 1}`, [rect({ x, y: cy, w: cw, h: ch, fill: { token: 'soft' }, radius: R, name: 'Card', shadow: cardShadow(T), stroke: cardStroke(T) }), num, numT, nm, bd], { link: it.url || null, alt: it.name }));
+      });
+      // equalise card heights
+      cards.forEach((g) => { const card = g.children[0] as RectNode; card.h = bottom - cy; });
+      h = bottom + 24 - y;
+      kids.push(band(h), ...cards.map((g) => syncGroup(g)));
+      break;
+    }
+    case 'collage': {
+      const items: ItemC[] = (c.items && c.items.length ? c.items : [1, 2, 3].map((i) => ({ name: `Ảnh ${i}`, url: `${B0}/gallery/${i}` }))).slice(0, 3);
+      const gap = 12, leftW = Math.round(inner * 0.56), rightW = inner - leftW - gap, H0 = 320, smallH = Math.floor((H0 - gap) / 2);
+      const nodes: Node[] = [];
+      const a = items[0]; nodes.push(image({ x: PAD, y: y + 16, w: leftW, h: H0, radius: R, name: 'Collage 1', alt: a.alt || a.name, assetId: a.image ?? null, link: a.url || null, shadow: cardShadow(T) }));
+      [items[1], items[2]].forEach((it, i) => { if (!it) return; nodes.push(image({ x: PAD + leftW + gap, y: y + 16 + i * (smallH + gap), w: rightW, h: smallH, radius: RI, name: `Collage ${i + 2}`, alt: it.alt || it.name, assetId: it.image ?? null, link: it.url || null, shadow: cardShadow(T) })); });
+      h = H0 + 32;
       kids.push(band(h), ...nodes);
       break;
     }

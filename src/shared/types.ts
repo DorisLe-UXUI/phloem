@@ -92,6 +92,10 @@ export type SuggestionAction =
   | { kind: 'create-mobile' };
 
 export type BlockKind =
+  | 'spotlight'
+  | 'steps'
+  | 'collage'
+  | 'glass-hero'
   | 'nav'
   | 'hero'
   | 'hero-band'
