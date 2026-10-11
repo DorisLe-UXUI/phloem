@@ -171,6 +171,14 @@ export async function makeBlock(kind: BlockKind): Promise<FrameNode> {
       f.primaryAxisSizingMode = 'FIXED'; f.resize(EMAIL_W, 24);
       return f;
     }
+    case 'hero-band':
+    case 'stats':
+    case 'quote': {
+      // Studio-only richer blocks; in Figma fall back to a text block the designer can restyle.
+      const f = await makeBlock('text');
+      f.name = kind;
+      return f;
+    }
     case 'footer': {
       const f = stack('Footer', 'VERTICAL', { pad: [28, 24], gap: 8, fill: P.soft, align: 'CENTER' });
       f.appendChild(await text('BRAND', { size: 13, font: FONT_SB, color: P.ink, name: 'Brand' }));
@@ -202,7 +210,7 @@ export async function makeEmailFrame(name: string): Promise<FrameNode> {
   return f;
 }
 
-const TEMPLATES: Record<Exclude<TemplateKind, 'mobile-pair'>, { name: string; subject: string; preheader: string; blocks: BlockKind[] }> = {
+const TEMPLATES: Partial<Record<TemplateKind, { name: string; subject: string; preheader: string; blocks: BlockKind[] }>> = {
   newsletter: { name: 'Newsletter', subject: 'Tháng này có gì mới', preheader: '3 điều đáng xem trong 2 phút', blocks: ['nav', 'hero', 'text', 'feature-row', 'divider', 'feature-row', 'cta', 'footer'] },
   'product-grid': { name: 'Product grid', subject: 'Hàng mới về — chọn trước khi hết', preheader: '6 sản phẩm vừa lên kệ', blocks: ['nav', 'hero', 'products-3', 'products-3', 'cta', 'footer'] },
   promo: { name: 'Promo', subject: 'Giảm 30% đến hết Chủ nhật', preheader: 'Mã PHLOEM30 · Freeship toàn quốc', blocks: ['nav', 'hero', 'products-2', 'cta', 'footer'] },
@@ -212,7 +220,7 @@ const TEMPLATES: Record<Exclude<TemplateKind, 'mobile-pair'>, { name: string; su
 
 export async function insertTemplate(kind: TemplateKind): Promise<FrameNode> {
   await fonts();
-  const t = TEMPLATES[kind === 'mobile-pair' ? 'newsletter' : kind];
+  const t = TEMPLATES[kind] ?? TEMPLATES.newsletter!;
   const frame = await makeEmailFrame(`${t.name} — email`);
   for (const b of t.blocks) {
     const block = await makeBlock(b);

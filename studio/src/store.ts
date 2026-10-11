@@ -8,13 +8,13 @@ import type { ProjectMeta } from './storage/idb';
 
 export type Tool = 'select' | 'rect' | 'text' | 'image' | 'hand';
 export type Variant = 'desktop' | 'mobile';
-export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename';
-export type RightTab = 'design' | 'email' | 'export';
+export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai';
+export type RightTab = 'design' | 'email' | 'export' | 'ai';
 export type LeftTab = 'layers' | 'blocks' | 'assets';
 
 export interface Toast { id: number; text: string; kind: 'ok' | 'err' | 'info' }
 
-export interface StudioSettings extends Settings { snap: boolean; grid: boolean; autosave: boolean }
+export interface StudioSettings extends Settings { snap: boolean; grid: boolean; autosave: boolean; anthropicKey: string; aiModel: string }
 
 export interface State {
   route: { name: 'home' } | { name: 'editor'; projectId: string };
@@ -64,7 +64,7 @@ export const initialState: State = {
   rightTab: 'design',
   leftTab: 'layers',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),
-  settings: loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, snap: true, grid: false, autosave: true }),
+  settings: loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, snap: true, grid: false, autosave: true, anthropicKey: '', aiModel: 'claude-opus-5-5' }),
   toasts: [],
   dirty: false,
   savedAt: null,

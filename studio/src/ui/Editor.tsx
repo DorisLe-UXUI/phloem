@@ -62,6 +62,7 @@ function TopBar() {
         </div>
       </div>
       <div class="r">
+        <Btn kind="ghost" sm icon="sparkle" title="Trợ lý AI / dựng 3 phương án" onClick={() => set({ rightTab: 'ai' })}>AI</Btn>
         <Btn kind="ghost" sm icon="play" title="Xem trước" onClick={() => set({ modal: 'preview' })}>Xem trước</Btn>
         <label class="client-pill" title="Client đang dùng">
           <span class={`dot ${prof ? '' : 'off'}`} /><span class="t">{prof ? `${prof.name}` : 'Chưa chọn client'}</span>

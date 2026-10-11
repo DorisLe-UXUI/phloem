@@ -10,6 +10,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import Anthropic from '@anthropic-ai/sdk';
 
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv(join(here, '..', '.env'));
@@ -18,6 +19,8 @@ const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 const OAUTH = {
   mailchimp: {
@@ -64,6 +67,7 @@ const server = createServer(async (req, res) => {
         oauth: { mailchimp: !!OAUTH.mailchimp.clientId, klaviyo: !!OAUTH.klaviyo.clientId },
         tokenRequired: !!RELAY_TOKEN,
         klaviyoRevision: KLAVIYO_REVISION,
+        ai: !!anthropic,
       });
     }
     if (url.pathname.startsWith('/oauth/callback/')) return await oauthCallback(url, res);
@@ -71,6 +75,7 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/proxy' && req.method === 'POST') return await proxy(await body(req), res);
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
+    if (url.pathname === '/ai' && req.method === 'POST') return await ai(await body(req), res);
     if (url.pathname === '/oauth/start' && req.method === 'POST') return oauthStart(await body(req), res);
     if (url.pathname.startsWith('/oauth/poll/') && req.method === 'GET') return oauthPoll(url.pathname.split('/').pop(), res);
     if (url.pathname === '/oauth/refresh' && req.method === 'POST') return await oauthRefresh(await body(req), res);
@@ -127,6 +132,28 @@ async function proxy(p, res) {
   res.statusCode = up.status;
   res.setHeader('Content-Type', up.headers.get('content-type') || 'application/json');
   res.end(text);
+}
+
+// ---------- AI (Claude) ----------
+// The plugin/studio sends {model, max_tokens, effort, system, messages}; the key stays on the server.
+async function ai(p, res) {
+  if (!anthropic) return json(res, 503, { error: 'Relay chưa có ANTHROPIC_API_KEY trong server/.env' });
+  const { model = 'claude-opus-5-5', max_tokens = 16000, effort = 'medium', system = '', messages = [] } = p || {};
+  if (!Array.isArray(messages) || !messages.length) return json(res, 400, { error: 'thiếu messages' });
+  try {
+    const r = await anthropic.beta.messages.create({
+      model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),
+      betas: ['server-side-fallback-2026-06-01'],
+      fallbacks: [{ model: 'claude-opus-4-8' }],
+      output_config: { effort },
+      system, messages,
+    });
+    if (r.stop_reason === 'refusal') return json(res, 200, { text: '', refused: true });
+    json(res, 200, { text: r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n'), usage: r.usage });
+  } catch (e) {
+    const status = e?.status || 500;
+    json(res, status, { error: e?.message || String(e) });
+  }
 }
 
 // ---------- asset fetch (Figma renders live on S3 without CORS) ----------

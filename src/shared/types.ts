@@ -94,16 +94,19 @@ export type SuggestionAction =
 export type BlockKind =
   | 'nav'
   | 'hero'
+  | 'hero-band'
   | 'text'
   | 'cta'
   | 'products-2'
   | 'products-3'
   | 'feature-row'
+  | 'stats'
+  | 'quote'
   | 'divider'
   | 'spacer'
   | 'footer';
 
-export type TemplateKind = 'newsletter' | 'product-grid' | 'promo' | 'welcome' | 'cart' | 'mobile-pair';
+export type TemplateKind = 'newsletter' | 'product-grid' | 'promo' | 'welcome' | 'cart' | 'launch' | 'event' | 'digest' | 'testimonial' | 'seasonal' | 'reengagement' | 'blank' | 'mobile-pair';
 
 export interface SlicerOptions {
   /** Max slice height in px before a forced cut (Outlook truncates images taller than ~1728px). */

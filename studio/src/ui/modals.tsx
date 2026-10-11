@@ -16,6 +16,8 @@ import { importFromFigma } from '../io/figmaImport';
 import { Btn, Eyebrow, Field, Kbd, Modal, Num, Seg, Select, TextArea, TextInput, Toggle, useLocal } from './components';
 import { Icon } from './icons';
 import { ask, isArtifact } from './confirm';
+import { AiModal } from './AiModal';
+import { AI_MODELS } from '../ai/client';
 
 export function Modals() {
   const s = useStore();
@@ -28,40 +30,52 @@ export function Modals() {
     case 'settings': return <SettingsModal onClose={close} />;
     case 'shortcuts': return <ShortcutsModal onClose={close} />;
     case 'figma': return <FigmaModal onClose={close} />;
+    case 'ai': return <AiModal onClose={close} />;
     default: return null;
   }
 }
 
 // ---------------- Templates ----------------
+const tplThumbCache = new Map<string, string>();
+
 function TemplatesModal({ onClose }: { onClose: () => void }) {
   const [kind, setKind] = useState<TemplateKind>('newsletter');
-  const [preset, setPreset] = useState(0);
+  const [presetName, setPresetName] = useState<string>(TEMPLATES[0].preset || 'Forest');
+  const [touched, setTouched] = useState(false);
   const [name, setName] = useState('');
-  const brand: Brand = useMemo(() => ({ ...DEFAULT_BRAND, ...BRAND_PRESETS[preset].brand }), [preset]);
+  const brand: Brand = useMemo(() => ({ ...DEFAULT_BRAND, ...(BRAND_PRESETS.find((p) => p.name === presetName)?.brand || {}) }), [presetName]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   useEffect(() => {
     let alive = true;
     (async () => {
       await document.fonts.ready;
       const out: Record<string, string> = {};
-      for (const t of TEMPLATES) { if (!t.blocks.length) continue; try { const m = makeTemplate(t.kind, brand); out[t.kind] = thumbnail(m.doc, brand, assets, 300); } catch { /* ignore */ } }
-      if (alive) setThumbs(out);
+      for (const t of TEMPLATES) {
+        if (!t.blocks.length) continue;
+        const key = `${presetName}:${t.kind}`;
+        if (!tplThumbCache.has(key)) { try { tplThumbCache.set(key, thumbnail(makeTemplate(t.kind, brand).doc, brand, assets, 300)); } catch { /* ignore */ } }
+        out[t.kind] = tplThumbCache.get(key) || '';
+        if (!alive) return;
+        setThumbs({ ...out });
+        await new Promise((r) => setTimeout(r, 0));
+      }
     })();
     return () => { alive = false; };
-  }, [brand]);
+  }, [presetName]);
+  const pick = (k: TemplateKind) => { setKind(k); const t = TEMPLATES.find((x) => x.kind === k); if (!touched && t?.preset) setPresetName(t.preset); };
   const create = async () => { onClose(); await A.newProject(kind, brand, name.trim() || undefined); };
   return (
-    <Modal title="Email mới" icon="sparkle" onClose={onClose} wide footer={<><span class="grow small muted">Template chỉ là điểm bắt đầu: mọi block, chữ, ảnh đều sửa được.</span><Btn kind="ghost" onClick={onClose}>Huỷ</Btn><Btn kind="primary" icon="plus" onClick={create}>Tạo email</Btn></>}>
+    <Modal title="Email mới" icon="sparkle" onClose={onClose} wide footer={<><span class="grow small muted">Template chỉ là điểm bắt đầu: mọi block, chữ, ảnh đều sửa được.</span><Btn kind="ghost" icon="sparkle" onClick={() => set({ modal: 'ai' })}>Hoặc để AI dựng từ nội dung</Btn><Btn kind="primary" icon="plus" onClick={create}>Tạo email</Btn></>}>
       <div class="row">
         <div class="grow"><Field label="Tên project" hint="tuỳ chọn"><TextInput value={name} onCommit={setName} onInput={setName} placeholder={TEMPLATES.find((t) => t.kind === kind)?.name} /></Field></div>
       </div>
-      <Eyebrow>Bảng màu</Eyebrow>
-      <div class="presets">{BRAND_PRESETS.map((p, i) => <button key={p.name} class={`preset ${i === preset ? 'on' : ''}`} onClick={() => setPreset(i)}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}</div>
-      <Eyebrow>Template</Eyebrow>
+      <Eyebrow action={touched ? { label: 'Theo mẫu', onClick: () => { setTouched(false); const t = TEMPLATES.find((x) => x.kind === kind); if (t?.preset) setPresetName(t.preset); } } : undefined}>Bảng màu · áp cho cả email</Eyebrow>
+      <div class="presets">{BRAND_PRESETS.map((p) => <button key={p.name} class={`preset ${p.name === presetName ? 'on' : ''}`} onClick={() => { setPresetName(p.name); setTouched(true); }}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}</div>
+      <Eyebrow>Template · {TEMPLATES.length}</Eyebrow>
       <div class="tpl-grid">
         {TEMPLATES.map((t) => (
-          <div key={t.kind} class={`tpl ${kind === t.kind ? 'on' : ''}`} onClick={() => setKind(t.kind)} onDblClick={create}>
-            <div class={`pv ${t.blocks.length ? '' : 'blank'}`}>{t.blocks.length ? (thumbs[t.kind] ? <img src={thumbs[t.kind]} alt="" /> : null) : '600 × trống'}</div>
+          <div key={t.kind} class={`tpl ${kind === t.kind ? 'on' : ''}`} onClick={() => pick(t.kind)} onDblClick={create}>
+            <div class={`pv ${t.blocks.length ? '' : 'blank'}`}>{t.blocks.length ? (thumbs[t.kind] ? <img src={thumbs[t.kind]} alt="" /> : <div class="pv-skel" />) : '600 × trống'}</div>
             <div class="meta"><div class="nm">{t.name}</div><div class="ds">{t.desc}</div></div>
           </div>
         ))}
@@ -245,6 +259,12 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       <div class="row"><TextInput value={st.relayUrl} mono placeholder="http://localhost:8787" onCommit={(v) => { up({ relayUrl: v.trim() }); void checkRelay(); }} /><Btn onClick={() => checkRelay(true)}>Kiểm tra</Btn></div>
       <Field label="Relay token" hint="nếu relay đặt RELAY_TOKEN"><TextInput type="password" mono value={st.relayToken} onCommit={(v) => up({ relayToken: v })} /></Field>
       {cache.relay ? <div class="row wrap"><span class="chip on">✓ relay ok</span><span class={`chip ${cache.relay.oauth.mailchimp ? 'on' : ''}`}>OAuth Mailchimp {cache.relay.oauth.mailchimp ? 'bật' : 'tắt'}</span><span class={`chip ${cache.relay.oauth.klaviyo ? 'on' : ''}`}>OAuth Klaviyo {cache.relay.oauth.klaviyo ? 'bật' : 'tắt'}</span>{cache.relay.klaviyoRevision && <span class="chip">rev {cache.relay.klaviyoRevision}</span>}</div> : cache.relayError ? <div class="check error"><span class="lv">LỖI</span><span class="m">{cache.relayError}</span></div> : null}
+      <Eyebrow>AI</Eyebrow>
+      <div class="small muted">Trợ lý và "Dựng 3 phương án" gọi Claude. Ba cách, ưu tiên theo thứ tự: API key của bạn (lưu trong trình duyệt này), relay có <Kbd k="ANTHROPIC_API_KEY" />, hoặc Claude của claude.ai khi mở bản artifact.</div>
+      <div class="grid2">
+        <Field label="API key Anthropic" hint="sk-ant-… · console.anthropic.com"><TextInput type="password" mono value={st.anthropicKey} placeholder="sk-ant-api03-…" onCommit={(v) => up({ anthropicKey: v.trim() })} /></Field>
+        <Field label="Model"><Select value={st.aiModel || 'claude-opus-5-5'} options={AI_MODELS} onChange={(v) => up({ aiModel: v })} /></Field>
+      </div>
       <Eyebrow>Cắt lát</Eyebrow>
       <Field label="Chiều cao lát tối đa (px)" hint="Outlook cắt ảnh >1728"><Num value={st.maxSliceHeight} min={300} max={1728} onChange={(v) => up({ maxSliceHeight: Math.round(v) })} /></Field>
       <Toggle checked={st.mergeRows} onChange={(v) => up({ mergeRows: v })} label="Gộp các hàng không link thành một lát" sub="Ít ảnh hơn, email nhẹ hơn" />

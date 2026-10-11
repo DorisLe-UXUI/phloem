@@ -124,12 +124,16 @@ export const DEFAULT_BRAND: Brand = {
 };
 
 export const BRAND_PRESETS: { name: string; brand: Partial<Brand> }[] = [
-  { name: 'Forest', brand: { primary: '#0F3D2E', onPrimary: '#FFFFFF', ink: '#121512', muted: '#5F6761', bg: '#FFFFFF', soft: '#F3F5F3', line: '#E3E7E4' } },
-  { name: 'Neon', brand: { primary: '#39FF14', onPrimary: '#04140A', ink: '#E6F4EA', muted: '#8FA796', bg: '#070A08', soft: '#0C120E', line: '#1A2A1E' } },
-  { name: 'Coral', brand: { primary: '#E8553D', onPrimary: '#FFFFFF', ink: '#1C1917', muted: '#6B645F', bg: '#FFFBF7', soft: '#FDF1EB', line: '#F0E4DC' } },
-  { name: 'Ocean', brand: { primary: '#0E4C92', onPrimary: '#FFFFFF', ink: '#0B1B2B', muted: '#5B6B7A', bg: '#FFFFFF', soft: '#EEF4FA', line: '#D9E4EF' } },
-  { name: 'Mono', brand: { primary: '#111111', onPrimary: '#FFFFFF', ink: '#111111', muted: '#666666', bg: '#FFFFFF', soft: '#F4F4F4', line: '#E5E5E5' } },
-  { name: 'Plum', brand: { primary: '#5B2A86', onPrimary: '#FFFFFF', ink: '#1E1225', muted: '#6F6378', bg: '#FFFFFF', soft: '#F5EFFA', line: '#E7DDF0' } },
+  { name: 'Forest', brand: { primary: '#0F3D2E', onPrimary: '#FFFFFF', ink: '#121512', muted: '#5F6761', bg: '#FFFFFF', soft: '#EEF3EF', line: '#DCE4DE' } },
+  { name: 'Coral', brand: { primary: '#E8553D', onPrimary: '#FFFFFF', ink: '#1C1917', muted: '#6B645F', bg: '#FFFBF7', soft: '#FBEDE6', line: '#F0DDD3' } },
+  { name: 'Ocean', brand: { primary: '#0E4C92', onPrimary: '#FFFFFF', ink: '#0B1B2B', muted: '#56687A', bg: '#FFFFFF', soft: '#E9F1FA', line: '#D3E1EF' } },
+  { name: 'Sunset', brand: { primary: '#F2672A', onPrimary: '#1B0E07', ink: '#2A1810', muted: '#7A5F52', bg: '#FFF7EF', soft: '#FFE9D6', line: '#F5D7BF' } },
+  { name: 'Plum', brand: { primary: '#5B2A86', onPrimary: '#FFFFFF', ink: '#1E1225', muted: '#6A5F72', bg: '#FFFFFF', soft: '#F3ECF9', line: '#E3D6EE' } },
+  { name: 'Mint', brand: { primary: '#0FA37A', onPrimary: '#05261C', ink: '#0F1F1A', muted: '#556B63', bg: '#F6FBF9', soft: '#DDF4EC', line: '#C6E8DB' } },
+  { name: 'Royal', brand: { primary: '#C9A227', onPrimary: '#1A1407', ink: '#14213D', muted: '#5C6478', bg: '#FFFFFF', soft: '#F4F0E4', line: '#E6DEC6' } },
+  { name: 'Mono', brand: { primary: '#111111', onPrimary: '#FFFFFF', ink: '#111111', muted: '#666666', bg: '#FFFFFF', soft: '#F2F2F2', line: '#E2E2E2' } },
+  { name: 'Neon', brand: { primary: '#39FF14', onPrimary: '#04140A', ink: '#E6F4EA', muted: '#9DB8A6', bg: '#070A08', soft: '#101812', line: '#1F3024' } },
+  { name: 'Midnight', brand: { primary: '#7C9CFF', onPrimary: '#0B1020', ink: '#EEF1FF', muted: '#9AA3C7', bg: '#0B1020', soft: '#141B33', line: '#243052' } },
 ];
 
 export const FONTS: { family: string; label: string; google?: string }[] = [

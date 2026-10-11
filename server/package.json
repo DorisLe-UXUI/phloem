@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Zero-dependency relay for the Phloem Figma plugin: CORS proxy to Mailchimp/Klaviyo + OAuth broker. Never stores keys. Refuses send endpoints.",
-  "engines": { "node": ">=18" },
-  "scripts": { "start": "node src/index.mjs" }
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  }
 }

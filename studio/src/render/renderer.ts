@@ -40,6 +40,46 @@ function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: n
   }
 }
 
+function hexRgb(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return [128, 128, 128];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function mix(a: string, b: string, t: number): string {
+  const A = hexRgb(a), B = hexRgb(b);
+  const c = A.map((v, i) => Math.round(v + (B[i] - v) * t));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+function seedOf(id: string): number { let h = 2166136261; for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; }
+
+/** Placeholder "art": a brand-tinted gradient with soft shapes, so templates look designed before real photos arrive. */
+function drawArt(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, s: number, brand: Brand, seed: number, editor: boolean) {
+  const r = (k: number) => ((seed >>> (k * 5)) & 31) / 31; // 0..1 pseudo-random per slot
+  const g = ctx.createLinearGradient(x, y, x + w, y + h);
+  g.addColorStop(0, mix(brand.primary, brand.bg, 0.78));
+  g.addColorStop(1, mix(brand.primary, brand.bg, 0.45));
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  for (let i = 0; i < 3; i++) {
+    const cx = x + w * (0.15 + 0.7 * r(i)), cy = y + h * (0.2 + 0.6 * r(i + 3)), rad = Math.min(w, h) * (0.18 + 0.28 * r(i + 6));
+    ctx.fillStyle = i === 2 ? mix(brand.primary, brand.bg, 0.2) : mix(brand.primary, brand.bg, 0.62 + 0.1 * i);
+    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+  if (editor && h > 56 * s && w > 120 * s) {
+    const label = `Ảnh ${Math.round(w / s)}×${Math.round(h / s)} · kéo ảnh vào`;
+    ctx.font = `600 ${11 * s}px Inter, sans-serif`;
+    const tw = ctx.measureText(label).width + 16 * s;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    rr(ctx, x + w / 2 - tw / 2, y + h / 2 - 11 * s, tw, 22 * s, 11 * s); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + w / 2, y + h / 2);
+    ctx.textAlign = 'left';
+  }
+}
+
 function drawPlaceholder(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, s: number, label: string) {
   ctx.save();
   ctx.fillStyle = '#E6EBE7';
@@ -83,8 +123,10 @@ function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s:
       dw = iw * r; dh = ih * r; dx = x + (w - dw) / 2; dy = y + (h - dh) / 2;
     }
     ctx.drawImage(img as CanvasImageSource, dx, dy, dw, dh);
-  } else if (!fill || editor) {
-    if (editor || !fill) drawPlaceholder(ctx, x, y, w, h, s, `Ảnh ${Math.round(n.w)}×${Math.round(n.h)} · kéo ảnh vào`);
+  } else if (!fill) {
+    drawArt(ctx, x, y, w, h, s, brand, seedOf(n.id), editor);
+  } else if (editor && h > 40 * s && w > 80 * s) {
+    drawPlaceholder(ctx, x, y, w, h, s, `Ảnh ${Math.round(n.w)}×${Math.round(n.h)} · kéo ảnh vào`);
   }
   if (n.overlay && n.overlay.opacity > 0) { ctx.globalAlpha = n.overlay.opacity; ctx.fillStyle = n.overlay.color; ctx.fillRect(x, y, w, h); }
   ctx.restore();

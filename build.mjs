@@ -60,6 +60,7 @@ const studioCfg = {
   format: 'iife',
   target: 'es2020',
   outfile: 'studio/dist/studio.js',
+  minify: true,
   jsx: 'automatic',
   jsxImportSource: 'preact',
   define,

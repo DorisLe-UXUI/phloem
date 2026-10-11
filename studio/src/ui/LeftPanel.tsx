@@ -96,6 +96,9 @@ function Layers() {
 const PREVIEWS: Record<string, { x: number; y: number; w: number; h: number; g?: boolean }[]> = {
   nav: [{ x: 6, y: 40, w: 22, h: 20 }, { x: 60, y: 42, w: 10, h: 16 }, { x: 74, y: 42, w: 10, h: 16 }, { x: 88, y: 42, w: 8, h: 16 }],
   hero: [{ x: 0, y: 0, w: 100, h: 50 }, { x: 6, y: 58, w: 60, h: 14 }, { x: 6, y: 78, w: 24, h: 16, g: true }],
+  'hero-band': [{ x: 0, y: 0, w: 100, h: 62, g: true }, { x: 6, y: 12, w: 70, h: 16 }, { x: 6, y: 36, w: 24, h: 14 }, { x: 0, y: 66, w: 100, h: 34 }],
+  stats: [{ x: 8, y: 30, w: 22, h: 22, g: true }, { x: 39, y: 30, w: 22, h: 22, g: true }, { x: 70, y: 30, w: 22, h: 22, g: true }, { x: 8, y: 60, w: 22, h: 6 }, { x: 39, y: 60, w: 22, h: 6 }, { x: 70, y: 60, w: 22, h: 6 }],
+  quote: [{ x: 6, y: 10, w: 88, h: 80 }, { x: 14, y: 18, w: 10, h: 16, g: true }, { x: 14, y: 42, w: 70, h: 8 }, { x: 14, y: 56, w: 60, h: 8 }, { x: 14, y: 72, w: 30, h: 6 }],
   text: [{ x: 6, y: 18, w: 50, h: 14 }, { x: 6, y: 42, w: 88, h: 8 }, { x: 6, y: 56, w: 80, h: 8 }, { x: 6, y: 70, w: 60, h: 8 }],
   cta: [{ x: 36, y: 34, w: 28, h: 30, g: true }],
   'products-2': [{ x: 6, y: 14, w: 41, h: 50 }, { x: 53, y: 14, w: 41, h: 50 }, { x: 6, y: 70, w: 30, h: 8 }, { x: 53, y: 70, w: 30, h: 8 }],
