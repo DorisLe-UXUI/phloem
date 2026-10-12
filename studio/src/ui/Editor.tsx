@@ -21,6 +21,7 @@ export function Editor() {
     const h = async (e: ClipboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (get().modal) return; // the open modal (AI composer…) handles its own paste
       const cd = e.clipboardData;
       const files = Array.from(cd?.files || []).filter((f) => f.type.startsWith('image/'));
       // Copied from a web page / another app: an <img> in the HTML or a bare image link.
@@ -63,7 +64,7 @@ export function Editor() {
         <span class={`dot ${s.dirty ? 'dirty' : ''}`} />
         <span>{s.dirty ? 'đang sửa…' : s.savedAt ? `đã lưu ${new Date(s.savedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : 'chưa lưu'}</span>
         <span>{Math.round(s.zoom * 100)}%</span>
-        <span>{s.selection.length ? `${s.selection.length} layer đang chọn` : `${p.desktop.nodes.length} layer`}</span>
+        <span>{s.selection.length ? `${s.selection.length} layer đang chọn` : `${(s.variant === 'mobile' && p.mobile ? p.mobile : p.desktop).nodes.length} layer`}</span>
         <span class="grow" />
         <span>Phloem không bao giờ tự gửi · bạn duyệt và bấm gửi trong {activeProfile() ? providerName(activeProfile()!.provider) : 'Mailchimp / Klaviyo'}</span>
         <span style={{ cursor: 'pointer' }} onClick={() => set({ modal: 'shortcuts' })}>? phím tắt</span>

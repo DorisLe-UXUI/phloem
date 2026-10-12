@@ -276,8 +276,8 @@ export function CanvasView() {
     if (st.tool === 'rect') { mode.current = { kind: 'draw', sx: d.x, sy: d.y, cur: d }; return; }
     if (st.tool === 'text') { A.addText(Math.round(d.x), Math.round(d.y)); return; }
     if (st.tool === 'image') { pendingPoint.current = d; fileInput.current?.click(); set({ tool: 'select' }); return; }
-    // select tool
-    const hIdx = handleAt(d.x, d.y);
+    // select tool (cut / crop drags win over the resize handles of the same image)
+    const hIdx = st.cutting || st.cropping ? -1 : handleAt(d.x, d.y);
     if (hIdx >= 0) { const sel = ops.selectionBounds(docOf(), st.selection)!; mode.current = { kind: 'resize', handle: hIdx, base: docOf(), ids: st.selection.slice(), start: sel, sx: d.x, sy: d.y }; return; }
     if (st.cutting) {
       const cn = ops.findNode(docOf(), st.cutting);
@@ -317,6 +317,7 @@ export function CanvasView() {
       return;
     }
     if (m.kind === 'idle') {
+      if (st.tool !== 'select' && st.hover) set({ hover: null });
       if (st.tool === 'select') {
         const hIdx = handleAt(d.x, d.y);
         wrap.current!.style.cursor = hIdx >= 0 ? CURSORS[hIdx] : hitScrap(d.x, d.y) ? 'grab' : '';
@@ -392,6 +393,10 @@ export function CanvasView() {
 
   const onPointerUp = (e: PointerEvent) => {
     if (e.pointerType === 'touch') touches.current.delete(e.pointerId);
+    if (e.type === 'pointercancel') { // the browser took the gesture (scroll, system swipe): nothing was meant
+      if (mode.current.kind === 'move' && mode.current.moved) A.commit(mode.current.base, false);
+      mode.current = { kind: 'idle' }; wrap.current!.classList.remove('panning'); wrap.current!.style.cursor = ''; guides.current = { v: [], h: [] }; set({}); return;
+    }
     if (mode.current.kind === 'pinch') { if (touches.current.size < 2) mode.current = { kind: 'idle' }; return; }
     const m = mode.current; const p = local(e); const d = toDoc(p.x, p.y);
     wrap.current!.classList.remove('panning');
@@ -423,7 +428,7 @@ export function CanvasView() {
     const n = hit(d.x, d.y, false);
     if (n && n.type === 'group') { const inner = ops.hitTest(docOf(), d.x, d.y, n, false); set({ enteredGroup: n.id, selection: inner ? [inner.id] : [n.id] }); return; }
     if (n && n.type === 'text') { if (!st.selection.includes(n.id)) A.select([n.id]); history.push(docOf()); set({ editingText: n.id }); return; }
-    if (n && n.type === 'image' && n.assetId) { A.select([n.id]); set({ cropping: n.id }); return; }
+    if (n && n.type === 'image' && n.assetId) { A.select([n.id]); history.push(docOf()); set({ cropping: n.id }); return; } // one undo step for the whole crop session
     if (!n) set({ enteredGroup: null });
   };
 

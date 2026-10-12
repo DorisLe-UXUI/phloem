@@ -3,7 +3,7 @@ import type { BlockKind, Check, NNode, SlicePlan, Suggestion, SuggestionAction, 
 import { planSlices } from '../../../src/shared/slicer';
 import { runChecks } from '../../../src/shared/checks';
 import { suggest } from '../../../src/shared/suggestions';
-import type { Asset, Brand, Color, Doc, ImageNode, Node, Project, RectNode, TextNode } from '../model/types';
+import type { Asset, Brand, Color, Doc, GroupNode, ImageNode, Node, Project, RectNode, TextNode } from '../model/types';
 import { DEFAULT_BRAND, uid } from '../model/types';
 import * as ops from '../model/ops';
 import { contrastToken, logoAssetFor, makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
@@ -16,7 +16,8 @@ import { db } from '../storage/idb';
 import { assets } from '../storage/assets';
 import { cropRegion, removeBackground, removeBackgroundAI, splitSprites } from '../storage/imageTools';
 import { imageDrawRect } from '../render/renderer';
-import { get, history, set, toast, type Scrap, type Variant } from '../store';
+import { get, history, set, toast, type Scrap, type State, type Variant } from '../store';
+import { polishDesign } from './polish';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import * as auth from '../auth/core';
 import { cloud } from '../storage/sync';
@@ -52,7 +53,18 @@ export function commit(next: Doc, pushHistory = true) {
   if (pushHistory) history.push(cur);
   const project: Project = s.variant === 'mobile' && s.project.mobile ? { ...s.project, mobile: next } : { ...s.project, desktop: next };
   set({ project, dirty: true });
+  pruneState(next);
   scheduleSave();
+}
+/** Editor state pointing at layers that no longer exist (crop/cut on a deleted image, an entered group undone away) is dropped. */
+function pruneState(d: Doc) {
+  const st = get(); const patch: Partial<State> = {};
+  if (st.cropping && !ops.findNode(d, st.cropping)) patch.cropping = null;
+  if (st.cutting && !ops.findNode(d, st.cutting)) patch.cutting = null;
+  if (st.enteredGroup && !ops.findNode(d, st.enteredGroup)) patch.enteredGroup = null;
+  if (st.editingText && !ops.findNode(d, st.editingText)) patch.editingText = null;
+  const sel = st.selection.filter((id) => ops.findNode(d, id)); if (sel.length !== st.selection.length) patch.selection = sel;
+  if (Object.keys(patch).length) set(patch);
 }
 
 export function patchProject(p: Partial<Project>) {
@@ -79,7 +91,7 @@ export async function saveProject(): Promise<void> {
     const stored = { ...p, thumb, thumbMobile, provider, owner: ownerId() };
     await db.putProject(stored);
     cloud.pushProjectSoon(stored);
-    set({ project: p, dirty: false, savedAt: p.updatedAt });
+    set((st) => (st.project === s.project ? { project: p, dirty: false, savedAt: p.updatedAt } : { savedAt: p.updatedAt })); // edits that landed meanwhile stay dirty (next autosave)
     void refreshProjects();
   } catch (e) { toast(`Không lưu được: ${(e as Error).message}`, 'err'); }
 }
@@ -88,7 +100,7 @@ export async function refreshProjects() {
   try { const o = ownerId(); set({ projects: await db.listProjects(o), guestProjects: o ? await db.countProjects('') : 0 }); } catch { /* ignore */ }
 }
 
-export function undo() { const prev = history.undo(doc()); if (prev) { commit(prev, false); set({ selection: get().selection.filter((id) => ops.findNode(prev, id)) }); } }
+export function undo() { const prev = history.undo(doc()); if (prev) commit(prev, false); }
 export function redo() { const next = history.redo(doc()); if (next) commit(next, false); }
 
 // ---------- selection ----------
@@ -176,7 +188,10 @@ function reorderSmart(d: Doc, id: string, dir: 'up' | 'down' | 'top' | 'bottom')
       const stripped = ops.updateNode(d, parent.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: g.children.filter((x) => x.id !== id) }) : g));
       const top = ops.topLevelOf(stripped, parent.id) ?? parent;
       const ti = stripped.nodes.findIndex((x) => x.id === top.id);
-      return ops.insertNodes(stripped, [n], ti + 1);
+      let out = ops.insertNodes(stripped, [n], ti + 1);
+      const left = ops.findNode(out, parent.id);
+      if (left && left.type === 'group' && !left.children.length) out = ops.removeNodes(out, [parent.id]); // an empty group is just clutter
+      return out;
     }
   }
   return ops.reorder(d, id, dir);
@@ -265,10 +280,11 @@ export async function cutoutLayer(nodeId: string, mode: 'auto' | 'ai' = 'auto') 
     const r = mode === 'ai' ? await removeBackgroundAI(blob, (m) => set({ busy: { label: m, done: 0, total: 0 } })) : await removeBackground(blob);
     const na = await assets.add(r.blob, `${stem(a.name)}-nobg.png`, { src: { kind: 'ai', host: a.src?.host, url: a.src?.url, page: a.src?.page } });
     // keep the object where it was: map the trimmed box through the current draw rect
-    const cur = ops.findNode(doc(), nodeId) as ImageNode;
-    const dr = imageDrawRect(cur, a.w, a.h); const k = dr.dw / a.w;
+    const cur = ops.findNode(doc(), nodeId);
+    if (!cur || cur.type !== 'image') { toast('Layer đã bị xoá trong lúc xử lý; ảnh tách nền nằm trong thư viện.', 'ok'); return; }
+    const dr = imageDrawRect(cur, a.w, a.h); const kx = dr.dw / a.w, ky = dr.dh / a.h;
     const sx = r.w / a.w; // removal may have downscaled very large photos
-    const fx = cur.x + dr.dx + (r.bbox.x / sx) * k, fy = cur.y + dr.dy + (r.bbox.y / sx) * k, fw = (r.bbox.w / sx) * k, fh = (r.bbox.h / sx) * k;
+    const fx = cur.x + dr.dx + (r.bbox.x / sx) * kx, fy = cur.y + dr.dy + (r.bbox.y / sx) * ky, fw = (r.bbox.w / sx) * kx, fh = (r.bbox.h / sx) * ky;
     updateNode(nodeId, (m) => (m.type === 'image' ? { ...m, assetId: na.id, fit: 'contain', crop: null, fill: null, x: Math.round(fx), y: Math.round(fy), w: Math.max(8, Math.round(fw)), h: Math.max(8, Math.round(fh)) } : m));
     toast('Đã xoá nền. Bật "Bóng nổi" nếu muốn ảnh trông như đang bay.', 'ok');
   } catch (e) { toast((e as Error).message || 'Không xoá được nền.', 'err'); }
@@ -281,16 +297,17 @@ export async function splitAssetToScraps(assetId: string) {
   try {
     const pieces = await splitSprites(blob);
     if (!pieces.length) { toast('Không tìm thấy vật thể tách được (nền phải là trắng/xám/trong suốt).', 'err'); return 0; }
-    const d = doc(); const list = [...get().scraps];
+    const d = doc(); const pid0 = get().project?.id; const list = get().scraps;
     const colW = 150, startY = Math.max(0, ...list.filter((sc) => sc.x >= d.width).map((sc) => sc.y + sc.h + 16));
-    let i = 0;
+    let i = 0; const added: Scrap[] = [];
     for (const b of pieces) {
       const na = await assets.add(b, `${stem(a.name)}-${i + 1}.png`, { src: { kind: 'ai', host: a.src?.host, url: a.src?.url, page: a.src?.page } });
       const w = Math.min(140, na.w), h = Math.round(w * (na.h / na.w));
-      list.push({ id: uid(), assetId: na.id, x: d.width + 48 + (i % 3) * colW, y: startY + Math.floor(i / 3) * 160, w, h });
+      added.push({ id: uid(), assetId: na.id, x: d.width + 48 + (i % 3) * colW, y: startY + Math.floor(i / 3) * 160, w, h });
       i++;
     }
-    setScraps(list);
+    if (get().project?.id !== pid0) { toast(`Đã tách ${pieces.length} ảnh vào thư viện.`, 'ok'); return pieces.length; }
+    setScraps([...get().scraps, ...added]);
     toast(`Đã tách ${pieces.length} ảnh, xếp cạnh artboard. Kéo vào mail, ⌘[ / ⌘] để đưa xuống dưới / lên trên.`, 'ok');
     return pieces.length;
   } catch (e) { toast((e as Error).message || 'Không tách được.', 'err'); return 0; }
@@ -300,20 +317,22 @@ export async function splitAssetToScraps(assetId: string) {
 export async function cutRegion(nodeId: string, r: { x: number; y: number; w: number; h: number }) {
   const d = doc(); const n = ops.findNode(d, nodeId); if (!n || n.type !== 'image' || !n.assetId) return;
   const a = assets.get(n.assetId); const blob = await assets.blob(n.assetId); if (!a || !blob) return;
-  const dr = imageDrawRect(n, a.w, a.h); const k = dr.dw / a.w;
-  const px = { x: (r.x - n.x - dr.dx) / k, y: (r.y - n.y - dr.dy) / k, w: r.w / k, h: r.h / k };
+  const dr = imageDrawRect(n, a.w, a.h); const kx = dr.dw / a.w, ky = dr.dh / a.h;
+  const px = { x: (r.x - n.x - dr.dx) / kx, y: (r.y - n.y - dr.dy) / ky, w: r.w / kx, h: r.h / ky };
   if (px.w < 2 || px.h < 2) return;
   const piece = await cropRegion(blob, px);
   const na = await assets.add(piece, `${stem(a.name)}-cut.png`, { src: { kind: 'ai', host: a.src?.host } });
-  const node = mkImage({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), assetId: na.id, name: `${n.name} · cắt`, alt: n.alt, fit: 'fill' });
-  const parent = ops.findParent(d, nodeId);
-  const next = parent ? ops.updateNode(d, parent.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children.slice(0, g.children.indexOf(n) + 1), node, ...g.children.slice(g.children.indexOf(n) + 1)] }) : g)) : ops.insertNodes(d, [node]);
+  const d2 = doc(); const n2 = ops.findNode(d2, nodeId); // the user may have edited (or deleted) while we cropped
+  if (!n2 || n2.type !== 'image') { toast('Layer gốc đã bị xoá; phần cắt nằm trong thư viện.', 'ok'); return; }
+  const node = mkImage({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), assetId: na.id, name: `${n2.name} · cắt`, alt: n2.alt, fit: 'fill' });
+  const parent = ops.findParent(d2, nodeId);
+  const next = parent ? ops.updateNode(d2, parent.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children.slice(0, g.children.indexOf(n2) + 1), node, ...g.children.slice(g.children.indexOf(n2) + 1)] }) : g)) : ops.insertNodes(d2, [node]);
   commit(next); set({ selection: [node.id], cutting: null, tool: 'select' });
   toast('Đã cắt thành layer riêng. Dùng "Xoá nền" để bỏ phần nền thừa.', 'ok');
 }
 /** Multiply the crop zoom of an image layer (1..6), keeping its focal point. */
 export function zoomCrop(id: string, factor: number) {
-  updateNode(id, (n) => { if (n.type !== 'image') return n; const z = Math.max(1, Math.min(6, (n.crop?.zoom ?? 1) * factor)); return { ...n, crop: { zoom: Math.round(z * 100) / 100, fx: n.crop?.fx ?? 0.5, fy: n.crop?.fy ?? 0.5 } }; });
+  commit(ops.updateNode(doc(), id, (n) => { if (n.type !== 'image') return n; const z = Math.max(1, Math.min(6, (n.crop?.zoom ?? 1) * factor)); return { ...n, crop: { zoom: Math.round(z * 100) / 100, fx: n.crop?.fx ?? 0.5, fy: n.crop?.fy ?? 0.5 } }; }), false);
 }
 export function setImageAsset(id: string, assetId: string | null) { updateNode(id, (n) => (n.type === 'image' ? { ...n, assetId } : n)); }
 
@@ -322,7 +341,7 @@ export function setDocProps(p: Partial<Doc>) { commit({ ...doc(), ...p, ...('hei
 
 // ---------- pasteboard (scraps beside the artboard) ----------
 const scrapKey = (pid: string) => `phloem.scraps.${pid}`;
-export function loadScraps(pid: string): Scrap[] { try { return (JSON.parse(localStorage.getItem(scrapKey(pid)) || '[]') as Scrap[]).filter((x) => x && assets.get(x.assetId) && [x.x, x.y, x.w, x.h].every((v) => Number.isFinite(v)) && x.w > 0 && x.h > 0); } catch { return []; } }
+export function loadScraps(pid: string): Scrap[] { try { return (JSON.parse(localStorage.getItem(scrapKey(pid)) || '[]') as Scrap[]).filter((x) => x && typeof x.assetId === 'string' && [x.x, x.y, x.w, x.h].every((v) => Number.isFinite(v)) && x.w > 0 && x.h > 0); } catch { return []; } }
 export function setScraps(list: Scrap[]) {
   set({ scraps: list });
   const pid = get().project?.id; if (!pid) return;
@@ -380,16 +399,15 @@ export function reflow() { commit(ops.reflowBlocks(doc())); }
 const CTA_RE = /^(mua|xem|đặt|đăng ký|nhận|tải|khám phá|bắt đầu|thử|liên hệ|shop|buy|get|book|order|start|see|view|learn|try|join|subscribe|sign|download|explore|talk|claim|grab|reserve)/i;
 const walkAll = (list: Node[], fn: (n: Node, parent: Node | null) => void, parent: Node | null = null) => { for (const n of list) { fn(n, parent); if (n.type === 'group') walkAll(n.children, fn, n); } };
 
-/** Link every product card / photo that came from the crawled catalog to its real product page. */
-export function linkProducts(): number {
-  const b = brand(); const prods = b.links?.products || []; if (!prods.length) return 0;
+/** Link every product card / photo that came from the crawled catalog to its real product page (in-doc, no commit). */
+function applyProductLinks(d: Doc, b: Brand): number {
+  const prods = b.links?.products || []; if (!prods.length) return 0;
   const byImage = new Map<string, { name: string; url: string }>();
   for (const pr of prods) if (pr.image) byImage.set(pr.image, pr);
   const norm = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
   const byName = new Map(prods.map((pr) => [norm(pr.name), pr]));
   let n = 0;
   const fixGroup = (g: Node, url: string) => { if (g.type === 'group' && !g.link) { g.link = url; n++; } };
-  const d = JSON.parse(JSON.stringify(doc())) as Doc;
   walkAll(d.nodes, (node, parent) => {
     if (node.type === 'image' && node.assetId) {
       const a = assets.get(node.assetId); const pr = a?.src?.url ? byImage.get(a.src.url) : undefined;
@@ -397,19 +415,52 @@ export function linkProducts(): number {
     }
     if (node.type === 'text' && node.text) { const pr = byName.get(norm(node.text)); if (pr) { if (parent && parent.type === 'group' && /product|item|card|dish|menu|zig|gallery|spotlight/i.test(parent.name)) fixGroup(parent, pr.url); else if (!node.link) { node.link = pr.url; n++; } } }
   });
+  return n;
+}
+export function linkProducts(): number {
+  const d = JSON.parse(JSON.stringify(doc())) as Doc;
+  const n = applyProductLinks(d, brand());
   if (n) commit(d);
   return n;
 }
 
-/** Resolve the Email-tab suggestions automatically; subject/preheader are written by the AI when missing. */
+/** Unsubscribe / preferences lines INTO the lowest footer-like block (never a second footer, never a fake address). Returns the doc, or null when nothing was needed. */
+function addUnsubscribe(d: Doc, b: Brand, p: Project, changes: string[]): Doc | null {
+  let has = false; walkAll(d.nodes, (n) => { if (n.link === '*|UNSUB|*' || (n.type === 'text' && /huỷ đăng ký|hủy đăng ký|unsubscribe/i.test(n.text || ''))) has = true; });
+  if (has) return null;
+  const W = d.width, sc = W / 600;
+  const last = d.nodes.filter((n) => n.type === 'group').sort((a, c) => (c.y + c.h) - (a.y + a.h))[0] as GroupNode | undefined; // lowest on the page, not last in z-order
+  const lang = /[a-z]/i.test(p.fields.subject || '') && !/[ăâđêôơưàảãáạ]/i.test((p.fields.subject || '') + (p.fields.preheader || '')) ? 'en' : 'vi';
+  const host = (() => { try { return b.links?.website ? new URL(b.links.website).hostname.replace(/^www\./, '') : ''; } catch { return ''; } })();
+  if (last && (last.block === 'footer' || /footer|social|strip/i.test(last.name) || last.h <= 260)) {
+    const bg = last.children.find((k) => k.type === 'rect' && k.w >= W * 0.9) as RectNode | undefined;
+    const color: Color = bg ? { token: contrastToken(b, bg.fill) } : { token: 'muted' };
+    const mk = (t: string, x: number, w: number, link: string | null) => mkText(b, t, { x: Math.round(x * sc), y: 0, w: Math.round(w * sc), fontSize: 12, color, align: 'center', underline: !!link, link, name: link ? 'Unsubscribe' : 'Address' });
+    const yy = last.y + last.h - 8;
+    const unsub = mk(lang === 'en' ? 'Unsubscribe' : 'Huỷ đăng ký', 60, 220, '*|UNSUB|*'); const prefs = mk(lang === 'en' ? 'Update preferences' : 'Cập nhật thông tin', 320, 220, '*|UPDATE_PROFILE|*'); unsub.y = yy; prefs.y = yy;
+    const addr = host ? mk(host, 24, 552, null) : null; if (addr) { addr.y = yy + 22; addr.underline = false; }
+    const extra = 22 + (addr ? 22 : 0) + 12;
+    changes.push('Thêm dòng huỷ đăng ký vào footer có sẵn');
+    return ops.updateNode(d, last.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children.map((k) => (k.type === 'rect' && k.w >= W * 0.9 ? { ...k, h: k.h + extra } : k)), unsub, prefs, ...(addr ? [addr] : [])] }) : g));
+  }
+  const y = ops.contentHeight(d);
+  const g = makeBlock('footer', b, y, { brand: b.name, social: b.links?.socials, address: host || ' ', unsubscribeUrl: '*|UNSUB|*', preferencesUrl: '*|UPDATE_PROFILE|*' });
+  if (W !== 600) Object.assign(g, ops.fitTo(g, { x: 0, y, w: W, h: g.h * sc }));
+  changes.push('Chèn footer (huỷ đăng ký, social)');
+  return ops.insertNodes(d, [g]);
+}
+
+/** "AI tự chỉnh": fix what the Email tab flags AND make the design read as designed (polishDesign), in one undo step;
+ *  subject/preheader are written by the AI when missing. */
 export async function autoFix(): Promise<string[]> {
   const changes: string[] = [];
-  const p = get().project!; const b = brand(); const home = b.links?.website || b.links?.nav?.[0]?.url || '';
+  const p = get().project!; const pid = p.id; const b = brand(); const home = b.links?.website || b.links?.nav?.[0]?.url || '';
   let d = JSON.parse(JSON.stringify(doc())) as Doc;
   const scale = 375 / d.width;
   // 1. text that would shrink under 9px on a phone → 15px (footer excluded)
   const footerY = d.height - 220; let smalls = 0;
-  walkAll(d.nodes, (n) => { if (n.type === 'text' && n.fontSize * scale < 9 && n.y < footerY && (n.text || '').trim().length > 12) { n.fontSize = Math.max(n.fontSize, 15); smalls++; } });
+  // eyebrows, stat labels, badges and the ticker are set small on purpose (uppercase, tracked); copy is what must stay readable
+  walkAll(d.nodes, (n) => { if (n.type === 'text' && n.fontSize * scale < 9 && n.y < footerY && (n.text || '').trim().length > 12 && !/eyebrow|kicker|label|ticker|badge|pill/i.test(n.name) && !(n.text.trim().length <= 40 && n.text === n.text.toUpperCase())) { n.fontSize = Math.max(n.fontSize, 15); smalls++; } });
   if (smalls) { d = ops.mapNodes(d, fixTextHeight); d = ops.reflowBlocks(d); changes.push(`Phóng ${smalls} đoạn chữ nhỏ lên 15px`); }
   // 2. a full-bleed cover PHOTO taller than 700px → 600px (never a cut-out / product / composed image: those would be cropped)
   const hero = (() => { let best: ImageNode | null = null; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.fit === 'cover' && !n.tilt && !n.floatShadow && !n.rotate && n.w >= d.width * 0.95 && n.h > 700 && (!best || n.y < (best as ImageNode).y)) best = n; }); return best as ImageNode | null; })();
@@ -428,40 +479,24 @@ export async function autoFix(): Promise<string[]> {
     else if (n.type === 'text' && CTA_RE.test((n.text || '').trim()) && (n.text || '').trim().split(/\s+/).length <= 5 && home) { n.link = home; links++; }
   });
   if (links) changes.push(`Gắn link cho ${links} nút / logo / icon`);
-  commit(d);
-  const np = linkProducts(); if (np) changes.push(`Gắn link sản phẩm thật cho ${np} ảnh/card`);
-  // 5. unsubscribe / preferences lines: added INTO the existing footer-like last block (never a second footer, never a fake address)
-  const dd = JSON.parse(JSON.stringify(doc())) as Doc; const bottomTexts: TextNode[] = []; walkAll(dd.nodes, (n) => { if (n.type === 'text' && n.y + n.h > dd.height - 260) bottomTexts.push(n); });
-  if (!bottomTexts.some((t) => /huỷ đăng ký|hủy đăng ký|unsubscribe/i.test(t.text || ''))) {
-    const last = dd.nodes[dd.nodes.length - 1];
-    const lang = /[a-z]/i.test(p.fields.subject || '') && !/[ăâđêôơưàảãáạ]/i.test((p.fields.subject || '') + (p.fields.preheader || '')) ? 'en' : 'vi';
-    const host = (() => { try { return b.links?.website ? new URL(b.links.website).hostname.replace(/^www\./, '') : ''; } catch { return ''; } })();
-    const bandDark = last && last.type === 'group' ? (() => { const bg = last.children.find((k) => k.type === 'rect' && k.w >= dd.width * 0.9) as RectNode | undefined; return bg ? { token: contrastToken(b, bg.fill) } : { token: 'muted' as const }; })() : { token: 'muted' as const };
-    const mk = (t: string, x: number, w: number, link: string | null) => mkText(b, t, { x, y: 0, w, fontSize: 12, color: bandDark, align: 'center', underline: !!link, link, name: link ? 'Unsubscribe' : 'Address' });
-    if (last && last.type === 'group' && (last.block === 'footer' || /footer|social|strip/i.test(last.name) || last.h <= 260)) {
-      const yy = last.y + last.h - 8; const unsub = mk(lang === 'en' ? 'Unsubscribe' : 'Huỷ đăng ký', 60, 220, '*|UNSUB|*'); const prefs = mk(lang === 'en' ? 'Update preferences' : 'Cập nhật thông tin', 320, 220, '*|UPDATE_PROFILE|*'); unsub.y = yy; prefs.y = yy;
-      const addr = host ? mk(host, 24, dd.width - 48, null) : null; if (addr) { addr.y = yy + 22; addr.underline = false; }
-      const extra = 22 + (addr ? 22 : 0) + 12;
-      const grown = ops.updateNode(dd, last.id, (g) => (g.type === 'group' ? ops.syncGroup({ ...g, children: [...g.children.map((k) => (k.type === 'rect' && k.w >= dd.width * 0.9 ? { ...k, h: k.h + extra } : k)), unsub, prefs, ...(addr ? [addr] : [])] }) : g));
-      commit(grown); changes.push('Thêm dòng huỷ đăng ký vào footer có sẵn');
-    } else {
-      const g = makeBlock('footer', b, ops.contentHeight(dd), { brand: b.name, social: b.links?.socials, address: host || ' ', unsubscribeUrl: '*|UNSUB|*', preferencesUrl: '*|UPDATE_PROFILE|*' });
-      commit(ops.insertNodes(dd, [g])); changes.push('Chèn footer (huỷ đăng ký, social)');
-    }
-  }
-  // 6. subject / preheader by AI
+  const np = applyProductLinks(d, b); if (np) changes.push(`Gắn link sản phẩm thật cho ${np} ảnh/card`);
+  // 5. design: the beauty pass
+  const pol = polishDesign(d, b); d = pol.doc; changes.push(...pol.changes);
+  // 6. unsubscribe / preferences
+  const withUnsub = addUnsubscribe(d, b, p, changes); if (withUnsub) d = withUnsub;
+  if (changes.length) commit(ops.mapNodes(d, (n) => (n.type === 'group' ? ops.syncGroup(n) : n)));
+  // 7. subject / preheader by AI
   if (!p.fields.subject.trim() || !p.fields.preheader.trim()) {
     try {
       const { askClaude, extractJson } = await import('../ai/client');
-      const copy: string[] = []; walkAll(doc().nodes, (n) => { if (n.type === 'text' && n.text && n.text.length > 2) copy.push(n.text); });
+      const copy: string[] = []; walkAll(d.nodes, (n) => { if (n.type === 'text' && n.text && n.text.length > 2) copy.push(n.text); });
       const txt = await askClaude({ system: 'Bạn là copywriter email. Trả lời CHỈ JSON {"subject":"30–55 ký tự, nói thẳng lợi ích","preheader":"40–90 ký tự nối tiếp subject"} cùng ngôn ngữ với nội dung email.', turns: [{ role: 'user', text: `Thương hiệu: ${b.name}\nNội dung email:\n${copy.slice(0, 40).join('\n')}` }], maxTokens: 400, effort: 'low' });
       const j = extractJson<{ subject?: string; preheader?: string }>(txt);
-      patchProject({ fields: { ...get().project!.fields, subject: p.fields.subject.trim() || String(j.subject || ''), preheader: p.fields.preheader.trim() || String(j.preheader || '') } });
-      changes.push('AI viết subject / preheader');
+      const cur = get().project;
+      if (cur && cur.id === pid) { patchProject({ fields: { ...cur.fields, subject: cur.fields.subject.trim() || String(j.subject || ''), preheader: cur.fields.preheader.trim() || String(j.preheader || '') } }); changes.push('AI viết subject / preheader'); }
     } catch { changes.push('Subject/preheader: AI chưa sẵn sàng (đăng nhập relay hoặc nhập key)'); }
   }
-  remeasureAll();
-  toast(changes.length ? `AI đã chỉnh: ${changes.join(' · ')}` : 'Không còn gì để chỉnh.', 'ok');
+  if (get().project?.id === pid) { remeasureAll(); toast(changes.length ? `AI đã chỉnh: ${changes.join(' · ')}` : 'Không còn gì để chỉnh.', 'ok'); }
   return changes;
 }
 
@@ -483,12 +518,15 @@ export function make3D(): string[] {
     const im = img as ImageNode;
     if (im.fit === 'contain' || /product|sản phẩm/i.test(im.name)) { im.tilt = { rx: 0, ry: 12 }; im.floatShadow = true; changes.push('Sản phẩm nghiêng phối cảnh + bóng nổi'); }
     else { im.tilt = { rx: 0, ry: 6 }; im.shadow = { blur: 40, y: 18, color: '#000000', opacity: 0.28 }; changes.push('Ảnh hero nghiêng nhẹ như tấm card'); }
-    // glow behind it (inside the same group, right before the image)
+    // glow behind it (inside the same group, right before the image) — once
     const par = imgParent as Node | null;
-    const r = Math.round(Math.max(im.w, im.h) * 0.75);
-    const glow = mkRect({ x: Math.round(im.x + im.w / 2 - r), y: Math.round(im.y + im.h / 2 - r), w: r * 2, h: r * 2, fill: null, gradient: { from: { token: 'primary', alpha: 0.55 }, to: { token: 'primary', alpha: 0 }, angle: 0, radial: true }, name: 'Glow' });
-    if (par && par.type === 'group') { const i = par.children.indexOf(im); par.children.splice(i, 0, glow); } else { const i = d.nodes.indexOf(im); d.nodes.splice(Math.max(0, i), 0, glow); }
-    changes.push('Vầng sáng sau sản phẩm');
+    const hasGlow = par && par.type === 'group' ? par.children.some((k) => k.name === 'Glow') : d.nodes.some((k) => k.name === 'Glow');
+    if (!hasGlow) {
+      const r = Math.round(Math.max(im.w, im.h) * 0.75);
+      const glow = mkRect({ x: Math.round(im.x + im.w / 2 - r), y: Math.round(im.y + im.h / 2 - r), w: r * 2, h: r * 2, fill: null, gradient: { from: { token: 'primary', alpha: 0.55 }, to: { token: 'primary', alpha: 0 }, angle: 0, radial: true }, name: 'Glow' });
+      if (par && par.type === 'group') { const i = par.children.indexOf(im); par.children.splice(i, 0, glow); } else { const i = d.nodes.indexOf(im); d.nodes.splice(Math.max(0, i), 0, glow); }
+      changes.push('Vầng sáng sau sản phẩm');
+    }
     // props: this project's cut-outs not yet on the canvas
     const used = new Set<string>(); walkAll(d.nodes, (n) => { if (n.type === 'image' && n.assetId) used.add(n.assetId); });
     const pid = get().project!.id;
@@ -504,41 +542,69 @@ export function make3D(): string[] {
   // big numbers get a soft extrude too
   let stats = 0; walkAll(d.nodes, (n) => { if (n.type === 'text' && /^Stat|^Statement|^Value$|^Big number$/.test(n.name) && n.fontSize >= 30 && !n.effect) { n.effect = { kind: 'extrude', depth: 4, angle: 52 }; stats++; } });
   if (stats) changes.push(`${stats} con số nổi khối`);
-  commit(ops.mapNodes(d, (n) => (n.type === 'group' ? ops.syncGroup(n) : n)));
+  if (changes.length) commit(ops.mapNodes(d, (n) => (n.type === 'group' ? ops.syncGroup(n) : n)));
   toast(changes.length ? `Đã làm 3D: ${changes.join(' · ')}` : 'Không tìm thấy tiêu đề / ảnh sản phẩm để làm 3D.', 'ok');
   return changes;
 }
 
 /** One click of motion for the top of the email: headline types/slides in, copy fades, button pops, product rises, props pop, ticker scrolls. */
-export function animateHero(): string[] {
+/** "Làm động": the whole email reveals gradually. The hero gets the showpiece (headline typed/slid, product up,
+ *  button pops, props stagger); every other block reveals gently (heading up, copy fades, photos wipe open, buttons pop),
+ *  cards inside a block stagger. Idempotent: clears previous motion first. Each block exports as its own GIF. */
+export function animateDoc(): string[] {
   const changes: string[] = [];
   const d = JSON.parse(JSON.stringify(doc())) as Doc;
+  for (const n of ops.flat(d.nodes)) delete n.anim;
   const blocks = d.nodes.filter((n) => n.type === 'group') as Extract<Node, { type: 'group' }>[];
   const heroIdx = blocks.findIndex((g) => /hero|dark-band|statement|overlap|spotlight/.test(g.block || '') || /hero/i.test(g.name));
-  const hero = blocks[heroIdx >= 0 ? heroIdx : Math.min(1, blocks.length - 1)];
-  if (!hero) return changes;
-  let tBtn = 1.2, props = 0;
-  const texts = hero.children.filter((k) => k.type === 'text') as TextNode[];
-  const headline = texts.sort((a, b) => b.fontSize - a.fontSize)[0];
-  for (const k of hero.children) {
-    if (k.type === 'text') {
-      if (k === headline) { k.anim = k.text.length <= 48 ? { kind: 'type', delay: 0.2, dur: Math.min(1.8, 0.05 * k.text.length + 0.4) } : { kind: 'up', delay: 0.2, dur: 0.8 }; tBtn = (k.anim.delay ?? 0) + (k.anim.dur ?? 0.8) + 0.3; changes.push('Tiêu đề ' + (k.anim.kind === 'type' ? 'gõ từng chữ' : 'trượt lên')); }
-      else if (/eyebrow/i.test(k.name)) k.anim = { kind: 'fade', delay: 0, dur: 0.5 };
-      else if (/sub|body|paragraph/i.test(k.name)) k.anim = { kind: 'up', delay: tBtn - 0.2, dur: 0.7 };
-      else if (/^Stat|^Statement|^Big number/i.test(k.name)) k.anim = { kind: 'pop', delay: 0.3, dur: 0.6 };
-    } else if (k.type === 'group' && /^Button/.test(k.name)) { k.anim = { kind: 'pop', delay: tBtn + 0.3, dur: 0.6 }; changes.push('Nút nảy ra'); }
-    else if (k.type === 'image' && /prop/i.test(k.name)) { k.anim = { kind: 'pop', delay: 0.9 + props * 0.15, dur: 0.5 }; props++; }
-    else if (k.type === 'image' && /product|hero|spotlight|band image/i.test(k.name)) { k.anim = { kind: 'up', delay: 0.5, dur: 0.6 }; changes.push('Ảnh sản phẩm hiện lên'); }
-    else if (k.type === 'rect' && /badge|pill/i.test(k.name)) k.anim = { kind: 'pop', delay: 1.0, dur: 0.5 };
-    // glows stay static: fading a big soft gradient re-encodes the whole band every frame (heavy GIF, barely visible)
+  const hero = blocks[heroIdx >= 0 ? heroIdx : Math.min(1, blocks.length - 1)] as Extract<Node, { type: 'group' }> | undefined;
+  if (hero) {
+    let tBtn = 1.2, props = 0;
+    const texts = hero.children.filter((k) => k.type === 'text') as TextNode[];
+    const headline = texts.sort((a, b) => b.fontSize - a.fontSize)[0];
+    for (const k of hero.children) {
+      if (k.type === 'text') {
+        if (k === headline) { k.anim = k.text.length <= 48 ? { kind: 'type', delay: 0.2, dur: Math.min(1.8, 0.05 * k.text.length + 0.4) } : { kind: 'up', delay: 0.2, dur: 0.8 }; tBtn = (k.anim.delay ?? 0) + (k.anim.dur ?? 0.8) + 0.3; changes.push('Tiêu đề ' + (k.anim.kind === 'type' ? 'gõ từng chữ' : 'trượt lên')); }
+        else if (/eyebrow/i.test(k.name)) k.anim = { kind: 'fade', delay: 0, dur: 0.5 };
+        else if (/sub|body|paragraph/i.test(k.name)) k.anim = { kind: 'up', delay: tBtn - 0.2, dur: 0.7 };
+        else if (/^Stat|^Statement|^Big number/i.test(k.name)) k.anim = { kind: 'pop', delay: 0.3, dur: 0.6 };
+        else k.anim = { kind: 'fade', delay: tBtn - 0.4, dur: 0.5 };
+      } else if (k.type === 'group' && /^Button/.test(k.name)) { k.anim = { kind: 'pop', delay: tBtn + 0.3, dur: 0.6 }; changes.push('Nút nảy ra'); }
+      else if (k.type === 'image' && /prop/i.test(k.name)) { k.anim = { kind: 'pop', delay: 0.9 + props * 0.15, dur: 0.5 }; props++; }
+      else if (k.type === 'image' && /product|hero|spotlight|band image/i.test(k.name)) { k.anim = { kind: 'up', delay: 0.5, dur: 0.6 }; changes.push('Ảnh sản phẩm hiện lên'); }
+      else if (k.type === 'image' && !/logo/i.test(k.name)) k.anim = { kind: 'wipe', delay: 0.4, dur: 0.7 };
+      else if (k.type === 'rect' && /badge|pill/i.test(k.name)) k.anim = { kind: 'pop', delay: 1.0, dur: 0.5 };
+      // glows / backgrounds stay static: fading a big soft gradient re-encodes the whole band every frame (heavy GIF, barely visible)
+    }
+    if (props) changes.push(`${props} phụ kiện nảy ra lần lượt`);
   }
-  if (props) changes.push(`${props} phụ kiện nảy ra lần lượt`);
-  const ticker = blocks.find((g) => g.block === 'ticker');
-  if (ticker) { for (const k of ticker.children) if (k.type === 'text') k.anim = { kind: 'marquee' }; changes.push('Ticker chạy chữ'); }
+  // every other block: gentle reveal, staggered inside the block; blocks start 0.15s apart on the canvas timeline
+  // (each exported GIF starts at its own first motion, so the stagger costs nothing in the email)
+  let revealed = 0, pics = 0;
+  const reveal = (kids: Node[], base: number) => {
+    const texts = kids.filter((k) => k.type === 'text') as TextNode[];
+    const heading = texts.length > 1 ? [...texts].sort((a, b) => b.fontSize - a.fontSize)[0] : null;
+    let ti = 0, ii = 0, gi = 0;
+    for (const k of kids) {
+      if (k.type === 'text') { k.anim = k === heading ? { kind: 'up', delay: base, dur: 0.55 } : { kind: 'fade', delay: base + 0.15 + ti * 0.06, dur: 0.5 }; ti++; }
+      else if (k.type === 'image') { if (/logo|icon/i.test(k.name)) k.anim = { kind: 'fade', delay: base + 0.1, dur: 0.5 }; else { k.anim = { kind: 'wipe', delay: base + 0.1 + ii * 0.12, dur: 0.6 }; pics++; } ii++; }
+      else if (k.type === 'group' && /^Button/.test(k.name)) k.anim = { kind: 'pop', delay: base + 0.5, dur: 0.5 };
+      else if (k.type === 'group') { reveal(k.children, base + 0.12 * gi); gi++; } // cards / columns stagger
+      else if (k.type === 'rect' && /badge|pill|dot|disc/i.test(k.name)) k.anim = { kind: 'pop', delay: base + 0.3, dur: 0.45 };
+    }
+  };
+  for (const g of blocks) {
+    if (g === hero) continue;
+    if (g.block === 'ticker') { for (const k of g.children) if (k.type === 'text') k.anim = { kind: 'marquee' }; changes.push('Ticker chạy chữ'); continue; }
+    reveal(g.children, 0.2 + revealed * 0.15); revealed++;
+  }
+  if (revealed) changes.push(`${revealed} block còn lại hiện ra từ từ${pics ? ` (${pics} ảnh mở dần)` : ''}`);
   commit(d);
-  toast(changes.length ? `Đã làm động: ${changes.join(' · ')}. Bấm ▶ Phát để xem; khi xuất, lát hero thành GIF.` : 'Không tìm thấy hero để làm động.', 'ok');
+  toast(changes.length ? `Đã làm động: ${changes.join(' · ')}. Bấm ▶ Phát để xem; khi xuất, mỗi block thành GIF.` : 'Không có gì để làm động.', 'ok');
   return changes;
 }
+/** @deprecated use animateDoc */
+export const animateHero = animateDoc;
 
 export function optimize(): string[] {
   const d = doc();
@@ -645,22 +711,33 @@ export function applySuggestion(a: SuggestionAction) {
 }
 
 // ---------- projects ----------
+/** Older / synced records can miss fields (brand keys, node flags, doc sizes); every consumer assumes they exist. */
+export function normalizeProject<T extends Project>(project: T): T {
+  const f0 = (project.fields || {}) as Partial<Project['fields']>;
+  const fields = { campaignName: f0.campaignName || '', subject: f0.subject || '', preheader: f0.preheader || '' };
+  const b = { ...DEFAULT_BRAND, ...(project.brand || {}) } as Brand;
+  const sane = (d: Doc | null | undefined, w: number): Doc | null => {
+    if (!d) return null;
+    const nodes = Array.isArray(d.nodes) ? d.nodes : [];
+    const width = Number.isFinite(d.width) && d.width >= 100 ? d.width : w;
+    const height = Number.isFinite(d.height) && d.height >= 100 ? d.height : Math.max(100, ops.contentHeight({ ...d, nodes }));
+    return ops.mapNodes({ ...d, nodes, width, height, bg: d.bg ?? { token: 'bg' } }, (n) => (n.visible === undefined || n.locked === undefined || !Number.isFinite(n.opacity) || n.link === undefined || n.alt === undefined ? { ...n, visible: n.visible ?? true, locked: n.locked ?? false, opacity: Number.isFinite(n.opacity) ? n.opacity : 1, link: n.link ?? null, alt: n.alt ?? '' } : n));
+  };
+  return { ...project, fields, brand: b, desktop: sane(project.desktop, 600) || { width: 600, height: 400, bg: { token: 'bg' }, nodes: [] }, mobile: sane(project.mobile, 375), drafts: project.drafts || {} };
+}
+
 export async function openProject(id: string) {
   try {
     const p = await db.getProject(id);
     if (!p) { toast('Không tìm thấy project.', 'err'); return; }
     history.clear();
-    const { thumb: _t, thumbMobile: _tm, provider: _pv, ...project } = p;
-    // Older / synced records can miss fields; every consumer assumes strings.
-    const f0 = (project.fields || {}) as Partial<typeof project.fields>;
-    project.fields = { campaignName: f0.campaignName || '', subject: f0.subject || '', preheader: f0.preheader || '' };
-    const sane = (d: Doc | null, w: number): Doc | null => { if (!d) return d; const nodes = Array.isArray(d.nodes) ? d.nodes : []; const width = Number.isFinite(d.width) && d.width >= 100 ? d.width : w; const height = Number.isFinite(d.height) && d.height >= 100 ? d.height : Math.max(100, ops.contentHeight({ ...d, nodes })); return { ...d, nodes, width, height }; };
-    project.desktop = sane(project.desktop, 600)!; project.mobile = sane(project.mobile, 375);
+    const { thumb: _t, thumbMobile: _tm, provider: _pv, ...raw } = p;
+    const project = normalizeProject(raw as Project);
     ensureFonts([project.brand.fontFamily, project.brand.headingFamily]);
     // Parked images never rest on the artboard: anything overlapping it (older data) is moved to the right margin.
-    const scraps = loadScraps(id).map((sc) => (sc.x + sc.w > 0 && sc.x < project.desktop.width && sc.y + sc.h > 0 ? { ...sc, x: project.desktop.width + 48 } : sc));
+    const scraps = loadScraps(id).map((sc) => (sc.x + sc.w > 0 && sc.x < project.desktop.width && sc.y + sc.h > 0 && sc.y < project.desktop.height ? { ...sc, x: project.desktop.width + 48 } : sc));
     assets.context.project = id;
-    set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [], scraps, scrapSel: null });
+    set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [], scraps, scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null });
   } catch (e) { toast(`Không mở được: ${(e as Error).message}`, 'err'); }
 }
 
@@ -674,7 +751,7 @@ export async function newProject(kind: TemplateKind, brandOverride?: Partial<Bra
   const now = new Date().toISOString();
   const p: Project = { id: uid('p'), name: name || t.name, createdAt: now, updatedAt: now, brand: t.brand, fields: t.fields, desktop: t.doc, mobile: null, drafts: {} };
   history.clear();
-  set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [] });
+  set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [], scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null });
   await saveProject();
 }
 
@@ -686,7 +763,7 @@ export async function duplicateProject(id: string) {
   await refreshProjects();
 }
 export function renameProject(name: string) { patchProject({ name: name.trim() || 'Email' }); }
-export async function goHome() { if (get().dirty) await saveProject(); assets.context.project = null; set({ route: { name: 'home' }, project: null, selection: [], modal: null }); await refreshProjects(); }
+export async function goHome() { if (get().dirty) await saveProject(); assets.context.project = null; set({ route: { name: 'home' }, project: null, selection: [], modal: null, scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null, playing: false }); await refreshProjects(); }
 
 export function exportProjectJson() {
   const p = get().project; if (!p) return;

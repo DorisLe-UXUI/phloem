@@ -10,17 +10,22 @@ const GENERIC_FONTS = new Set(['inherit', 'initial', 'unset', 'sans-serif', 'ser
 
 function privateV4(ip) {
   const [a, b] = ip.split('.').map(Number);
-  return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || a >= 224;
+  return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
 }
 function privateV6(ip) {
   const s = ip.toLowerCase();
   if (s === '::1' || s === '::') return true;
-  if (s.startsWith('::ffff:')) return privateV4(s.slice(7));
+  if (s.startsWith('::ffff:')) {
+    const rest = s.slice(7);
+    if (rest.includes('.')) return privateV4(rest);
+    const g = rest.split(':').map((x) => parseInt(x || '0', 16)); // hex form: ::ffff:7f00:1
+    return g.length === 2 && g.every(Number.isFinite) ? privateV4(`${g[0] >> 8}.${g[0] & 255}.${g[1] >> 8}.${g[1] & 255}`) : true;
+  }
   return s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80');
 }
 /** Resolve a host and return its addresses only when every one of them is public; null otherwise. */
 export async function publicAddrs(host) {
-  const h = String(host || '').toLowerCase().replace(/\.$/, '');
+  const h = String(host || '').toLowerCase().replace(/\.$/, '').replace(/^\[|\]$/g, '');
   if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return null;
   const v = isIP(h);
   if (v === 4) return privateV4(h) ? null : [{ address: h, family: 4 }];
@@ -36,7 +41,7 @@ const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 const err = (status, message) => Object.assign(new Error(message), { status });
 
 /** One HTTP GET to a vetted address: the socket connects to the address we checked (no second DNS lookup), TLS still validates the hostname. */
-function getOnce(u, addrs, accept, timeout) {
+function getOnce(u, addrs, accept, timeout, deadline) {
   return new Promise((resolve, reject) => {
     const mod = u.protocol === 'https:' ? httpsRequest : httpRequest;
     const req = mod({
@@ -44,43 +49,60 @@ function getOnce(u, addrs, accept, timeout) {
       headers: { 'User-Agent': UA, Accept: accept, 'Accept-Encoding': 'identity' }, timeout,
       lookup: (_host, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } if (opts && opts.all) cb(null, addrs.map((a) => ({ address: a.address, family: a.family }))); else cb(null, addrs[0].address, addrs[0].family); },
     }, resolve);
+    const killer = setTimeout(() => req.destroy(err(504, 'hết thời gian chờ')), Math.max(1000, deadline - Date.now()));
+    req.on('response', () => clearTimeout(killer));
     req.on('timeout', () => req.destroy(err(504, 'hết thời gian chờ')));
-    req.on('error', (e) => reject(e.status ? e : err(502, e.message)));
+    req.on('error', (e) => { clearTimeout(killer); reject(e.status ? e : err(502, e.message)); });
     req.end();
   });
 }
 /** Read a response body up to `limit` bytes without buffering more than that. */
-async function readCapped(res, limit, truncate) {
+async function readCapped(res, limit, truncate, deadline = Infinity) {
   if (!truncate && Number(res.headers['content-length']) > limit) { res.destroy(); throw err(413, 'phản hồi quá lớn'); }
   const parts = []; let total = 0;
   for await (const c of res) {
     parts.push(c); total += c.length;
+    if (Date.now() > deadline) { res.destroy(); if (!truncate) throw err(504, 'hết thời gian chờ'); break; }
     if (total > limit) { res.destroy(); if (!truncate) throw err(413, 'phản hồi quá lớn'); break; }
   }
   return Buffer.concat(parts).subarray(0, limit);
 }
 /** GET with every redirect hop re-vetted against private hosts, the connection pinned to the vetted address, and a byte cap. */
-export async function safeGet(url, { accept = '*/*', limit = 2_000_000, timeout = 10_000, truncate = false } = {}) {
+export async function safeGet(url, { accept = '*/*', limit = 2_000_000, timeout = 10_000, truncate = false, budget = 25_000 } = {}) {
   let u;
   try { u = new URL(String(url)); } catch { throw err(400, 'URL không hợp lệ'); }
+  const deadline = Date.now() + budget; // whole fetch incl. redirects and body
   for (let hop = 0; hop < 6; hop++) {
     if (!/^https?:$/.test(u.protocol)) throw err(400, 'chỉ http/https');
     const addrs = await publicAddrs(u.hostname);
     if (!addrs) throw err(403, 'không tải địa chỉ nội bộ');
-    const res = await getOnce(u, addrs, accept, timeout);
+    if (Date.now() > deadline) throw err(504, 'hết thời gian chờ');
+    const res = await getOnce(u, addrs, accept, timeout, deadline);
     if (REDIRECTS.has(res.statusCode) && res.headers.location) { res.resume(); u = new URL(res.headers.location, u); continue; }
     if (res.statusCode >= 400) { res.resume(); throw err(502, `HTTP ${res.statusCode}`); }
-    const type = String(res.headers['content-type'] || '').split(';')[0].trim();
-    return { type, buf: await readCapped(res, limit, truncate), url: u.href };
+    const ct = String(res.headers['content-type'] || '');
+    const type = ct.split(';')[0].trim();
+    const charset = (/charset=["']?([\w-]+)/i.exec(ct) || [])[1] || '';
+    return { type, charset, buf: await readCapped(res, limit, truncate, deadline), url: u.href };
   }
   throw err(502, 'quá nhiều redirect');
 }
 
+/** Bytes → text honouring the declared charset (header, then <meta charset> / http-equiv in the first 4 KB); utf-8 otherwise. */
+export function decodeBuf(buf, charset = '') {
+  let cs = String(charset || '').toLowerCase();
+  if (!cs) { const head = buf.subarray(0, 4096).toString('latin1'); const m = /<meta[^>]+charset\s*=\s*["']?\s*([\w-]+)/i.exec(head); if (m) cs = m[1].toLowerCase(); }
+  if (!cs || cs === 'utf-8' || cs === 'utf8') return buf.toString('utf8');
+  try { return new TextDecoder(cs, { fatal: false }).decode(buf); } catch { return buf.toString('utf8'); }
+}
 export async function fetchText(url, { limit = 2_000_000, timeout = 10_000 } = {}) {
-  return (await safeGet(url, { accept: 'text/html,text/css,*/*;q=0.8', limit, timeout, truncate: true })).buf.toString('utf8');
+  const r = await safeGet(url, { accept: 'text/html,text/css,*/*;q=0.8', limit, timeout, truncate: true });
+  return decodeBuf(r.buf, r.charset);
 }
 
-const decode = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(+d)).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;|\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+const cp = (n) => (Number.isFinite(n) && n >= 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : '');
+const safeUri = (s) => { try { return decodeURIComponent(s); } catch { return String(s || ''); } };
+const decode = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&#x([0-9a-f]+);/gi, (_, h) => cp(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => cp(+d)).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;|\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 const unent = (s) => String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 const attr = (tag, name) => { const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag); return m ? unent(m[2] ?? m[3] ?? m[4] ?? '') : ''; };
 /** Largest candidate of a srcset ("url 320w, url 1400w" or "url 1x, url 2x"); Shopify-style ?width= params are bumped to a usable size. */
@@ -106,8 +128,25 @@ export function hsl(hex) {
   return { h, s, l };
 }
 
+/** CSS as [selector, body] pairs from one linear scan. The old `[^{}]*btn[^{}]*\{…\}` regexes backtracked quadratically on
+ *  long brace-less runs (licence comments, data URIs) and could freeze the relay for a minute; selectors are capped at 2 KB. */
+export function cssRules(css, cap = 20_000) {
+  const s = String(css).replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const out = []; let i = 0;
+  while (out.length < cap) {
+    const open = s.indexOf('{', i); if (open < 0) break;
+    const close = s.indexOf('}', open + 1); if (close < 0) break;
+    const inner = s.indexOf('{', open + 1);
+    if (inner >= 0 && inner < close) { i = open + 1; continue; } // @media / @supports opener: step inside
+    out.push([s.slice(Math.max(i, open - 2000), open).trim(), s.slice(open + 1, close)]);
+    i = close + 1;
+  }
+  return out;
+}
+
 /** Colours + fonts from CSS text. Colours are ranked by frequency; "brand" colours exclude greys and near-white/black. */
 export function extractStyle(css, googleFamilies = []) {
+  const rules = cssRules(css);
   const counts = new Map();
   for (const m of String(css).matchAll(/(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/gi)) { const h = hexOf(m[1]); if (h) counts.set(h, (counts.get(h) || 0) + 1); }
   const all = [...counts.entries()].map(([hex, n]) => ({ hex, n, ...hsl(hex) })).sort((a, b) => b.n - a.n);
@@ -144,26 +183,26 @@ export function extractStyle(css, googleFamilies = []) {
   vars.sort((a, b) => rank(a.name) - rank(b.name));
   // Button / CTA backgrounds: what the brand actually paints its calls to action with.
   const btn = new Map();
-  for (const m of String(css).matchAll(/([^{}]*(?:btn|button|cta)[^{}]*)\{([^}]*)\}/gi)) {
-    if (/:hover|:focus|:active|disabled|outline|ghost|secondary|link/i.test(m[1])) continue;
-    for (const c of m[2].matchAll(/background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/gi)) { const h = hexOf(c[1]); if (!h) continue; const k = hsl(h); if (k.s < 0.2 || k.l < 0.1 || k.l > 0.92) continue; btn.set(h, (btn.get(h) || 0) + 1); }
+  for (const [sel, body] of rules) {
+    if (!/btn|button|cta/i.test(sel) || /:hover|:focus|:active|disabled|outline|ghost|secondary|link/i.test(sel)) continue;
+    for (const c of body.matchAll(/background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/gi)) { const h = hexOf(c[1]); if (!h) continue; const k = hsl(h); if (k.s < 0.2 || k.l < 0.1 || k.l > 0.92) continue; btn.set(h, (btn.get(h) || 0) + 1); }
   }
   const buttons = [...btn.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([hex, n]) => ({ hex, n }));
   // Design language: how the brand shapes things (radius, button style, heading case/weight/tracking, dark or light theme).
-  const cssS = String(css);
   const radii = [];
-  for (const m of cssS.matchAll(/([^{}]*(?:btn|button|cta|card)[^{}]*)\{([^}]*)\}/gi)) { for (const r of m[2].matchAll(/border-radius\s*:\s*([0-9.]+)(px|rem|em|%)/gi)) { const v = parseFloat(r[1]) * (r[2] === 'px' ? 1 : r[2] === '%' ? 10 : 16); radii.push(v); } }
+  for (const [sel, body] of rules) { if (!/btn|button|cta|card/i.test(sel)) continue; for (const r of body.matchAll(/border-radius\s*:\s*([0-9.]+)(px|rem|em|%)/gi)) { const v = parseFloat(r[1]) * (r[2] === 'px' ? 1 : r[2] === '%' ? 10 : 16); radii.push(v); } }
   const radius = radii.length ? radii.sort((a, b) => a - b)[Math.floor(radii.length / 2)] : null;
   let upper = 0, headRules = 0, weights = [], spacing = [];
-  for (const m of cssS.matchAll(/((?<=^|[,}\s])h[12][^{}]*|[^{}]*(?:heading|title|hero__?title|display)[^{}]*)\{([^}]*)\}/gi)) {
-    headRules++; const body = m[2];
+  for (const [sel, body] of rules) {
+    if (!(/(?:^|[,\s])h[12]\b/i.test(sel) || /heading|title|hero__?title|display/i.test(sel))) continue;
+    headRules++;
     if (/text-transform\s*:\s*uppercase/i.test(body)) upper++;
     const w = /font-weight\s*:\s*(\d{3}|bold|black|heavy)/i.exec(body); if (w) weights.push(/\d/.test(w[1]) ? +w[1] : w[1] === 'bold' ? 700 : 900);
     const ls = /letter-spacing\s*:\s*(-?[0-9.]+)(px|em|rem)/i.exec(body); if (ls) spacing.push(parseFloat(ls[1]) * (ls[2] === 'px' ? 1 : 16));
   }
   let outline = 0, solid = 0;
-  for (const m of cssS.matchAll(/([^{}]*(?:btn|button|cta)[^{}]*)\{([^}]*)\}/gi)) { if (/:hover|:focus/i.test(m[1])) continue; const b = m[2]; if (/border\s*:\s*[0-9.]+px\s+solid/i.test(b) && /background(-color)?\s*:\s*(transparent|none)/i.test(b)) outline++; else if (/background(-color)?\s*:/i.test(b)) solid++; }
-  const bodyBg = (() => { const m = /(?:^|[,}\s])(?:body|html|:root)\s*\{([^}]*)\}/i.exec(cssS); if (!m) return null; const c = /background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/i.exec(m[1]); return c ? hexOf(c[1]) : null; })();
+  for (const [sel, b] of rules) { if (!/btn|button|cta/i.test(sel) || /:hover|:focus/i.test(sel)) continue; if (/border\s*:\s*[0-9.]+px\s+solid/i.test(b) && /background(-color)?\s*:\s*(transparent|none)/i.test(b)) outline++; else if (/background(-color)?\s*:/i.test(b)) solid++; }
+  const bodyBg = (() => { for (const [sel, b] of rules) { if (!/(?:^|[,\s])(?:body|html|:root)\s*$/i.test(sel)) continue; const c = /background(?:-color)?\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/i.exec(b); if (c) { const h = hexOf(c[1]); if (h) return h; } } return null; })();
   const design = {
     radius, btnShape: radius == null ? null : radius >= 20 ? 'pill' : radius >= 6 ? 'rounded' : 'square',
     uppercaseHeadings: headRules ? upper / headRules >= 0.4 : false,
@@ -187,7 +226,7 @@ export function analyzeHtml(html, baseUrl, { maxImages = 40 } = {}) {
   const links = [...head.matchAll(/<link[^>]+>/gi)].map((m) => m[0]);
   const styles = links.filter((t) => /rel\s*=\s*["'][^"']*stylesheet/i.test(t)).map((t) => abs(attr(t, 'href'), baseUrl)).filter(Boolean);
   const googleFamilies = [];
-  for (const t of links) { const href = attr(t, 'href'); if (/fonts\.googleapis\.com/.test(href)) for (const m of href.matchAll(/family=([^&:]+)/g)) googleFamilies.push(decodeURIComponent(m[1]).replace(/\+/g, ' ').split('|')[0]); }
+  for (const t of links) { const href = attr(t, 'href'); if (/fonts\.googleapis\.com/.test(href)) for (const m of href.matchAll(/family=([^&:]+)/g)) googleFamilies.push(safeUri(m[1]).replace(/\+/g, ' ').split('|')[0]); }
   const icons = links.filter((t) => /rel\s*=\s*["'][^"']*(apple-touch-icon|icon)/i.test(t)).map((t) => ({ href: abs(attr(t, 'href'), baseUrl), sizes: attr(t, 'sizes') })).filter((i) => i.href);
   icons.sort((a, b) => (parseInt(b.sizes) || 0) - (parseInt(a.sizes) || 0));
   const inlineCss = [...raw.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n') + '\n' + [...raw.matchAll(/style\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(';');

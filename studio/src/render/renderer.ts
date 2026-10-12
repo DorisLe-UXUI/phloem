@@ -216,7 +216,7 @@ function drawTilted(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s
   const off = document.createElement('canvas'); off.width = Math.max(1, Math.round(w)); off.height = Math.max(1, Math.round(h));
   const oc = off.getContext('2d')!;
   oc.translate(-x, -y);
-  drawImage(oc, { ...n, tilt: null, shadow: null, rotate: 0 }, brand, s, src, editor);
+  drawImage(oc, { ...n, tilt: null, shadow: null, rotate: 0, floatShadow: false }, brand, s, src, editor);
   const ry = n.tilt?.ry || 0, rx = n.tilt?.rx || 0;
   const N = 48;
   if (Math.abs(ry) >= Math.abs(rx)) {
@@ -251,7 +251,16 @@ function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s:
     const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ew / 2); g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.16)'); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, ew / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
   }
-  if (n.tilt && (n.tilt.rx || n.tilt.ry) && img && (img as HTMLImageElement).width) { if (n.shadow) withShadow(ctx, n.shadow, s, () => drawTilted(ctx, n, brand, s, src, editor, x, y, w, h)); else drawTilted(ctx, n, brand, s, src, editor, x, y, w, h); return; }
+  if (n.tilt && (n.tilt.rx || n.tilt.ry) && img && (img as HTMLImageElement).width) {
+    if (!n.shadow) { drawTilted(ctx, n, brand, s, src, editor, x, y, w, h); return; }
+    // composite the strips once, then cast a single shadow (per-strip shadows would stack into dark banding)
+    const pad = Math.ceil(Math.max(w, h) * 0.3);
+    const off = document.createElement('canvas'); off.width = Math.max(1, Math.round(w + pad * 2)); off.height = Math.max(1, Math.round(h + pad * 2));
+    const oc = off.getContext('2d')!; oc.translate(pad - x, pad - y);
+    drawTilted(oc, { ...n, floatShadow: false }, brand, s, src, editor, x, y, w, h);
+    withShadow(ctx, n.shadow, s, () => ctx.drawImage(off, x - pad, y - pad));
+    return;
+  }
   if (n.shadow) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.fill, brand) || '#ffffff'; ctx.fill(); });
   ctx.save();
   rr(ctx, x, y, w, h, n.radius * s);
@@ -328,6 +337,7 @@ export function drawNode(ctx: CanvasRenderingContext2D, n: Node, brand: Brand, s
     else if (a.kind === 'down') { ctx.globalAlpha *= p; ctx.translate(0, -(1 - p) * 28 * s); }
     else if (a.kind === 'left') { ctx.globalAlpha *= p; ctx.translate(-(1 - p) * 48 * s, 0); }
     else if (a.kind === 'right') { ctx.globalAlpha *= p; ctx.translate((1 - p) * 48 * s, 0); }
+    else if (a.kind === 'wipe') { ctx.beginPath(); ctx.rect((n.x - 2) * s, (n.y - 2) * s, (n.w + 4) * s, (n.h + 4) * s * p); ctx.clip(); } // reveal top→bottom: only the new strip changes per frame
     else if (a.kind === 'pop') { const k = p < 1 ? 0.6 + 0.4 * p + (p > 0.6 ? Math.sin((p - 0.6) / 0.4 * Math.PI) * 0.06 : 0) : 1; ctx.globalAlpha *= Math.min(1, p * 1.6); ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
     else if (a.kind === 'type' && n.type === 'text') { const raw = animProgress(a, t); node = { ...n, text: n.text.slice(0, Math.ceil(n.text.length * raw)) + (raw < 1 && Math.floor(t * 3) % 2 === 0 ? '|' : '') }; }
     else if (a.kind === 'marquee' && n.type === 'text') {

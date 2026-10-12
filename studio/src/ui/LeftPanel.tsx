@@ -181,7 +181,7 @@ function Assets() {
           )}
         </div>
       )) : <div class="dim small">{list.length ? (scope === 'project' ? `Dự án này chưa dùng ảnh nào. Bấm "Tất cả" để xem ${list.length} ảnh trong thư viện.` : 'Không có ảnh khớp tìm kiếm.') : 'Chưa có ảnh. Ảnh cũng có thể dán (⌘V) hoặc kéo thẳng lên artboard.'}</div>}
-      {scope === 'project' && groups.length > 0 && shown < list.length && <div class="dim small">Còn {list.length - shown} ảnh khác trong thư viện · <span style={{ cursor: 'pointer', color: 'var(--neon)' }} onClick={() => setScope('all')}>xem tất cả</span></div>}
+      {scope === 'project' && groups.length > 0 && !q.trim() && shown < list.length && <div class="dim small">Còn {list.length - shown} ảnh khác trong thư viện · <span style={{ cursor: 'pointer', color: 'var(--neon)' }} onClick={() => setScope('all')}>xem tất cả</span></div>}
       <div class="dim small">{s.selection.length ? 'Bấm ảnh để gán vào layer đang chọn.' : 'Chọn một layer ảnh rồi bấm để thay, hoặc bấm để thêm layer mới.'}</div>
     </div>
   );

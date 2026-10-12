@@ -384,9 +384,13 @@ function assetTags(rawHeader) {
   if (typeof j.at === 'string') out.at = j.at.slice(0, 40);
   return Object.keys(out).length ? out : null;
 }
+let siteBusy = 0; // a deep crawl fans out to ~10 fetches; a few at once is plenty for one relay
 async function siteRoute(p, res) {
+  if (siteBusy >= 4) return json(res, 429, { error: 'Relay đang đọc trang khác, thử lại sau vài giây.' });
+  siteBusy++;
   try { return json(res, 200, await siteProfile(p?.url, { deep: p?.deep !== false })); }
   catch (e) { return json(res, e.status || 502, { error: `Không đọc được trang: ${e.message}` }); }
+  finally { siteBusy--; }
 }
 async function csvRoute(p, res) {
   try {

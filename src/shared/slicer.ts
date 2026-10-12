@@ -83,28 +83,53 @@ function sameStructure(a: RawRow, b: RawRow): boolean {
 function uniteSpans(spans: [number, number][]): [number, number][] {
   const sorted = [...spans].sort((a, b) => a[0] - b[0]);
   const out: [number, number][] = [];
-  for (const sp of sorted) { const last = out[out.length - 1]; if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]); else out.push([sp[0], sp[1]]); }
+  // strictly overlapping only: blocks that merely touch stay separate slices (each its own GIF)
+  for (const sp of sorted) { const last = out[out.length - 1]; if (last && sp[0] < last[1]) last[1] = Math.max(last[1], sp[1]); else out.push([sp[0], sp[1]]); }
   return out;
 }
 
-/** The link that covers most of a rect (a kept row gets one link for the whole GIF). */
+/** The link that covers most of a rect. */
 function dominantLink(regs: Region[], r: Rect): { link: string | null; linkNodeId: string | null } {
   let best: { reg: Region; a: number } | null = null;
   for (const reg of regs) { const a = area(intersect(reg, r)); if (a > 0 && (!best || a > best.a)) best = { reg, a }; }
   return best ? { link: best.reg.node.link, linkNodeId: best.reg.node.id } : { link: null, linkNodeId: null };
 }
 
-/** Rows touching a kept span collapse into one full-width row per span (one slice, one GIF). */
+/** Link regions that behave like columns in this row (cards, nav items): they cover most of the row's height. */
+function columnRegions(regs: Region[], row: Rect): Region[] {
+  return regs.filter((r) => { const i = intersect(r, row); return !!i && i.h >= row.h * 0.6; });
+}
+
+/** Column cells for a kept row: a cut at every column-region edge, each column taking the link covering most of it. */
+function keepCells(cols: Region[], row: Rect, W: number): Cell[] {
+  const xs = uniqSorted([0, W, ...cols.flatMap((r) => [clamp(r.x, 0, W), clamp(r.x + r.w, 0, W)])]);
+  const cells: Cell[] = [];
+  for (let i = 0; i < xs.length - 1; i++) {
+    const x = xs[i], w = xs[i + 1] - xs[i];
+    if (w <= 0) continue;
+    const { link, linkNodeId } = dominantLink(cols, { x, y: row.y, w, h: row.h });
+    const prev = cells[cells.length - 1];
+    if (prev && prev.link === link && prev.linkNodeId === linkNodeId) prev.w += w; else cells.push({ x, w, link, linkNodeId });
+  }
+  return cells;
+}
+
+/** Rows inside a kept (animated) span: a row holding two or more column-like links (product cards, nav items, social
+ *  icons) keeps its columns so every link survives; every other row merges with its neighbours into one full-width
+ *  slice (a hero with one button stays one piece). All slices of a span carry its index: one clock, one frame rate. */
 function keepRows(rows: RawRow[], spans: [number, number][], regs: Region[], W: number): RawRow[] {
   const out: RawRow[] = [];
+  let run: RawRow | null = null;
   for (const r of rows) {
     const k = spans.findIndex(([a, b]) => r.y < b && r.y + r.h > a);
-    const prev = out[out.length - 1];
-    if (k >= 0 && prev && prev.keep === k) { prev.h += r.h; continue; }
-    if (k >= 0) { out.push({ y: r.y, h: r.h, cells: [], keep: k }); continue; }
-    out.push(r);
+    if (k < 0) { run = null; out.push(r); continue; }
+    const rect = { x: 0, y: r.y, w: W, h: r.h };
+    const cols = columnRegions(regs, rect);
+    if (new Set(cols.map((c) => c.node.id)).size >= 2) { out.push({ y: r.y, h: r.h, cells: keepCells(cols, rect, W), keep: k }); run = null; continue; }
+    if (run && run.keep === k) { run.h += r.h; continue; }
+    run = { y: r.y, h: r.h, cells: [], keep: k }; out.push(run);
   }
-  for (const r of out) if (r.keep !== undefined) r.cells = [{ x: 0, w: W, ...dominantLink(regs, { x: 0, y: r.y, w: W, h: r.h }) }];
+  for (const r of out) if (r.keep !== undefined && !r.cells.length) r.cells = [{ x: 0, w: W, ...dominantLink(regs, { x: 0, y: r.y, w: W, h: r.h }) }];
   return out;
 }
 
@@ -243,6 +268,7 @@ export function planSlices(root: NNode, opts: Partial<SlicerOptions> = {}): Slic
         altNodeId: alt.nodeId,
         ownerNodeId: own.ownerNodeId,
         label: own.label,
+        ...(r.keep !== undefined ? { keep: r.keep } : {}),
       };
       cells.push(s);
       slices.push(s);

@@ -5,6 +5,7 @@ import type { Asset } from '../model/types';
 import { getSession } from '../auth/core';
 import { db, type StoredProject } from './idb';
 import { get, set, history, type State } from '../store';
+import { normalizeProject } from '../pipeline/actions';
 
 export interface RemoteProjectMeta { id: string; name: string; updatedAt: string; createdAt: string; thumb?: string; thumbMobile?: string; provider?: string; size?: number }
 export interface RemoteAsset { id: string; name: string; mime: string; w: number; h: number; bytes: number; createdAt: string; src?: Asset['src']; project?: string | null; at?: string }
@@ -126,7 +127,7 @@ export const cloud = {
           if (get().dirty) continue; // mid-edit here: keep local, the autosave pushes it as the newer copy
           const cur = pending.get(r.id); if (cur) { clearTimeout(cur.t); pending.delete(r.id); }
           const { thumb: _a, thumbMobile: _b, provider: _c, owner: _d, ...proj } = full;
-          history.clear(); set({ project: proj, savedAt: proj.updatedAt, selection: [], editingText: null, enteredGroup: null });
+          history.clear(); set({ project: normalizeProject(proj), savedAt: proj.updatedAt, selection: [], editingText: null, enteredGroup: null, cropping: null, cutting: null });
         }
         await db.putProject({ ...full, owner }); out.pulled++;
       }

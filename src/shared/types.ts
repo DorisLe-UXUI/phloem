@@ -46,6 +46,8 @@ export interface Slice {
   ownerNodeId: string | null;
   /** Names of nodes inside the slice, for the UI list. */
   label: string;
+  /** Index of the kept (animated) region this slice belongs to; sibling slices share one animation clock and frame rate. */
+  keep?: number;
 }
 
 export interface SliceRow {

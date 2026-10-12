@@ -11,7 +11,8 @@ export class History {
     this.future = [];
   }
   undo(current: Doc): Doc | null {
-    const prev = this.past.pop();
+    let prev = this.past.pop();
+    while (prev === current) prev = this.past.pop(); // a checkpoint taken before an edit that never happened
     if (!prev) return null;
     this.future.push(current);
     return prev;

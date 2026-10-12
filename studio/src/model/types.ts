@@ -119,7 +119,7 @@ export interface ImageNode extends BaseNode {
   blur?: number;
 }
 /** Layer motion. delay/dur in seconds. 'marquee' scrolls text forever; 'type' reveals text letter by letter. */
-export interface Anim { kind: 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'marquee' | 'type'; delay?: number; dur?: number }
+export interface Anim { kind: 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'wipe' | 'marquee' | 'type'; delay?: number; dur?: number }
 /** 3D-ish text treatments drawn by the renderer. */
 export interface TextEffect { kind: 'extrude' | 'neon' | 'outline' | 'shadow'; color?: Color; depth?: number; angle?: number }
 

@@ -47,7 +47,7 @@ export class Klaviyo {
   async uploadImage(name: string, bytes: Uint8Array, mime: string): Promise<{ id: string; url: string }> {
     const r = await this.call({
       method: 'POST', path: '/image-upload',
-      multipart: { fields: { name, hidden: 'false' }, file: { field: 'file', name: `${name}.${mime === 'image/jpeg' ? 'jpg' : 'png'}`, type: mime, base64: toBase64(bytes) } },
+      multipart: { fields: { name, hidden: 'false' }, file: { field: 'file', name: `${name}.${mime === 'image/jpeg' ? 'jpg' : mime === 'image/gif' ? 'gif' : 'png'}`, type: mime, base64: toBase64(bytes) } },
     });
     return { id: r.data?.data?.id, url: r.data?.data?.attributes?.image_url };
   }

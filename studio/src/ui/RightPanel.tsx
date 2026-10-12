@@ -131,7 +131,7 @@ function NodeProps({ n }: { n: Node }) {
       {n.type === 'group' && <BlockBg g={n} />}
       <Eyebrow>Chuyển động</Eyebrow>
       <div class="row">
-        <div class="grow"><Select value={(n.anim?.kind || 'none') as 'none' | 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'marquee' | 'type'} options={[{ v: 'none', label: 'Không' }, { v: 'fade', label: 'Hiện dần' }, { v: 'up', label: 'Trượt lên' }, { v: 'down', label: 'Trượt xuống' }, { v: 'left', label: 'Trượt từ phải' }, { v: 'right', label: 'Trượt từ trái' }, { v: 'pop', label: 'Nảy ra' }, ...(n.type === 'text' ? [{ v: 'marquee' as const, label: 'Chữ chạy (lặp)' }, { v: 'type' as const, label: 'Gõ từng chữ' }] : [])]} onChange={(v) => up({ anim: v === 'none' ? null : { kind: v, delay: n.anim?.delay ?? 0, dur: n.anim?.dur ?? 0.8 } })} /></div>
+        <div class="grow"><Select value={(n.anim?.kind || 'none') as 'none' | 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'wipe' | 'marquee' | 'type'} options={[{ v: 'none', label: 'Không' }, { v: 'fade', label: 'Hiện dần' }, { v: 'up', label: 'Trượt lên' }, { v: 'down', label: 'Trượt xuống' }, { v: 'left', label: 'Trượt từ phải' }, { v: 'right', label: 'Trượt từ trái' }, { v: 'pop', label: 'Nảy ra' }, { v: 'wipe', label: 'Mở dần (ảnh)' }, ...(n.type === 'text' ? [{ v: 'marquee' as const, label: 'Chữ chạy (lặp)' }, { v: 'type' as const, label: 'Gõ từng chữ' }] : [])]} onChange={(v) => up({ anim: v === 'none' ? null : { kind: v, delay: n.anim?.delay ?? 0, dur: n.anim?.dur ?? 0.8 } })} /></div>
         {n.anim && n.anim.kind !== 'marquee' && <div style={{ width: 86 }}><Num label="Trễ" value={n.anim.delay ?? 0} min={0} max={6} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, delay: v } })} /></div>}
         {n.anim && n.anim.kind !== 'marquee' && <div style={{ width: 86 }}><Num label="Dài" value={n.anim.dur ?? 0.8} min={0.1} max={4} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, dur: v } })} /></div>}
       </div>
@@ -295,7 +295,7 @@ function EmailTab() {
           <Eyebrow>Gợi ý · điểm {a.score}</Eyebrow>
           <div class="row" style={{ gap: 6 }}>
             <Btn sm kind="primary" icon="sparkle" onClick={async () => setChanges(await A.autoFix())} title="Tự sửa các gợi ý: chữ nhỏ, hero quá cao, alt, link nút/logo/social, link sản phẩm thật, footer, subject/preheader (AI)">AI tự chỉnh</Btn>
-            <Btn sm icon="play" onClick={() => { setChanges(A.animateHero()); set({ playing: true }); }} title="Hero động: chữ gõ/trượt, ảnh hiện, nút nảy, ticker chạy — xuất thành GIF">Làm động</Btn>
+            <Btn sm icon="play" onClick={() => { setChanges(A.animateDoc()); set({ playing: true }); }} title="Cả email hiện ra từ từ: hero chữ gõ/trượt, ảnh hiện, nút nảy; các block khác tiêu đề trượt lên, chữ hiện dần, ảnh mở dần, thẻ nảy lần lượt — xuất thành GIF">Làm động</Btn>
             <Btn sm kind="ghost" icon="bolt" onClick={() => setChanges(A.make3D())} title="Chữ đùn khối, sản phẩm nghiêng + bóng nổi, vầng sáng, phụ kiện tách nền">3D</Btn>
             <Btn sm kind="ghost" onClick={() => setChanges(A.optimize())} title="Chiều rộng 600, làm tròn toạ độ, khớp chiều cao">Tối ưu</Btn>
           </div>
