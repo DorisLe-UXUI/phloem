@@ -1,5 +1,5 @@
-import { useEffect } from 'preact/hooks';
-import { get, set, toast, useStore, type Tool } from '../store';
+import { useEffect, useRef } from 'preact/hooks';
+import { get, isMobile, set, toast, useStore, type Tool } from '../store';
 import * as ops from '../model/ops';
 import * as A from '../pipeline/actions';
 import { activeProfile, providerName } from '../pipeline/exportFlow';
@@ -45,6 +45,9 @@ export function Editor() {
     window.addEventListener('paste', h);
     return () => window.removeEventListener('paste', h);
   }, []);
+  // phone: asking for a right-panel tab (Xuất, AI, Email…) also slides that sheet up
+  const firstTab = useRef(true);
+  useEffect(() => { if (firstTab.current) { firstTab.current = false; return; } if (isMobile()) set({ mobilePane: 'right' }); }, [s.rightTab]);
   if (!s.project) return null;
   const p = s.project;
   return (
@@ -55,6 +58,7 @@ export function Editor() {
         <CanvasView />
         <RightPanel />
       </div>
+      <MobileBar />
       <div class="statusbar">
         <span class={`dot ${s.dirty ? 'dirty' : ''}`} />
         <span>{s.dirty ? 'đang sửa…' : s.savedAt ? `đã lưu ${new Date(s.savedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : 'chưa lưu'}</span>
@@ -64,6 +68,18 @@ export function Editor() {
         <span>Phloem không bao giờ tự gửi · bạn duyệt và bấm gửi trong {activeProfile() ? providerName(activeProfile()!.provider) : 'Mailchimp / Klaviyo'}</span>
         <span style={{ cursor: 'pointer' }} onClick={() => set({ modal: 'shortcuts' })}>? phím tắt</span>
       </div>
+    </div>
+  );
+}
+
+function MobileBar() {
+  const s = useStore();
+  const go = (pane: 'left' | 'canvas' | 'right') => set({ mobilePane: pane !== 'canvas' && s.mobilePane === pane ? 'canvas' : pane });
+  return (
+    <div class="mobilebar">
+      <button class={s.mobilePane === 'left' ? 'on' : ''} onClick={() => go('left')}><Icon name="layers" />Lớp · Ảnh</button>
+      <button class={s.mobilePane === 'canvas' ? 'on' : ''} onClick={() => go('canvas')}><Icon name="select" />Canvas</button>
+      <button class={s.mobilePane === 'right' ? 'on' : ''} onClick={() => go('right')}><Icon name="settings" />Chỉnh · Xuất</button>
     </div>
   );
 }
@@ -95,7 +111,7 @@ function TopBar() {
         </div>
       </div>
       <div class="r">
-        <Btn kind="ghost" sm icon="sparkle" title="Trợ lý AI / dựng 3 phương án" onClick={() => set({ rightTab: 'ai' })}>AI</Btn>
+        <Btn kind="ghost" sm icon="sparkle" title="Trợ lý AI / dựng 3 phương án" onClick={() => set({ rightTab: 'ai', mobilePane: 'right' })}>AI</Btn>
         <Btn kind="ghost" sm icon="play" title="Xem trước" onClick={() => set({ modal: 'preview' })}>Xem trước</Btn>
         <label class="client-pill" title="Client đang dùng">
           <span class={`dot ${prof ? '' : 'off'}`} /><span class="t">{prof ? `${prof.name}` : 'Chưa chọn client'}</span>
@@ -105,7 +121,7 @@ function TopBar() {
             <option value="__add">+ Quản lý client…</option>
           </select>
         </label>
-        <Btn kind="primary" sm icon="send" onClick={() => set({ rightTab: 'export' })}>Xuất</Btn>
+        <Btn kind="primary" sm icon="send" onClick={() => set({ rightTab: 'export', mobilePane: 'right' })}>Xuất</Btn>
         <Btn kind="ghost" sm icon="settings" title="Cài đặt" onClick={() => set({ modal: 'settings' })} />
       </div>
     </div>

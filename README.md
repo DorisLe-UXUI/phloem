@@ -242,6 +242,8 @@ Chuyển động ("3D" theo nghĩa chữ chạy, hình hiện ra): mỗi layer c
 
 Design DNA theo thương hiệu: relay bóc `design` của web (bo góc, nút pill/vuông/viền, tiêu đề uppercase, độ đậm, tracking, nền tối) → `Brand.shape`; `themeFor(vibe, shape)` ghi đè theme vibe bằng cách design thật; bảng màu tối khi web tối; prompt nêu rõ DNA và cấm AI đổi.
 
+Điện thoại (≤ 820px): thanh trên cuộn ngang; panel Lớp/Block/Ảnh và Thiết kế/Email/Xuất/AI thành **sheet** kéo từ đáy (thanh tab dưới cùng: Lớp · Ảnh / Canvas / Chỉnh · Xuất; chạm canvas thì sheet đóng; bấm Xuất/AI trên thanh trên cũng mở sheet); modal thành sheet 1 cột, 3 phương án AI vuốt ngang; canvas chạm: 1 ngón kéo layer hoặc kéo vùng trống để dời canvas, 2 ngón pinch để zoom (`touch-action: none`). `State.mobilePane`, `isMobile()`, CSS trong khối `@media (max-width: 820px)`. Store re-render bằng rAF kèm timer dự phòng để tab ẩn vẫn cập nhật.
+
 ## Kho hàng và gợi ý nên đẩy gì
 
 Trang chủ Studio → **Kho hàng**: nhập sản phẩm từ Google Sheet (share "Anyone with the link" hoặc Publish to web → CSV; relay tải qua `POST /csv`), file CSV, hoặc cửa hàng Shopify. Cột tự nhận (VI/EN): tên, giá, giá cũ, giá vốn, tồn kho, đã bán, danh mục, ảnh, link, mô tả. Bấm **AI gợi ý**: Claude đọc kho (tồn nhiều/bán chậm, bán chạy, sắp hết, biên cao, mùa vụ) và trả 3–5 chiến dịch nên làm, mỗi gợi ý có sản phẩm cụ thể, lý do, loại email, subject. Tick sản phẩm (hoặc bấm "Dựng email từ gợi ý") → mở Dựng bằng AI với đúng tên/giá/link/ảnh sản phẩm. Kho lưu trên máy và đồng bộ lên relay (`/db/kv/catalog`) khi có tài khoản relay. Ảnh sản phẩm trong email hiển thị trọn (contain), không cắt.

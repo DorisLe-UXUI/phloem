@@ -11,7 +11,7 @@ import * as A from '../pipeline/actions';
 import { Btn } from './components';
 import { Icon } from './icons';
 
-type Mode = { kind: 'idle' } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } }
+type Mode = { kind: 'idle' } | { kind: 'pinch'; d0: number; z0: number; c0: { x: number; y: number }; pan0: { x: number; y: number } } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } }
   // dragging a pasteboard image; `inside` = pointer over the artboard, `over` = image layer that would be replaced
   | { kind: 'scrap'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; inside: boolean; over: string | null }
   // crop mode: dragging pans the photo inside its frame
@@ -38,6 +38,7 @@ export function CanvasView() {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const mode = useRef<Mode>({ kind: 'idle' });
+  const touches = useRef(new Map<number, { x: number; y: number }>()); // live touch points (pinch)
   const guides = useRef<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const space = useRef(false);
   const [dropping, setDropping] = useState(false);
@@ -254,6 +255,18 @@ export function CanvasView() {
   // ----- pointer events -----
   const onPointerDown = (e: PointerEvent) => {
     if (e.button === 2) return;
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, local(e));
+      if (touches.current.size === 2) {
+        const [a, b] = [...touches.current.values()]; const st0 = get();
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        wrap.current!.classList.remove('panning');
+        mode.current = { kind: 'pinch', d0: Math.max(10, Math.hypot(b.x - a.x, b.y - a.y)), z0: st0.zoom, c0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, pan0: { ...st0.pan } };
+        return;
+      }
+      if (touches.current.size > 2) return;
+      if (get().mobilePane !== 'canvas') set({ mobilePane: 'canvas' });
+    }
     wrap.current!.focus();
     setCtxMenu(null);
     const st = get(); const p = local(e); const d = toDoc(p.x, p.y);
@@ -287,12 +300,22 @@ export function CanvasView() {
       mode.current = { kind: 'move', sx: d.x, sy: d.y, base: docOf(), ids: ids.slice(), moved: false };
     } else {
       if (!e.shiftKey) { A.clearSelection(); }
+      if (e.pointerType === 'touch') { mode.current = { kind: 'pan', sx: p.x, sy: p.y, px: st.pan.x, py: st.pan.y }; return; } // a finger on empty space pans
       mode.current = { kind: 'marquee', sx: d.x, sy: d.y, cur: d, additive: e.shiftKey };
     }
   };
 
   const onPointerMove = (e: PointerEvent) => {
     const st = get(); const p = local(e); const d = toDoc(p.x, p.y); const m = mode.current;
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) touches.current.set(e.pointerId, p);
+    if (m.kind === 'pinch') {
+      if (touches.current.size < 2) return;
+      const [a, b] = [...touches.current.values()];
+      const d1 = Math.max(10, Math.hypot(b.x - a.x, b.y - a.y)); const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const z = Math.min(8, Math.max(0.1, (m.z0 * d1) / m.d0));
+      set({ zoom: Math.round(z * 1000) / 1000, pan: { x: c.x - ((m.c0.x - m.pan0.x) / m.z0) * z, y: c.y - ((m.c0.y - m.pan0.y) / m.z0) * z } });
+      return;
+    }
     if (m.kind === 'idle') {
       if (st.tool === 'select') {
         const hIdx = handleAt(d.x, d.y);
@@ -368,6 +391,8 @@ export function CanvasView() {
   };
 
   const onPointerUp = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') touches.current.delete(e.pointerId);
+    if (mode.current.kind === 'pinch') { if (touches.current.size < 2) mode.current = { kind: 'idle' }; return; }
     const m = mode.current; const p = local(e); const d = toDoc(p.x, p.y);
     wrap.current!.classList.remove('panning');
     guides.current = { v: [], h: [] };
@@ -439,7 +464,7 @@ export function CanvasView() {
 
   return (
     <div ref={wrap} tabIndex={0} class={`canvas-wrap tool-${s.tool} ${dropping ? 'dropping' : ''}`}
-      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onDblClick={onDblClick} onWheel={onWheel}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onDblClick={onDblClick} onWheel={onWheel}
       onContextMenu={(e) => { e.preventDefault(); const p = local(e); const d = toDoc(p.x, p.y); const n = hit(d.x, d.y, false); if (n && !get().selection.includes(n.id)) A.select([n.id]); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
       onDragOver={(e) => { e.preventDefault(); if (!dropping) setDropping(true); }} onDragLeave={() => setDropping(false)} onDrop={onDrop}
       onPointerLeave={() => { if (get().hover) set({ hover: null }); }}>

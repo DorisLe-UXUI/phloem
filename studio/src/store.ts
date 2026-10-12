@@ -35,6 +35,8 @@ export interface State {
   modal: Modal;
   rightTab: RightTab;
   leftTab: LeftTab;
+  /** Phone layout: panels become bottom sheets over the canvas; this says which one is up. */
+  mobilePane: 'canvas' | 'left' | 'right';
   profiles: Profile[];
   settings: StudioSettings;
   toasts: Toast[];
@@ -101,6 +103,7 @@ export const initialState: State = {
   playing: false,
   rightTab: 'design',
   leftTab: 'layers',
+  mobilePane: 'canvas',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),
   settings: loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, relayUrl: (typeof document !== 'undefined' && (document.querySelector('meta[name="phloem-relay"]') as HTMLMetaElement | null)?.content) || DEFAULT_SETTINGS.relayUrl, snap: true, grid: false, autosave: true, anthropicKey: '', aiModel: 'claude-opus-5-5' }),
   toasts: [],
@@ -121,13 +124,25 @@ export const history = new History();
 
 export function get(): State { return state; }
 
+// Re-render on the next frame; a timer fallback keeps state flowing while the tab is hidden (rAF pauses there:
+// phones switching apps mid-generation, background tabs) so nothing waits on the next paint to settle.
+let tick = 0;
+function schedule() {
+  if (scheduled) return;
+  scheduled = true;
+  const id = ++tick;
+  const run = () => { if (id !== tick || !scheduled) return; scheduled = false; for (const s of subs) s(); };
+  requestAnimationFrame(run);
+  setTimeout(run, 200);
+}
+
 export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
   const p = typeof patch === 'function' ? patch(state) : patch;
   state = { ...state, ...p };
   if ('profiles' in p) { try { localStorage.setItem(LS_PROFILES, JSON.stringify(state.profiles)); } catch { /* ignore */ } }
   if ('settings' in p) { try { localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings)); } catch { /* ignore */ } }
   if ('catalog' in p) { try { localStorage.setItem(LS_CATALOG, JSON.stringify({ items: state.catalog, at: state.catalogAt })); } catch { /* ignore */ } }
-  if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; for (const s of subs) s(); }); }
+  schedule();
 }
 
 export function subscribe(fn: () => void): () => void { subs.add(fn); return () => subs.delete(fn); }
@@ -146,3 +161,6 @@ export function toast(text: string, kind: Toast['kind'] = 'info') {
 }
 
 export function log(t: string, k?: 'ok' | 'er') { set((s) => ({ log: [...s.log.slice(-40), { t, k }] })); }
+
+/** Phone-sized viewport (matches the `@media (max-width: 820px)` layout in styles.css). */
+export const isMobile = () => typeof matchMedia === 'function' && matchMedia('(max-width: 820px)').matches;

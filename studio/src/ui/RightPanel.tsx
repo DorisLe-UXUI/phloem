@@ -18,7 +18,7 @@ export function RightPanel() {
   const a = A.analyze();
   const issues = a ? a.checks.filter((c) => c.level !== 'info').length : 0;
   return (
-    <div class="panel right">
+    <div class={`panel right ${s.mobilePane === 'right' ? 'open' : ''}`}>
       <div class="ptabs">
         <button class={`ptab ${s.rightTab === 'design' ? 'on' : ''}`} onClick={() => set({ rightTab: 'design' })}>Thiết kế</button>
         <button class={`ptab ${s.rightTab === 'email' ? 'on' : ''}`} onClick={() => set({ rightTab: 'email' })}>Email{issues ? <span class="n">{issues}</span> : null}</button>

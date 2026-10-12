@@ -15,7 +15,7 @@ const ICON: Record<Node['type'], IconName> = { rect: 'rect', text: 'text', image
 export function LeftPanel() {
   const s = useStore();
   return (
-    <div class="panel">
+    <div class={`panel ${s.mobilePane === 'left' ? 'open' : ''}`}>
       <div class="ptabs">
         <button class={`ptab ${s.leftTab === 'layers' ? 'on' : ''}`} onClick={() => set({ leftTab: 'layers' })}><Icon name="layers" size={13} />Layer</button>
         <button class={`ptab ${s.leftTab === 'blocks' ? 'on' : ''}`} onClick={() => set({ leftTab: 'blocks' })}><Icon name="blocks" size={13} />Block</button>
