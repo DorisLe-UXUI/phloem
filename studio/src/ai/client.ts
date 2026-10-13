@@ -52,6 +52,23 @@ export async function aiTransport(): Promise<AiTransport> {
 }
 
 /** Ask Claude; resolves the assistant's text. Throws a readable Vietnamese error when nothing can answer. */
+/** Hosted relays on free plans sleep after idle minutes and take 15–60 s to answer the first request. Ping `/` (with
+ *  patience) before real calls so they never pay that wake-up inside their own timeout; remembered for 10 minutes. */
+let relayAwakeAt = 0, relayAwakeUrl = '';
+export async function wakeRelay(url: string, headers: Record<string, string> = {}, onStatus?: (m: string) => void): Promise<boolean> {
+  const base = url.replace(/\/$/, ''); if (!base) return false;
+  if (relayAwakeUrl === base && Date.now() - relayAwakeAt < 10 * 60_000) return true;
+  const waits = [12_000, 30_000, 45_000];
+  for (let i = 0; i < waits.length; i++) {
+    try {
+      const r = await fetch(base + '/', { headers, signal: AbortSignal.timeout(waits[i]) });
+      if (r.ok) { relayAwakeAt = Date.now(); relayAwakeUrl = base; return true; }
+    } catch { /* asleep or unreachable: try again with more patience */ }
+    if (i === 0) onStatus?.('Relay đang thức dậy (gói free ngủ sau 15 phút không dùng), đợi khoảng 30–60 giây…');
+  }
+  return false;
+}
+
 export async function askClaude(req: AiRequest): Promise<string> {
   const s = get().settings;
   const model = s.aiModel || 'claude-opus-5-5';
@@ -79,6 +96,7 @@ export async function askClaude(req: AiRequest): Promise<string> {
     }
   }
   if (t === 'relay') {
+    await wakeRelay(s.relayUrl, relayAuth());
     const r = await fetch(s.relayUrl.replace(/\/$/, '') + '/ai', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() },
       body: JSON.stringify({ model, max_tokens: maxTokens, effort: req.effort ?? 'medium', system: req.system, messages: messagesOf(req) }),

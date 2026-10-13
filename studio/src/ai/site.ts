@@ -5,6 +5,7 @@ import { FONTS } from '../model/types';
 import { assets } from '../storage/assets';
 import { get } from '../store';
 import { getSession, expired } from '../auth/core';
+import { wakeRelay } from './client';
 
 export interface SiteImage { url: string; alt: string; w: number; h: number; page?: string; bg?: boolean }
 export interface SitePage { url: string; path: string; title: string; headings: string[]; text: string }
@@ -57,13 +58,16 @@ function relay(): { url: string; headers: Record<string, string> } | null {
   return { url, headers: { ...(ses?.mode === 'relay' ? { Authorization: `Bearer ${ses.token}` } : {}), ...(s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {}) } };
 }
 
-export async function analyzeSite(site: string): Promise<SiteProfile> {
+export async function analyzeSite(site: string, onStatus?: (m: string) => void): Promise<SiteProfile> {
   const r = relay();
   if (!r) throw new Error('Cần relay để đọc website: Cài đặt → Relay URL (npm run relay).');
   let url = site.trim(); if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  const awake = await wakeRelay(r.url, r.headers, onStatus);
+  if (!awake) throw new Error(`Không gọi được relay ${r.url}. Nếu là relay Render gói free, nó có thể đang khởi động — thử lại sau 1 phút. Nếu là relay máy bạn: npm run relay.`);
+  onStatus?.('AI đang đọc trang (tối đa ~1 phút với trang nhiều ảnh)…');
   let res: Response;
-  try { res = await fetch(`${r.url}/site`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...r.headers }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(30_000) }); }
-  catch { throw new Error('Không gọi được relay. Relay có đang chạy không?'); }
+  try { res = await fetch(`${r.url}/site`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...r.headers }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(90_000) }); }
+  catch { throw new Error('Relay không trả lời trong 90 giây. Trang quá nặng hoặc relay quá tải — thử lại, hoặc đọc một trang con nhẹ hơn.'); }
   const j = await res.json().catch(() => ({}));
   if (res.status === 401) throw getSession() ? expired() : new Error('Đăng nhập tài khoản relay (hoặc đặt Relay token trong Cài đặt) để AI đọc web.');
   if (!res.ok) throw new Error(j.error || `Relay trả ${res.status}`);

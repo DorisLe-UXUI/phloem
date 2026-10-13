@@ -95,7 +95,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     try {
       const site = cleanUrl(form.website || '');
       if (site !== form.website) upd({ website: site });
-      const p: SiteProfile = await analyzeSite(site);
+      const p: SiteProfile = await analyzeSite(site, (m) => setSiteBusy(m));
       setSiteBusy('Đang tải logo và ảnh…');
       const got = await importSiteImages(p, 80, (d, t) => setSiteBusy(`Đang tải ảnh ${d}/${t}…`), !!form.logoAssetId);
       // the logo's own colours beat CSS frequency when the site has no named brand tokens

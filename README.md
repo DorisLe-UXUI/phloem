@@ -156,6 +156,8 @@ test/          node --test
 
 ## Host relay (để cả team dùng AI, không ai phải dán key)
 
+Relay Render gói free **ngủ sau 15 phút không có request** và mất 15–60 giây để dậy. Hai lớp chống lỗi "Không gọi được relay": Studio luôn **đánh thức relay trước** (`wakeRelay` trong `ai/client.ts`: ping `/` tới 3 lần, 12/30/45 s, nhớ 10 phút, báo trạng thái trong modal) rồi mới gọi `/site` (chờ 90 s) / `/ai` / `/csv`; và GitHub Action `.github/workflows/keepalive.yml` ping relay mỗi 10 phút để nó không ngủ (750 giờ/tháng của Render đủ cho 1 service chạy liên tục).
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/DorisLe-UXUI/phloem)
 
 1. Bấm nút trên (hoặc Render → New → Blueprint → chọn repo). Render đọc `render.yaml`, tạo service `phloem-relay` từ `server/`.

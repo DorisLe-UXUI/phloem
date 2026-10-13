@@ -42,7 +42,7 @@ export function CatalogModal({ onClose }: { onClose: () => void }) {
   const importCsv = async (f: File) => { setErr(''); try { add(itemsFromRows(parseCsv(await f.text()), 'csv'), f.name); } catch (e) { setErr((e as Error).message); } };
   const importShop = async () => {
     setErr(''); setBusy('Đang đọc cửa hàng…');
-    try { const p = await analyzeSite(shop); if (!p.products?.length) throw new Error('Trang này không lộ danh sách sản phẩm (chỉ Shopify có /products.json). Dùng Google Sheet hoặc CSV.'); add(itemsFromShopify(p.products), p.siteName || 'Shopify'); } catch (e) { setErr((e as Error).message); } finally { setBusy(''); }
+    try { const p = await analyzeSite(shop, (m) => setBusy(m)); if (!p.products?.length) throw new Error('Trang này không lộ danh sách sản phẩm (chỉ Shopify có /products.json). Dùng Google Sheet hoặc CSV.'); add(itemsFromShopify(p.products), p.siteName || 'Shopify'); } catch (e) { setErr((e as Error).message); } finally { setBusy(''); }
   };
   const suggest = async () => {
     setErr(''); setBusy('AI đang phân tích kho…');

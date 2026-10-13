@@ -1,6 +1,6 @@
 // Kho hàng: a product catalog imported from Google Sheets / CSV / Shopify, summarised for the AI, which then says
 // what to push in the next email and why. Items feed straight into the AI composer as real products.
-import { askClaude, extractJson } from '../ai/client';
+import { askClaude, extractJson, wakeRelay } from '../ai/client';
 import type { SiteProduct } from '../ai/site';
 import { get } from '../store';
 import { getSession } from '../auth/core';
@@ -94,6 +94,7 @@ function relay(): { url: string; headers: Record<string, string> } | null {
 /** Fetch a CSV through the relay (Google Sheets blocks browser CORS). */
 export async function fetchCsv(url: string): Promise<string> {
   const r = relay(); if (!r) throw new Error('Cần relay để tải Google Sheet (Cài đặt → Relay URL).');
+  if (!(await wakeRelay(r.url, r.headers))) throw new Error('Không gọi được relay (đang khởi động hoặc không chạy). Thử lại sau 1 phút.');
   let res: Response;
   try { res = await fetch(`${r.url}/csv`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...r.headers }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(30_000) }); }
   catch { throw new Error('Không gọi được relay.'); }
