@@ -254,7 +254,13 @@ Trang chủ Studio → **Kho hàng**: nhập sản phẩm từ Google Sheet (sha
 
 ## Đăng nhập bằng Google
 
-Tạo OAuth Client ID (Web) trong Google Cloud Console, thêm Authorized JavaScript origins (`https://dorisle-uxui.github.io`, `http://localhost:5173`), đặt `GOOGLE_CLIENT_ID=...` trong `server/.env`, chạy lại relay. Nút "Continue with Google" tự hiện trong Studio (và sẽ hiện ở landing khi relay báo có client id). Relay xác minh ID token với Google rồi mở phiên như đăng nhập thường; không lưu mật khẩu Google.
+Nút "Continue with Google" hiện trong hộp Đăng nhập khi relay báo có `GOOGLE_CLIENT_ID` (`GET /` → `google`). Cài một lần (chủ repo làm, ~5 phút):
+1. console.cloud.google.com → APIs & Services → **OAuth consent screen**: External, tên app "Phloem Studio", email hỗ trợ, lưu; ở trạng thái Testing thì thêm email người dùng vào Test users (hoặc Publish app).
+2. **Credentials → Create credentials → OAuth client ID → Web application**. Authorized JavaScript origins: `https://dorisle-uxui.github.io` (và `http://localhost:5173` khi dev). Không cần redirect URI (Google Identity Services dùng popup).
+3. Copy Client ID (`…apps.googleusercontent.com`) → Render → service `phloem-relay` → Environment → thêm `GOOGLE_CLIENT_ID` → Save. Relay tự deploy lại (~2 phút).
+4. Trên Studio: Cài đặt → Relay URL phải là `https://phloem-relay.onrender.com` (bản public tự đổi nếu còn giá trị localhost cũ) → Đăng nhập → Continue with Google. Relay xác minh ID token qua `oauth2.googleapis.com/tokeninfo`, tạo/tìm tài khoản theo email và mở phiên relay; project trên máy có thể "Chuyển vào tài khoản".
+
+Lưu ý gói free Render: SQLite nằm trong container nên **tài khoản và project trên relay bị xoá mỗi lần deploy**. Muốn dùng thật: Render Starter + Persistent Disk 1 GB mount vào `/app/server/data` (khoảng 7 USD/tháng), hoặc đổi `db.mjs` sang Postgres/Turso.
 
 ## Import từ Figma
 

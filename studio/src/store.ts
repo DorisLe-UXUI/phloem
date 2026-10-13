@@ -74,6 +74,19 @@ export interface Scrap { id: string; assetId: string; x: number; y: number; w: n
 
 const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings', LS_CATALOG = 'phloem.catalog';
 
+/** The relay this build was published with (meta tag in index.html), if any. */
+function hostedRelay(): string { return (typeof document !== 'undefined' && (document.querySelector('meta[name="phloem-relay"]') as HTMLMetaElement | null)?.content) || ''; }
+/** A relay on localhost only makes sense when the Studio itself runs on localhost. Settings saved by an older build
+ *  (or copied from a dev machine) can point the public site at http://localhost:8787 — swap that for the hosted relay. */
+function sanitizeRelay(st: StudioSettings): StudioSettings {
+  const hosted = hostedRelay();
+  const local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(st.relayUrl || '');
+  const pageLocal = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  if (local && !pageLocal && hosted) { const next = { ...st, relayUrl: hosted, relayToken: '' }; try { localStorage.setItem(LS_SETTINGS, JSON.stringify(next)); } catch { /* ignore */ } return next; }
+  if (!st.relayUrl && hosted) return { ...st, relayUrl: hosted };
+  return st;
+}
+
 function loadLS<T>(k: string, fb: T): T { try { const v = localStorage.getItem(k); return v ? { ...fb, ...JSON.parse(v) } : fb; } catch { return fb; } }
 
 export const initialState: State = {
@@ -105,7 +118,7 @@ export const initialState: State = {
   leftTab: 'layers',
   mobilePane: 'canvas',
   profiles: (() => { try { return JSON.parse(localStorage.getItem(LS_PROFILES) || '[]'); } catch { return []; } })(),
-  settings: loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, relayUrl: (typeof document !== 'undefined' && (document.querySelector('meta[name="phloem-relay"]') as HTMLMetaElement | null)?.content) || DEFAULT_SETTINGS.relayUrl, snap: true, grid: false, autosave: true, anthropicKey: '', aiModel: 'claude-opus-5-5' }),
+  settings: sanitizeRelay(loadLS<StudioSettings>(LS_SETTINGS, { ...DEFAULT_SETTINGS, relayUrl: hostedRelay() || DEFAULT_SETTINGS.relayUrl, snap: true, grid: false, autosave: true, anthropicKey: '', aiModel: 'claude-opus-5-5' })),
   toasts: [],
   dirty: false,
   savedAt: null,

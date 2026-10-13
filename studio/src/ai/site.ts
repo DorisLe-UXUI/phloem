@@ -63,7 +63,10 @@ export async function analyzeSite(site: string, onStatus?: (m: string) => void):
   if (!r) throw new Error('Cần relay để đọc website: Cài đặt → Relay URL (npm run relay).');
   let url = site.trim(); if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
   const awake = await wakeRelay(r.url, r.headers, onStatus);
-  if (!awake) throw new Error(`Không gọi được relay ${r.url}. Nếu là relay Render gói free, nó có thể đang khởi động — thử lại sau 1 phút. Nếu là relay máy bạn: npm run relay.`);
+  if (!awake) {
+    const local = /localhost|127\.0\.0\.1/.test(r.url);
+    throw new Error(local ? `Relay ${r.url} không chạy. Mở Cài đặt → Relay URL và đặt https://phloem-relay.onrender.com (relay chung), hoặc chạy relay trên máy: npm run relay.` : `Không gọi được relay ${r.url}. Relay Render gói free có thể đang khởi động — thử lại sau 1 phút.`);
+  }
   onStatus?.('AI đang đọc trang (tối đa ~1 phút với trang nhiều ảnh)…');
   let res: Response;
   try { res = await fetch(`${r.url}/site`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...r.headers }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(90_000) }); }
