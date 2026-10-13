@@ -43,6 +43,9 @@ export function polishDesign(d0: Doc, brand: Brand): Polish {
     if (bg.radius !== wantR) { bg.radius = wantR; changed = true; }
     if (JSON.stringify(bg.shadow ?? null) !== JSON.stringify(wantShadow)) { bg.shadow = wantShadow; changed = true; }
     if (label.fontWeight < 700) { label.fontWeight = 700; changed = true; }
+    // the label must read on its own button (coral on white fails 4.5:1): pick the brand token that reads best
+    const bgHex = resolveColor(bg.fill, brand), lb = resolveColor(label.color, brand);
+    if (bgHex && lb && ratio(lb, bgHex) < 4.5) { const pick = ratio(brand.ink, bgHex) >= ratio(brand.bg, bgHex) ? 'ink' : 'bg'; if (ratio(pick === 'ink' ? brand.ink : brand.bg, bgHex) > ratio(lb, bgHex)) { label.color = { token: pick }; changed = true; } }
     if (changed) btns++;
   });
   if (btns) changes.push(`${btns} nút theo đúng kiểu brand (${T.btnRadius >= 999 ? 'pill' : `bo ${T.btnRadius}px`}${T.glow ? ', phát sáng' : T.shadow ? ', bóng mềm' : ''})`);
@@ -61,8 +64,7 @@ export function polishDesign(d0: Doc, brand: Brand): Polish {
       if (head.fontFamily !== 'heading') { head.fontFamily = 'heading'; ch = true; }
       if (head.fontWeight < headWeight) { head.fontWeight = headWeight; ch = true; }
       if (head.lineHeight > 1.15) { head.lineHeight = 1.08; ch = true; }
-      if (Math.abs(head.letterSpacing - T.track) > 0.05 && head.fontSize >= 26) { head.letterSpacing = T.track; ch = true; }
-      if (brand.shape?.uppercase && head.text.length <= 60 && head.text !== head.text.toUpperCase()) { head.text = head.text.toUpperCase(); ch = true; }
+      if (Math.abs(head.letterSpacing) < 0.05 && Math.abs(T.track) >= 0.3 && head.fontSize >= 30) { head.letterSpacing = T.track; ch = true; } // only untouched tracking; never rewrite the copy's case
       if (g === hero && head.text.length <= 48 && g.h >= 300) { const want = Math.round(Math.min(64, 46 * T.heroScale)); if (head.fontSize < want) { head.fontSize = want; ch = true; heroUp = true; } }
       if (ch) { heads++; retext.add(head.id); }
     }
@@ -78,7 +80,7 @@ export function polishDesign(d0: Doc, brand: Brand): Polish {
         if (t.fontSize > 13) { t.fontSize = 12; ch = true; }
         if (ch) { eyebrows++; retext.add(t.id); }
         // playful / bold brands wear their eyebrow as a pill (the centred eyebrow above the headline, like the templates)
-        if (T.eyebrowPill && /eyebrow|kicker/i.test(t.name) && t.align === 'center' && head && t.y < head.y && !g.children.some((k) => k.name === 'Eyebrow pill') && g.children.includes(t)) {
+        if (T.eyebrowPill && g === hero && /eyebrow|kicker/i.test(t.name) && t.align === 'center' && head && t.y < head.y && !g.children.some((k) => k.name === 'Eyebrow pill') && g.children.includes(t)) {
           const pw = Math.ceil(measureWidth(brand, t)) + 28, ph = 28;
           const dark = darkBand(g), onPrimary = tok(bandColor(bandOf(g))) === 'primary';
           const pill = mkRect({ x: Math.round((W - pw) / 2), y: Math.round(t.y + t.h / 2 - ph / 2), w: pw, h: ph, radius: 999, name: 'Eyebrow pill', fill: onPrimary ? { token: 'bg' } : dark ? { token: 'primary' } : { token: 'primary', alpha: 0.12 } });
@@ -101,7 +103,8 @@ export function polishDesign(d0: Doc, brand: Brand): Polish {
   // 3. the hero: glow pools, floating product, scrim under text on photos, gradient band for bold brands
   if (hero) {
     const band = bandOf(hero);
-    if (band && T.blobs && band.h >= 180 && !hero.children.some((k) => k.name === 'Glow')) {
+    const photoHero = hero.children.some((k) => k.type === 'image' && k.assetId && k.fit === 'cover' && k.w >= W * 0.8);
+    if (band && T.blobs && band.h >= 180 && !photoHero && !hero.children.some((k) => k.name === 'Glow')) {
       const sz = Math.min(380, band.h - 16), light = true;
       const glows = [
         mkRect({ x: W - Math.round(sz * 0.8), y: band.y + 8, w: sz, h: sz, fill: null, gradient: { from: { token: 'accent', alpha: light ? 0.5 : 0.28 }, to: { token: 'accent', alpha: 0 }, angle: 0, radial: true }, name: 'Glow' }),
@@ -170,20 +173,25 @@ export function polishDesign(d0: Doc, brand: Brand): Polish {
   if (imgs) changes.push(`${imgs} ảnh bo góc ${Math.min(20, T.radius)}px`);
   if (cards) changes.push(`${cards} card theo kiểu brand`);
 
-  // 7. contrast: no dark ink on dark bands, no white copy on white
+  // 7. contrast: every text reads against the surface right behind it (innermost covering rect: band, card, pill),
+  //    same bar as the checker (WCAG 4.5:1, 3:1 for ≥ 24px); text on photos is left to its scrim
   let contrast = 0;
   for (const g of blocks) {
-    const band = bandOf(g); if (!band) continue;
-    const dark = darkBand(g);
-    const bandHex = resolveColor(bandColor(band), brand) ?? brand.bg;
+    const surfaces: (RectNode | ImageNode)[] = [];
+    walk(g.children, (k) => { if (k.type === 'image' || (k.type === 'rect' && (k.fill || k.gradient))) surfaces.push(k); });
     for (const t of texts(g)) {
       const hex = resolveColor(t.color, brand); if (!hex) continue;
-      // text sitting on a card / pill / photo anywhere in the block keeps its own context
-      let onCard = false;
-      walk(g.children, (k) => { if (k !== band && (k.type === 'image' || (k.type === 'rect' && (k.fill || k.gradient))) && k.x <= t.x + 2 && k.y <= t.y + 2 && k.x + k.w >= t.x + t.w - 2 && k.y + k.h >= t.y + t.h - 2) onCard = true; });
-      if (onCard) continue;
-      const textDark = isDarkColor(hex);
-      if (dark === textDark && hex.toLowerCase() !== bandHex.toLowerCase() ? Math.abs(lum(hex) - lum(bandHex)) < 0.25 : dark === textDark) { t.color = { token: contrastToken(brand, bandColor(band)) }; contrast++; }
+      // surfaces under most of the text box (a ticker line runs past the band edge), innermost first
+      const area = t.w * t.h; const ov = (k: { x: number; y: number; w: number; h: number }) => Math.max(0, Math.min(k.x + k.w, t.x + t.w) - Math.max(k.x, t.x)) * Math.max(0, Math.min(k.y + k.h, t.y + t.h) - Math.max(k.y, t.y));
+      const covering = surfaces.filter((k) => ov(k) >= area * 0.6).sort((a, b) => a.w * a.h - b.w * b.h);
+      const under = covering[0]; if (!under || under.type === 'image') continue;
+      const uc: Color | null = under.gradient && !under.gradient.radial ? under.gradient.from : under.fill; if (!uc) continue;
+      const underHex = resolveColor(uc, brand); if (!underHex) continue;
+      const need = t.fontSize >= 24 ? 3 : 4.5;
+      if (ratio(hex, underHex) >= need) continue;
+      const pick = ratio(brand.ink, underHex) >= ratio(brand.bg, underHex) ? 'ink' : 'bg';
+      if (ratio(pick === 'ink' ? brand.ink : brand.bg, underHex) <= ratio(hex, underHex)) continue; // nothing better available
+      t.color = { token: pick }; if (t.opacity < 1) t.opacity = 1; contrast++;
     }
   }
   if (contrast) changes.push(`Sửa tương phản ${contrast} đoạn chữ`);
@@ -203,6 +211,7 @@ export function polishDesign(d0: Doc, brand: Brand): Polish {
   return { doc: d, changes };
 }
 
+const ratio = (a: string, b: string) => { const la = lum(a), lb = lum(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
 function lum(hex: string): number {
   const m = /^#?([0-9a-f]{6})/i.exec(hex); if (!m) return 0.5;
   const n = parseInt(m[1], 16); const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });

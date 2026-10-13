@@ -66,7 +66,23 @@ function cellsForRow(regs: Region[], y: number, h: number, W: number): Cell[] {
     if (prev && prev.link === link && prev.linkNodeId === linkNodeId) prev.w += w;
     else cells.push({ x, w, link, linkNodeId });
   }
-  return cells;
+  return absorbGutters(cells);
+}
+
+/** Link-less strips thinner than 20px (card gutters, hairline margins) join the neighbouring cell: one request less each. */
+function absorbGutters(cells: Cell[]): Cell[] {
+  if (cells.length < 2) return cells;
+  const out: Cell[] = [];
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    if (!c.link && c.w < 20) {
+      const prev = out[out.length - 1];
+      if (prev) { prev.w += c.w; continue; }
+      const next = cells[i + 1]; if (next) { next.x = c.x; next.w += c.w; continue; }
+    }
+    out.push({ ...c });
+  }
+  return out;
 }
 
 function sameStructure(a: RawRow, b: RawRow): boolean {

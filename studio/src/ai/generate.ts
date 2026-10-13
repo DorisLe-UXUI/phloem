@@ -29,7 +29,7 @@ export interface GenInput {
 
 export interface Variant { name: string; why: string; palette: string; vibe?: Vibe; headingFont?: string; bodyFont?: string; fields: EmailFields; blocks: BlockSpec[] }
 
-const BLOCK_DOC = `Các block có thể dùng (kind → content):
+export const BLOCK_DOC = `Các block có thể dùng (kind → content):
 - nav: {style:"light"|"dark", brand, links:[{label,url}] (2–4 link)} ("dark" chỉ khi website nền tối và logo là ảnh sáng hoặc chữ)
 - hero: {eyebrow, headline (≤60 ký tự), subhead (1–2 câu), button:{label,url}, image:<imageId|null>, imageAlt}
 - hero-band: kiểu POSTER: chữ trên dải màu thương hiệu, ảnh là card nổi bóng đổ tràn ra khỏi mép dải. Hợp promo, ra mắt, chào mừng.
@@ -90,7 +90,7 @@ const INDUSTRY_DOC = `Trước khi dựng, XÁC ĐỊNH NGÀNH và cá tính th�
 - Du lịch / lifestyle / sự kiện: hero-overlay ảnh toàn khung; split; gallery; countdown cho sự kiện; cta. Giọng gợi cảm xúc.
 Ba phương án phải khác nhau về CẤU TRÚC và CẢM XÚC (ví dụ "Chào mừng" / "Khuyến mãi" / "Kể chuyện", hay "Hero ảnh" / "Dải màu" / "Tối giản"), không chỉ khác màu. Mỗi phương án có một block anchor khác loại.`;
 
-const DESIGN_DOC = `HỆ THỐNG THIẾT KẾ (Phloem vẽ email thành ảnh, nên mọi hiệu ứng đều hiển thị đúng ở mọi hộp thư):
+export const DESIGN_DOC = `HỆ THỐNG THIẾT KẾ (Phloem vẽ email thành ảnh, nên mọi hiệu ứng đều hiển thị đúng ở mọi hộp thư):
 - vibe quyết định bo góc, bóng đổ, pill, hình trang trí, cỡ tiêu đề: ${VIBES.map((v) => `"${v.v}" (${v.hint})`).join('; ')}. Chọn vibe theo ngành: trẻ em/game/F&B → playful; agency/tech/streetwear/sale lớn → bold; làm đẹp/thời trang cao cấp/khách sạn → luxury; báo chí/media/giáo dục → editorial; còn lại → clean.
 - headingFont / bodyFont chọn từ: ${FONTS.filter((f) => f.cat !== 'system').map((f) => `${f.family}${f.vi ? '' : ' (không có tiếng Việt)'}`).join(', ')}. Khi copy tiếng Việt CHỈ dùng font có tiếng Việt. Gợi ý: playful → Baloo 2 / Nunito / Quicksand; bold → Unbounded / Space Grotesk / Anton / Oswald; luxury → Playfair Display / Cormorant Garamond / Fraunces; editorial → Lora / Merriweather / Roboto Slab; clean → Inter / Manrope / Be Vietnam Pro / Plus Jakarta Sans. Heading và body nên khác nhau (display + sans).
 - Hiệu ứng có sẵn và nên dùng: hero-product (sân khấu tối + vầng sáng + sản phẩm tràn khung), hero-band / hero-center (ảnh thành card nổi tràn khỏi dải màu), hero-overlay (ảnh toàn khung + lớp tối dần + chữ trắng), glass-hero, dark-band, stats dark (số khổng lồ), ticker, offer gradient, overlap, nút pill phát sáng (playful/bold), card bo góc có bóng, pill badges, countdown tiles, code box. Kết hợp 3–4 hiệu ứng mỗi email theo công thức bên dưới, không dùng tất cả.
@@ -149,7 +149,7 @@ Trả lời CHỈ bằng JSON hợp lệ, không giải thích thêm:
 {"variants":[{"name":"…","why":"…","palette":"…","vibe":"playful|bold|luxury|editorial|clean","headingFont":"…","bodyFont":"…","fields":{"campaignName":"…","subject":"…","preheader":"…"},"blocks":[{"kind":"nav","content":{…}},…]}]}`;
 }
 
-async function thumbOf(assetId: string): Promise<AiImage | null> {
+export async function thumbOf(assetId: string): Promise<AiImage | null> {
   const blob = await assets.blob(assetId);
   const meta = assets.get(assetId);
   if (!blob || !meta) return null;

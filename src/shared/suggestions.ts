@@ -33,11 +33,13 @@ export function contrastRatio(a: string, b: string): number | null {
  * and paints something. If that node is an image, the background is unknown (photo) -> null, no contrast check.
  */
 function backgroundFor(root: NNode, target: NNode): string | null {
+  // the innermost surface under most of the text box (a ticker line runs past its band; a label may hang over a card edge)
   let best: NNode | null = null;
+  const area = Math.max(1, target.w * target.h);
   for (const { node } of flatten(root)) {
     if (node === target || node.isText || (!node.fill && !node.hasImage)) continue;
-    const inside = node.x <= target.x && node.y <= target.y && node.x + node.w >= target.x + target.w && node.y + node.h >= target.y + target.h;
-    if (!inside) continue;
+    const ov = Math.max(0, Math.min(node.x + node.w, target.x + target.w) - Math.max(node.x, target.x)) * Math.max(0, Math.min(node.y + node.h, target.y + target.h) - Math.max(node.y, target.y));
+    if (ov < area * 0.6) continue;
     if (!best || node.w * node.h < best.w * best.h) best = node;
   }
   if (best) return best.hasImage ? null : best.fill;
@@ -78,7 +80,7 @@ export function suggest(inp: SuggestInput): { suggestions: Suggestion[]; score: 
   } else out.push({ id: 'cta-fold', level: 'good', title: 'Có CTA trên fold', detail: 'Người đọc thấy đích đến ngay màn đầu.' });
 
   // 4. too many distinct links
-  const distinct = new Set(links.map((n) => n.link));
+  const distinct = new Set(links.filter((n) => n.y > 100 && n.y + n.h < plan.height - 260).map((n) => n.link)); // body only: menu and footer links are expected
   if (distinct.size > 8) {
     penalty += 5;
     out.push({ id: 'cta-many', level: 'tip', title: `${distinct.size} link khác nhau`, detail: 'Nhiều đích làm loãng hành động chính. Giữ 1 CTA chính, các link phụ nhỏ hơn.' });
@@ -88,7 +90,9 @@ export function suggest(inp: SuggestInput): { suggestions: Suggestion[]; score: 
   // Image emails shrink to 62.5% on a 375px phone. Body copy under ~9px effective is hard to read; footers are exempt.
   const scale = plan.width > 0 ? 375 / plan.width : 1;
   const footerY = plan.height - 220;
-  const small = texts.filter((t) => t.fontSize != null && t.fontSize * scale < 9 && t.y < footerY && (t.text || '').trim().length > 12);
+  // Labels set small on purpose (eyebrows, stat labels, badges, tickers: uppercase, tracked, short) are design, not copy.
+  const isLabel = (t: NNode) => /eyebrow|kicker|label|ticker|badge|pill/i.test(t.name || '') || ((t.text || '').trim().length <= 40 && (t.text || '') === (t.text || '').toUpperCase());
+  const small = texts.filter((t) => t.fontSize != null && t.fontSize * scale < 9 && t.y < footerY && (t.text || '').trim().length > 12 && !isLabel(t));
   if (small.length) {
     penalty += Math.min(12, small.length * 3);
     const minPx = Math.ceil(9 / scale);
@@ -146,7 +150,7 @@ export function suggest(inp: SuggestInput): { suggestions: Suggestion[]; score: 
   else out.push({ id: 'mobile', level: 'good', title: 'Có frame mobile', detail: 'Điện thoại sẽ nhận bản riêng.' });
 
   // 13. slices sanity
-  if (plan.slices.length > 30) { penalty += 5; out.push({ id: 'slices', level: 'tip', title: `${plan.slices.length} lát ảnh`, detail: 'Mỗi lát là một request. Lưới sản phẩm dày là bình thường, nhưng link lệch hàng nhau sinh thêm lát — căn các ô theo cùng một hàng.' }); }
+  if (plan.slices.length > 80) { penalty += 5; out.push({ id: 'slices', level: 'tip', title: `${plan.slices.length} lát ảnh`, detail: 'Mỗi lát là một request. Lưới sản phẩm dày là bình thường, nhưng link lệch hàng nhau sinh thêm lát — căn các ô theo cùng một hàng.' }); }
 
   const score = Math.max(0, Math.min(100, 100 - penalty));
   const order = { fix: 0, tip: 1, good: 2 } as const;

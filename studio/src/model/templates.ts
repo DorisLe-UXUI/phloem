@@ -1041,14 +1041,14 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       break;
     }
   }
-  return group(BLOCKS.find((b) => b.kind === kind)?.name ?? kind, kids, { block: kind });
+  return group(BLOCKS.find((b) => b.kind === kind)?.name ?? kind, kids, { block: kind, content: c as Record<string, unknown> });
 }
 
 /** A block spec: kind + content. Templates and the AI composer both produce lists of these. */
 export interface BlockSpec { kind: BlockKind; content?: BlockContent }
 
-const TINTABLE = new Set<BlockKind>(['products-2', 'products-3', 'feature-row', 'checklist', 'social', 'stats', 'steps', 'articles', 'quote', 'icon-row', 'badges', 'bento', 'categories', 'gallery', 'collage', 'spotlight', 'stat-tiles', 'countdown', 'code', 'text', 'reviews', 'offer', 'overlap', 'menu', 'statement']);
-const DARK = new Set<BlockKind>(['dark-band', 'hero-product', 'ticker', 'hero-card', 'hero-band']);
+export const TINTABLE = new Set<BlockKind>(['products-2', 'products-3', 'feature-row', 'checklist', 'social', 'stats', 'steps', 'articles', 'quote', 'icon-row', 'badges', 'bento', 'categories', 'gallery', 'collage', 'spotlight', 'stat-tiles', 'countdown', 'code', 'text', 'reviews', 'offer', 'overlap', 'menu', 'statement']);
+export const DARK = new Set<BlockKind>(['dark-band', 'hero-product', 'ticker', 'hero-card', 'hero-band']);
 export function buildDoc(specs: BlockSpec[], brand: Brand): Doc {
   const nodes: Node[] = [];
   let y = 0;

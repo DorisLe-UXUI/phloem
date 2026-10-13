@@ -126,6 +126,8 @@ export interface TextEffect { kind: 'extrude' | 'neon' | 'outline' | 'shadow'; c
 export interface GroupNode extends BaseNode {
   type: 'group';
   children: Node[];
+  /** The block content this group was built from (makeBlock); lets the AI re-plan the email block by block. */
+  content?: Record<string, unknown> | null;
 }
 
 export type Node = RectNode | TextNode | ImageNode | GroupNode;

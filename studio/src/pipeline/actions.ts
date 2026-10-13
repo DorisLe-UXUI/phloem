@@ -18,6 +18,8 @@ import { cropRegion, removeBackground, removeBackgroundAI, splitSprites } from '
 import { imageDrawRect } from '../render/renderer';
 import { get, history, set, toast, type Scrap, type State, type Variant } from '../store';
 import { polishDesign } from './polish';
+import { redesignDoc } from '../ai/redesign';
+import { aiTransport } from '../ai/client';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import * as auth from '../auth/core';
 import { cloud } from '../storage/sync';
@@ -450,12 +452,39 @@ function addUnsubscribe(d: Doc, b: Brand, p: Project, changes: string[]): Doc | 
   return ops.insertNodes(d, [g]);
 }
 
-/** "AI tự chỉnh": fix what the Email tab flags AND make the design read as designed (polishDesign), in one undo step;
- *  subject/preheader are written by the AI when missing. */
+/** Checker score for a doc as it would be exported. */
+function scoreOf(d: Doc, b: Brand, fields: Project['fields'], hasMobile: boolean): { score: number; suggestions: Suggestion[] } {
+  const root = docToNNode(d, b);
+  const plan = planSlices(root, { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: ops.animBlocks(d.nodes) });
+  const sg = suggest({ root, plan, fields: { ...fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile });
+  return { score: sg.score, suggestions: sg.suggestions };
+}
+
+/** "AI tự chỉnh": the current email (say 68/100) comes back as a 100-point one. A creative director AI looks at the render,
+ *  keeps what was composed by hand and rebuilds the rest on the design system (redesignDoc); then the deterministic pass
+ *  fixes everything the checker flags (polishDesign + links + alt + unsubscribe), all in ONE undo step. Without AI (no
+ *  relay / key) only the deterministic pass runs. Subject/preheader are written by the AI when missing. */
 export async function autoFix(): Promise<string[]> {
   const changes: string[] = [];
-  const p = get().project!; const pid = p.id; const b = brand(); const home = b.links?.website || b.links?.nav?.[0]?.url || '';
+  const p = get().project!; const pid = p.id; let b = brand(); const home = b.links?.website || b.links?.nav?.[0]?.url || '';
   let d = JSON.parse(JSON.stringify(doc())) as Doc;
+  const hasMobile = !!p.mobile;
+  const before = scoreOf(d, b, p.fields, hasMobile);
+  let fieldPatch: Partial<Project['fields']> = {};
+  // 0. the creative director: re-plan the whole email (desktop only, needs AI)
+  const transport = await aiTransport().catch(() => null);
+  if (transport && d.width === 600 && get().variant === 'desktop') {
+    set({ busy: { label: 'AI đang xem lại thiết kế…', done: 0, total: 0 } });
+    try {
+      const r = await redesignDoc(d, b, p.fields, before.score, before.suggestions, (m) => set({ busy: { label: m, done: 0, total: 0 } }));
+      if (get().project?.id !== pid) return changes; // the user moved on
+      d = r.doc; fieldPatch = r.fields;
+      if (r.vibe && r.vibe !== b.vibe) { b = { ...b, vibe: r.vibe }; changes.push(`Vibe ${r.vibe}`); }
+      changes.push(`AI dựng lại bố cục (${r.rebuilt} block mới, giữ ${r.kept} block bạn ghép)${r.note ? `: ${r.note}` : ''}`);
+      if (r.problems.length) changes.push(`AI thấy: ${r.problems.slice(0, 3).join(' · ')}`);
+    } catch (e) { changes.push(`AI không làm lại được (${(e as Error).message}); chỉ chỉnh theo hệ thiết kế`); }
+    finally { set({ busy: null }); }
+  } else if (!transport) changes.push('Không có AI (đăng nhập relay hoặc nhập key) → chỉ chỉnh theo hệ thiết kế');
   const scale = 375 / d.width;
   // 1. text that would shrink under 9px on a phone → 15px (footer excluded)
   const footerY = d.height - 220; let smalls = 0;
@@ -484,9 +513,25 @@ export async function autoFix(): Promise<string[]> {
   const pol = polishDesign(d, b); d = pol.doc; changes.push(...pol.changes);
   // 6. unsubscribe / preferences
   const withUnsub = addUnsubscribe(d, b, p, changes); if (withUnsub) d = withUnsub;
-  if (changes.length) commit(ops.mapNodes(d, (n) => (n.type === 'group' ? ops.syncGroup(n) : n)));
-  // 7. subject / preheader by AI
-  if (!p.fields.subject.trim() || !p.fields.preheader.trim()) {
+  // 7. too long after an AI rebuild: drop the least essential blocks from the bottom up until the scroll is sane
+  if (transport && d.height > 2500) {
+    const LOW = ['spacer', 'divider', 'badges', 'icon-row', 'social', 'ticker', 'checklist', 'quote', 'stats', 'stat-tiles', 'countdown', 'code', 'text', 'gallery', 'collage', 'articles', 'reviews', 'steps', 'feature-row', 'split', 'overlap', 'categories', 'bento', 'menu', 'zigzag'];
+    let dropped = 0;
+    while (d.height > 2500) {
+      const cands = d.nodes.filter((n) => n.type === 'group' && n.block && LOW.includes(n.block)).sort((a, c) => LOW.indexOf((a as GroupNode).block!) - LOW.indexOf((c as GroupNode).block!) || c.y - a.y);
+      if (!cands.length) break;
+      d = ops.reflowBlocks(ops.removeNodes(d, [cands[0].id])); d = { ...d, height: Math.max(100, ops.contentHeight(d)) }; dropped++;
+    }
+    if (dropped) changes.push(`Bỏ ${dropped} block phụ để email ≤ 2500px`);
+  }
+  if (get().project?.id !== pid) return changes;
+  if (changes.length) {
+    commit(ops.mapNodes(d, (n) => (n.type === 'group' ? ops.syncGroup(n) : n)));
+    if (b !== brand() || Object.keys(fieldPatch).length) patchProject({ brand: b, fields: { ...get().project!.fields, ...fieldPatch } });
+  }
+  // 8. subject / preheader by AI when still missing
+  const cur0 = get().project!;
+  if (transport && (!cur0.fields.subject.trim() || !cur0.fields.preheader.trim())) {
     try {
       const { askClaude, extractJson } = await import('../ai/client');
       const copy: string[] = []; walkAll(d.nodes, (n) => { if (n.type === 'text' && n.text && n.text.length > 2) copy.push(n.text); });
@@ -494,9 +539,14 @@ export async function autoFix(): Promise<string[]> {
       const j = extractJson<{ subject?: string; preheader?: string }>(txt);
       const cur = get().project;
       if (cur && cur.id === pid) { patchProject({ fields: { ...cur.fields, subject: cur.fields.subject.trim() || String(j.subject || ''), preheader: cur.fields.preheader.trim() || String(j.preheader || '') } }); changes.push('AI viết subject / preheader'); }
-    } catch { changes.push('Subject/preheader: AI chưa sẵn sàng (đăng nhập relay hoặc nhập key)'); }
+    } catch { changes.push('Subject/preheader: AI chưa sẵn sàng'); }
   }
-  if (get().project?.id === pid) { remeasureAll(); toast(changes.length ? `AI đã chỉnh: ${changes.join(' · ')}` : 'Không còn gì để chỉnh.', 'ok'); }
+  if (get().project?.id === pid) {
+    remeasureAll();
+    const cur = get().project!; const after = scoreOf(doc(), cur.brand, cur.fields, !!cur.mobile);
+    changes.unshift(`Điểm ${before.score} → ${after.score}`);
+    toast(changes.length > 1 ? `AI đã chỉnh · điểm ${before.score} → ${after.score}` : 'Không còn gì để chỉnh.', 'ok');
+  }
   return changes;
 }
 

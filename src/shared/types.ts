@@ -153,7 +153,7 @@ export interface SlicerOptions {
 export const DEFAULT_SLICER_OPTIONS: SlicerOptions = {
   maxSliceHeight: 1500,
   mergeRows: true,
-  minRowHeight: 4,
+  minRowHeight: 12,
 };
 
 export type ImageFormat = 'PNG' | 'JPG' | 'GIF';
