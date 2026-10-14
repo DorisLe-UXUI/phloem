@@ -43,6 +43,11 @@ export async function downloadEml(p: Project) {
   finally { set({ busy: null }); }
 }
 
+const SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+/** Set after a connect where the user left "send email on your behalf" unticked: the next connect shows the consent
+ *  screen again instead of silently reusing the old (send-less) grant. */
+let needConsent = false;
+
 /** Google popup asking for "send email on your behalf" (+ who you are, to fill From). Token lives in memory only. */
 export async function connectGmail(): Promise<GmailAccount> {
   const info = await relayInfo();
@@ -50,14 +55,18 @@ export async function connectGmail(): Promise<GmailAccount> {
   if (!clientId) throw new Error('Chưa cấu hình Google cho relay (GOOGLE_CLIENT_ID).');
   await loadGis();
   const g = (window as unknown as { google?: any }).google;
-  const token: { access_token: string; expires_in: number } = await new Promise((resolve, reject) => {
+  const token: { access_token: string; expires_in: number; scope?: string } = await new Promise((resolve, reject) => {
     const client = g.accounts.oauth2.initTokenClient({
-      client_id: clientId, scope: 'openid email profile https://www.googleapis.com/auth/gmail.send', prompt: '',
-      callback: (r: { access_token?: string; expires_in?: number; error?: string; error_description?: string }) => (r.access_token ? resolve(r as { access_token: string; expires_in: number }) : reject(new Error(r.error_description || r.error || 'Google từ chối'))),
+      client_id: clientId, scope: `openid email profile ${SEND_SCOPE}`, prompt: needConsent ? 'consent' : '', include_granted_scopes: true,
+      callback: (r: { access_token?: string; expires_in?: number; scope?: string; error?: string; error_description?: string }) => (r.access_token ? resolve(r as { access_token: string; expires_in: number; scope?: string }) : reject(new Error(r.error_description || r.error || 'Google từ chối'))),
       error_callback: (e: { type?: string; message?: string }) => reject(new Error(e?.type === 'popup_closed' ? 'Đã đóng cửa sổ Google.' : e?.message || 'Không mở được cửa sổ Google (trình duyệt chặn popup?)')),
     });
     client.requestAccessToken();
   });
+  // Google's consent screen lists "Send email on your behalf" as a checkbox that starts unticked: without it every send fails
+  const granted = (() => { try { return g.accounts.oauth2.hasGrantedAllScopes(token, SEND_SCOPE); } catch { return (token.scope || '').split(/\s+/).includes(SEND_SCOPE); } })();
+  if (!granted) { needConsent = true; throw new Error('Bạn chưa tích ô "Gửi email thay mặt bạn" (Send email on your behalf) trong cửa sổ Google. Bấm Kết nối Gmail lại và tích ô đó.'); }
+  needConsent = false;
   const me = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${token.access_token}` } }).then((r) => r.json()).catch(() => ({}));
   if (!me.email) throw new Error('Google không trả về địa chỉ email.');
   gmail = { email: String(me.email), name: String(me.name || ''), token: token.access_token, expiresAt: Date.now() + (token.expires_in || 3600) * 1000 };
@@ -66,13 +75,32 @@ export async function connectGmail(): Promise<GmailAccount> {
 }
 export function disconnectGmail() { const t = gmail?.token; gmail = null; set({}); if (t) { try { (window as unknown as { google?: any }).google?.accounts?.oauth2?.revoke(t, () => {}); } catch { /* ignore */ } } }
 
+/** base64url of the MIME bytes (the Gmail JSON API's `raw`). */
+function b64url(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 async function sendOne(acc: GmailAccount, raw: string) {
-  const r = await fetch('https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media', { method: 'POST', headers: { Authorization: `Bearer ${acc.token}`, 'Content-Type': 'message/rfc822' }, body: raw });
+  // The JSON endpoint answers errors with CORS headers, so the browser shows Gmail's real reason. The media-upload endpoint
+  // drops them on errors and every failure surfaced as a bare "Failed to fetch"; it is only used past the JSON size limit.
+  const big = raw.length > 4_500_000;
+  let r: Response;
+  try {
+    r = big
+      ? await fetch('https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media', { method: 'POST', headers: { Authorization: `Bearer ${acc.token}`, 'Content-Type': 'message/rfc822' }, body: raw })
+      : await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', headers: { Authorization: `Bearer ${acc.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: b64url(raw) }) });
+  } catch {
+    throw new Error(location.hostname.endsWith('claude.ai') || location.protocol === 'blob:' ? 'Bản trong claude.ai không gọi được Gmail. Mở bản web dorisle-uxui.github.io/phloem/studio để gửi.' : 'Không gọi được Gmail (mất mạng, hoặc tiện ích chặn quảng cáo/VPN chặn googleapis.com). Thử lại.');
+  }
   if (r.ok) return;
   const j = await r.json().catch(() => ({}));
   const msg = j?.error?.message || `HTTP ${r.status}`;
   if (r.status === 401) { gmail = null; throw new Error('Phiên Gmail hết hạn. Bấm Kết nối Gmail lại.'); }
-  if (r.status === 403 && /insufficient|scope/i.test(msg)) throw new Error('Google chưa cho quyền gửi email. Kết nối lại và tick "Gửi email thay bạn".');
+  if (r.status === 403 && /insufficient|scope/i.test(msg)) { gmail = null; needConsent = true; throw new Error('Google chưa cho quyền gửi email. Bấm Kết nối Gmail lại và tích ô "Gửi email thay mặt bạn".'); }
+  if (r.status === 403 && /has not been used|disabled/i.test(msg)) throw new Error('Gmail API chưa bật cho dự án Google Cloud của relay.');
   if (r.status === 429 || /limit|quota/i.test(msg)) throw new Error(`Gmail báo vượt giới hạn gửi (${msg}). Gmail cá nhân ~500 thư/ngày, Workspace ~2.000.`);
   throw new Error(`Gmail: ${msg}`);
 }

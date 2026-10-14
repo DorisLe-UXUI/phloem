@@ -43,7 +43,11 @@ export const VIBES: { v: Vibe; label: string; hint: string }[] = [
   { v: 'editorial', label: 'Editorial', hint: 'kẻ mảnh, bo nhỏ, báo chí / media' },
 ];
 /** Soft drop shadow under a rect or image. */
-export interface Shadow { blur: number; y: number; color: string; opacity: number }
+export interface Shadow { blur: number; y: number; color: string; opacity: number; x?: number }
+/** Corner radii [top-left, top-right, bottom-right, bottom-left]; wins over `radius` when set (arches, tabs, leaf shapes). */
+export type Radii = [number, number, number, number];
+/** Multi-stop gradient: `at` 0..1 along the gradient line (linear) or from the centre (radial). */
+export interface GradStop { color: Color; at: number }
 
 export interface BaseNode {
   id: string;
@@ -69,11 +73,14 @@ export interface RectNode extends BaseNode {
   fill: Color | null;
   /** Linear gradient on top of (or instead of) the flat fill. */
   /** Linear by default; `radial` fades from the centre (`from`) to the edge (`to`): soft glows, spotlights. */
-  gradient: { from: Color; to: Color; angle: number; radial?: boolean } | null;
+  gradient: { from: Color; to: Color; angle: number; radial?: boolean; stops?: GradStop[] | null; cx?: number; cy?: number; r?: number } | null;
   stroke: { color: Color; width: number } | null;
   radius: number;
+  radii?: Radii | null;
   shadow?: Shadow | null;
   rotate?: number;
+  /** Gaussian blur in px: soft glows and orbs behind content. */
+  blur?: number;
 }
 
 export interface TextNode extends BaseNode {
@@ -100,6 +107,9 @@ export interface ImageNode extends BaseNode {
   assetId: string | null;
   fit: 'cover' | 'contain' | 'fill';
   radius: number;
+  radii?: Radii | null;
+  /** Source of a vector graphic (icon, sticker, shape) so it can be recoloured and re-rasterised crisply. */
+  vector?: { svg: string; color?: string | null; kind?: 'icon' | 'sticker' | 'shape' | 'graphic' } | null;
   /** Background behind contain-fit / placeholder. */
   fill: Color | null;
   /** Colour overlay (e.g. darken photo behind text). `gradient` fades from transparent at the top to the colour at the bottom. */
@@ -119,7 +129,12 @@ export interface ImageNode extends BaseNode {
   blur?: number;
 }
 /** Layer motion. delay/dur in seconds. 'marquee' scrolls text forever; 'type' reveals text letter by letter. */
-export interface Anim { kind: 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'wipe' | 'marquee' | 'type'; delay?: number; dur?: number }
+export interface Anim { kind: AnimKind; delay?: number; dur?: number }
+export type AnimKind = 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'wipe' | 'marquee' | 'type' | 'pulse' | 'float' | 'spin' | 'shake' | 'blink';
+/** Motions that repeat forever (stickers, badges, CTA). Every period divides LOOP_CYCLE so GIFs loop seamlessly. */
+export const LOOP_KINDS = new Set<AnimKind>(['marquee', 'pulse', 'float', 'spin', 'shake', 'blink']);
+export const LOOP_CYCLE = 2.4;
+export function loopPeriod(a: Anim): number { const want = a.dur ?? (a.kind === 'float' || a.kind === 'spin' ? 2.4 : 1.2); return [0.6, 0.8, 1.2, 2.4].reduce((b, p) => (Math.abs(p - want) < Math.abs(b - want) ? p : b), 1.2); }
 /** 3D-ish text treatments drawn by the renderer. */
 export interface TextEffect { kind: 'extrude' | 'neon' | 'outline' | 'shadow'; color?: Color; depth?: number; angle?: number }
 
@@ -128,6 +143,8 @@ export interface GroupNode extends BaseNode {
   children: Node[];
   /** The block content this group was built from (makeBlock); lets the AI re-plan the email block by block. */
   content?: Record<string, unknown> | null;
+  /** 'html' = a section of a free-form design (AI designer / HTML import): the block passes leave it as composed. */
+  src?: 'html' | null;
 }
 
 export type Node = RectNode | TextNode | ImageNode | GroupNode;
@@ -158,6 +175,9 @@ export interface Project {
   mobile: Doc | null;
   /** profileId -> draft record (see shared types) */
   drafts: Record<string, unknown>;
+  /** Free-form AI design source: the HTML the layers were converted from, and a hash of the converted desktop doc
+   *  (unchanged doc → "AI tự chỉnh" can revise the HTML and convert again without losing hand edits). */
+  design?: { html: string; hash: string; name?: string; at: string } | null;
 }
 
 export interface Asset {

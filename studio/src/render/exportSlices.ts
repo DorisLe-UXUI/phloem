@@ -2,6 +2,7 @@
 import type { ExportedSlice, SlicePlan } from '../../../src/shared/types';
 import { fnv1a } from '../../../src/shared/hash';
 import type { Brand, Doc, Node } from '../model/types';
+import { LOOP_CYCLE, LOOP_KINDS } from '../model/types';
 import { bounds, flat } from '../model/ops';
 import { renderDoc, renderToCanvas } from './renderer';
 import { assets } from '../storage/assets';
@@ -23,10 +24,10 @@ export async function prepareDoc(doc: Doc, brand: Brand): Promise<void> {
 function animSpan(nodes: Node[], r: { x: number; y: number; w: number; h: number }): { start: number; end: number; loop: boolean } | null {
   let start = Infinity, end = 0, loop = false, any = false;
   const hits = (b: { x: number; y: number; w: number; h: number }) => b.x < r.x + r.w && r.x < b.x + b.w && b.y < r.y + r.h && r.y < b.y + b.h;
-  const walk = (list: Node[]) => { for (const n of list) { if (!n.visible) continue; if (n.anim && hits(bounds(n))) { any = true; if (n.anim.kind === 'marquee') loop = true; else { if (n.anim.kind === 'type') loop = true; start = Math.min(start, n.anim.delay ?? 0); end = Math.max(end, (n.anim.delay ?? 0) + (n.anim.dur ?? 0.8)); } } if (n.type === 'group') walk(n.children); } };
+  const walk = (list: Node[]) => { for (const n of list) { if (!n.visible) continue; if (n.anim && hits(bounds(n))) { any = true; if (LOOP_KINDS.has(n.anim.kind)) loop = true; else { if (n.anim.kind === 'type') loop = true; start = Math.min(start, n.anim.delay ?? 0); end = Math.max(end, (n.anim.delay ?? 0) + (n.anim.dur ?? 0.8)); } } if (n.type === 'group') walk(n.children); } };
   walk(nodes);
   if (!any) return null;
-  if (!Number.isFinite(start)) { start = 0; end = 4; } // marquee only
+  if (!Number.isFinite(start)) { start = 0; end = LOOP_CYCLE; } // loops only: exactly one seamless cycle
   return { start, end: Math.max(end, start + 0.3), loop };
 }
 

@@ -1,6 +1,6 @@
 // Canvas renderer: one code path for the editor artboard, project thumbnails and slice export.
-import type { Anim, Brand, Color, Doc, ImageNode, Node, RectNode, TextNode } from '../model/types';
-import { resolveColor } from '../model/types';
+import type { Anim, Brand, Color, Doc, ImageNode, Node, Radii, RectNode, TextNode } from '../model/types';
+import { LOOP_CYCLE, LOOP_KINDS, loopPeriod, resolveColor } from '../model/types';
 import { layoutText } from './textLayout';
 
 export interface ImageSource { image(id: string): HTMLImageElement | ImageBitmap | undefined }
@@ -27,10 +27,11 @@ export function animProgress(a: Anim | null | undefined, t: number | undefined):
 }
 /** Total length of one animation cycle for a doc (seconds), plus a hold on the final frame. */
 export function animCycle(nodes: Node[]): number {
-  let end = 0, marquee = false;
-  const walk = (list: Node[]) => { for (const n of list) { if (n.anim) { if (n.anim.kind === 'marquee') marquee = true; else end = Math.max(end, (n.anim.delay ?? 0) + (n.anim.dur ?? 0.8)); } if (n.type === 'group') walk(n.children); } };
+  let end = 0, loop = false;
+  const walk = (list: Node[]) => { for (const n of list) { if (n.anim) { if (LOOP_KINDS.has(n.anim.kind)) loop = true; else end = Math.max(end, (n.anim.delay ?? 0) + (n.anim.dur ?? 0.8)); } if (n.type === 'group') walk(n.children); } };
   walk(nodes);
-  return end > 0 ? end + 1.4 : marquee ? 4 : 0;
+  // loops alone: one seamless cycle; with entrances: play them, hold, and keep a whole number of loop cycles
+  return end > 0 ? (loop ? Math.ceil((end + 1.4) / LOOP_CYCLE) * LOOP_CYCLE : end + 1.4) : loop ? LOOP_CYCLE * 2 : 0;
 }
 export function hasAnim(nodes: Node[]): boolean { return nodes.some((n) => !!n.anim || (n.type === 'group' && hasAnim(n.children))); }
 
@@ -46,13 +47,31 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
   ctx.closePath();
 }
 
+/** Rounded rectangle with one radius per corner (tl, tr, br, bl). */
+function rr4(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: Radii) {
+  const m = Math.min(w / 2, h / 2);
+  const [a, b, c, d] = r.map((v) => Math.max(0, Math.min(v, m)));
+  ctx.beginPath();
+  ctx.moveTo(x + a, y);
+  ctx.lineTo(x + w - b, y); if (b) ctx.arcTo(x + w, y, x + w, y + b, b); else ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h - c); if (c) ctx.arcTo(x + w, y + h, x + w - c, y + h, c); else ctx.lineTo(x + w, y + h);
+  ctx.lineTo(x + d, y + h); if (d) ctx.arcTo(x, y + h, x, y + h - d, d); else ctx.lineTo(x, y + h);
+  ctx.lineTo(x, y + a); if (a) ctx.arcTo(x, y, x + a, y, a); else ctx.lineTo(x, y);
+  ctx.closePath();
+}
+/** The node's outline path at scale s (single radius or per-corner radii). */
+function shapePath(ctx: CanvasRenderingContext2D, n: { radius: number; radii?: Radii | null }, x: number, y: number, w: number, h: number, s: number) {
+  if (n.radii && n.radii.some((v) => v > 0)) rr4(ctx, x, y, w, h, n.radii.map((v) => v * s) as Radii);
+  else rr(ctx, x, y, w, h, n.radius * s);
+}
+
 function col(c: Color | null | undefined, brand: Brand): string | null { return resolveColor(c, brand); }
 
-function withShadow(ctx: CanvasRenderingContext2D, sh: { blur: number; y: number; color: string; opacity: number } | null | undefined, s: number, draw: () => void) {
+function withShadow(ctx: CanvasRenderingContext2D, sh: { blur: number; y: number; color: string; opacity: number; x?: number } | null | undefined, s: number, draw: () => void) {
   if (!sh || sh.opacity <= 0) { draw(); return; }
   ctx.save();
   const [r, g, b] = hexRgb(sh.color);
-  ctx.shadowColor = `rgba(${r},${g},${b},${Math.min(1, sh.opacity)})`; ctx.shadowBlur = sh.blur * s; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = sh.y * s;
+  ctx.shadowColor = `rgba(${r},${g},${b},${Math.min(1, sh.opacity)})`; ctx.shadowBlur = sh.blur * s; ctx.shadowOffsetX = (sh.x ?? 0) * s; ctx.shadowOffsetY = sh.y * s;
   draw();
   ctx.restore();
 }
@@ -65,29 +84,51 @@ function rotated(ctx: CanvasRenderingContext2D, deg: number | undefined, cx: num
 function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: number) {
   const x = n.x * s, y = n.y * s, w = n.w * s, h = n.h * s;
   if (n.rotate) { rotated(ctx, n.rotate, x + w / 2, y + h / 2, () => drawRect(ctx, { ...n, rotate: 0 }, brand, s)); return; }
+  if (n.blur && n.blur > 0) {
+    ctx.save();
+    try { ctx.filter = `blur(${n.blur * s}px)`; } catch { /* unsupported: drawn sharp */ }
+    drawRect(ctx, { ...n, blur: 0 }, brand, s);
+    ctx.restore(); return;
+  }
+  const path = () => shapePath(ctx, n, x, y, w, h, s);
   const fill = col(n.fill, brand);
-  if (fill) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = fill; ctx.fill(); });
-  else if (n.shadow && n.gradient) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.gradient!.from, brand) || '#000'; ctx.fill(); });
-  if (n.gradient) {
-    const cx = x + w / 2, cy = y + h / 2;
+  const g0 = n.gradient;
+  const firstStop = g0 ? (g0.stops && g0.stops.length >= 2 ? g0.stops[0].color : g0.from) : null;
+  if (fill) withShadow(ctx, n.shadow, s, () => { path(); ctx.fillStyle = fill; ctx.fill(); });
+  else if (n.shadow && g0) withShadow(ctx, n.shadow, s, () => { path(); ctx.fillStyle = col(firstStop, brand) || '#000'; ctx.fill(); });
+  if (g0) {
+    const stops = g0.stops && g0.stops.length >= 2 ? g0.stops : [{ color: g0.from, at: 0 }, { color: g0.to, at: 1 }];
     let g: CanvasGradient;
-    if (n.gradient.radial) {
-      g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) / 2);
-      const from = n.gradient.from;
-      const fromCss = col(from, brand) || 'rgba(0,0,0,0)';
-      const mid = typeof from === 'object' ? (col({ token: from.token, alpha: (from.alpha ?? 1) * 0.42 }, brand) || fromCss) : fadeCss(fromCss, 0.42);
-      g.addColorStop(0, fromCss); g.addColorStop(0.5, mid); g.addColorStop(1, col(n.gradient.to, brand) || 'rgba(0,0,0,0)');
+    if (g0.radial) {
+      const cx = x + w * (g0.cx ?? 0.5), cy = y + h * (g0.cy ?? 0.5);
+      const far = Math.max(Math.hypot(cx - x, cy - y), Math.hypot(x + w - cx, cy - y), Math.hypot(cx - x, y + h - cy), Math.hypot(x + w - cx, y + h - cy));
+      const rad = g0.r != null ? Math.max(1, g0.r * Math.max(w, h)) : g0.stops ? far : Math.max(w, h) / 2;
+      g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      if (g0.stops && g0.stops.length >= 2) for (const st of stops) g.addColorStop(Math.max(0, Math.min(1, st.at)), col(st.color, brand) || 'rgba(0,0,0,0)');
+      else {
+        // legacy two-colour glow: a mid stop at 42% keeps the falloff soft instead of plateauing
+        const from = g0.from;
+        const fromCss = col(from, brand) || 'rgba(0,0,0,0)';
+        const mid = typeof from === 'object' ? (col({ token: from.token, alpha: (from.alpha ?? 1) * 0.42 }, brand) || fromCss) : fadeCss(fromCss, 0.42);
+        g.addColorStop(0, fromCss); g.addColorStop(0.5, mid); g.addColorStop(1, col(g0.to, brand) || 'rgba(0,0,0,0)');
+      }
     } else {
-      const a = ((n.gradient.angle || 0) * Math.PI) / 180;
+      const cx = x + w / 2, cy = y + h / 2;
+      const a = ((g0.angle || 0) * Math.PI) / 180;
       const len = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
       g = ctx.createLinearGradient(cx - (Math.cos(a) * len) / 2, cy - (Math.sin(a) * len) / 2, cx + (Math.cos(a) * len) / 2, cy + (Math.sin(a) * len) / 2);
-      g.addColorStop(0, col(n.gradient.from, brand) || '#000'); g.addColorStop(1, col(n.gradient.to, brand) || '#000');
+      for (const st of stops) g.addColorStop(Math.max(0, Math.min(1, st.at)), col(st.color, brand) || '#000');
     }
-    rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = g; ctx.fill();
+    path(); ctx.fillStyle = g; ctx.fill();
   }
   if (n.stroke && n.stroke.width > 0) {
     const sc = col(n.stroke.color, brand);
-    if (sc) { rr(ctx, x + (n.stroke.width * s) / 2, y + (n.stroke.width * s) / 2, w - n.stroke.width * s, h - n.stroke.width * s, Math.max(0, n.radius * s - (n.stroke.width * s) / 2)); ctx.strokeStyle = sc; ctx.lineWidth = n.stroke.width * s; ctx.stroke(); }
+    if (sc) {
+      const sw = n.stroke.width * s, inset = sw / 2;
+      if (n.radii && n.radii.some((v) => v > 0)) rr4(ctx, x + inset, y + inset, w - sw, h - sw, n.radii.map((v) => Math.max(0, v * s - inset)) as Radii);
+      else rr(ctx, x + inset, y + inset, w - sw, h - sw, Math.max(0, n.radius * s - inset));
+      ctx.strokeStyle = sc; ctx.lineWidth = sw; ctx.stroke();
+    }
   }
 }
 
@@ -261,9 +302,9 @@ function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s:
     withShadow(ctx, n.shadow, s, () => ctx.drawImage(off, x - pad, y - pad));
     return;
   }
-  if (n.shadow) withShadow(ctx, n.shadow, s, () => { rr(ctx, x, y, w, h, n.radius * s); ctx.fillStyle = col(n.fill, brand) || '#ffffff'; ctx.fill(); });
+  if (n.shadow) withShadow(ctx, n.shadow, s, () => { shapePath(ctx, n, x, y, w, h, s); ctx.fillStyle = col(n.fill, brand) || (n.vector ? 'rgba(0,0,0,0)' : '#ffffff'); ctx.fill(); });
   ctx.save();
-  rr(ctx, x, y, w, h, n.radius * s);
+  shapePath(ctx, n, x, y, w, h, s);
   ctx.clip();
   const fill = col(n.fill, brand);
   if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
@@ -339,6 +380,15 @@ export function drawNode(ctx: CanvasRenderingContext2D, n: Node, brand: Brand, s
     else if (a.kind === 'right') { ctx.globalAlpha *= p; ctx.translate((1 - p) * 48 * s, 0); }
     else if (a.kind === 'wipe') { ctx.beginPath(); ctx.rect((n.x - 2) * s, (n.y - 2) * s, (n.w + 4) * s, (n.h + 4) * s * p); ctx.clip(); } // reveal top→bottom: only the new strip changes per frame
     else if (a.kind === 'pop') { const k = p < 1 ? 0.6 + 0.4 * p + (p > 0.6 ? Math.sin((p - 0.6) / 0.4 * Math.PI) * 0.06 : 0) : 1; ctx.globalAlpha *= Math.min(1, p * 1.6); ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
+    else if (LOOP_KINDS.has(a.kind) && a.kind !== 'marquee') {
+      // seamless loops: t = 0 (and every whole period) is the untouched design
+      const per = loopPeriod(a), ph = ((t % per) + per) % per / per;
+      if (a.kind === 'pulse') { const k = 1 + 0.07 * Math.sin(ph * Math.PI) ** 2; ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
+      else if (a.kind === 'float') ctx.translate(0, -7 * s * Math.sin(ph * Math.PI * 2));
+      else if (a.kind === 'spin') { ctx.translate(cx, cy); ctx.rotate(ph * Math.PI * 2); ctx.translate(-cx, -cy); }
+      else if (a.kind === 'shake') { const r = ph < 0.45 ? Math.sin((ph / 0.45) * Math.PI * 4) * 7 * (1 - ph / 0.45) : 0; ctx.translate(cx, cy); ctx.rotate((r * Math.PI) / 180); ctx.translate(-cx, -cy); }
+      else if (a.kind === 'blink') ctx.globalAlpha *= 0.3 + 0.7 * (Math.cos(ph * Math.PI * 2) + 1) / 2;
+    }
     else if (a.kind === 'type' && n.type === 'text') { const raw = animProgress(a, t); node = { ...n, text: n.text.slice(0, Math.ceil(n.text.length * raw)) + (raw < 1 && Math.floor(t * 3) % 2 === 0 ? '|' : '') }; }
     else if (a.kind === 'marquee' && n.type === 'text') {
       // endless scroll: the line drawn twice, shifted by time
