@@ -42,6 +42,26 @@ export function buildMime(m: MimeInput): string {
   return head.join(CRLF) + CRLF + CRLF + body.join(CRLF);
 }
 
+/** Gmail shows an inline (cid:) image only at its FIRST reference; later <img src="cid:x"> of the same part come out as
+ *  broken images. Identical slices (flat colour strips, repeated gutters) share one key, so every repeat reference gets
+ *  its own copy of the part under a new Content-ID. Parts nothing references are dropped. */
+export function uniqueCids(html: string, parts: MimePart[]): { html: string; parts: MimePart[] } {
+  const byCid = new Map(parts.map((p) => [p.cid, p]));
+  const seen = new Map<string, number>();
+  const out: MimePart[] = [];
+  const next = html.replace(/cid:([^"'\s)>]+)/g, (m, cid: string) => {
+    const part = byCid.get(cid); if (!part) return m;
+    const n = (seen.get(cid) || 0) + 1; seen.set(cid, n);
+    if (n === 1) { out.push(part); return m; }
+    const at = cid.lastIndexOf('@');
+    const copy = at > 0 ? `${cid.slice(0, at)}-r${n}${cid.slice(at)}` : `${cid}-r${n}`;
+    const dot = part.filename.lastIndexOf('.');
+    out.push({ ...part, cid: copy, filename: dot > 0 ? `${part.filename.slice(0, dot)}-r${n}${part.filename.slice(dot)}` : `${part.filename}-r${n}` });
+    return `cid:${copy}`;
+  });
+  return { html: next, parts: out };
+}
+
 /** Merge tags only an ESP understands become mailto links to the sender (unsubscribe / preferences by reply). */
 export function replaceMergeTags(html: string, sender: string): string {
   const unsub = sender ? `mailto:${sender}?subject=${encodeURIComponent('Huỷ đăng ký / Unsubscribe')}` : '#';

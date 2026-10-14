@@ -121,6 +121,93 @@ export async function askClaude(req: AiRequest): Promise<string> {
   throw new Error('Chưa có cách gọi AI. Vào Cài đặt → AI để dán API key Anthropic, hoặc chạy relay với ANTHROPIC_API_KEY.');
 }
 
+/** Ask Claude and watch the answer arrive: `onText` gets the WHOLE text so far on every chunk. Resolves the final text.
+ *  Streams through the user's key (SDK), the relay (`/ai/stream`, SSE) or claude.ai `sample`; an older relay without the
+ *  stream route falls back to one plain `/ai` call. `signal` aborts. */
+export async function streamClaude(req: AiRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<string> {
+  const s = get().settings;
+  const model = s.aiModel || 'claude-opus-5-5';
+  const maxTokens = req.maxTokens ?? 16000;
+  const t = await aiTransport();
+  if (t === 'key' && s.anthropicKey.trim() === 'mock') return mockStream(req, onText, signal);
+  if (t === 'key') {
+    const client = new Anthropic({ apiKey: s.anthropicKey.trim(), dangerouslyAllowBrowser: true });
+    try {
+      const st = client.beta.messages.stream({
+        model, max_tokens: maxTokens,
+        betas: ['server-side-fallback-2026-06-01'],
+        fallbacks: [{ model: 'claude-opus-4-8' }],
+        output_config: { effort: req.effort ?? 'medium' },
+        system: req.system,
+        messages: messagesOf(req),
+      }, { signal });
+      let acc = '';
+      st.on('text', (d: string) => { acc += d; onText(acc); });
+      const fin = await st.finalMessage();
+      if (fin.stop_reason === 'refusal') throw new Error('Claude từ chối yêu cầu này.');
+      return fin.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('\n');
+    } catch (e) {
+      if (e instanceof Anthropic.AuthenticationError) throw new Error('API key Anthropic không hợp lệ. Kiểm tra lại trong Cài đặt → AI.');
+      if (e instanceof Anthropic.RateLimitError) throw new Error('Bị giới hạn tốc độ (429). Thử lại sau vài giây.');
+      if (e instanceof Anthropic.APIError) throw new Error(`Claude API lỗi ${e.status}: ${e.message}`);
+      throw e;
+    }
+  }
+  if (t === 'relay') {
+    await wakeRelay(s.relayUrl, relayAuth());
+    const r = await fetch(s.relayUrl.replace(/\/$/, '') + '/ai/stream', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, signal,
+      body: JSON.stringify({ model, max_tokens: maxTokens, effort: req.effort ?? 'medium', system: req.system, messages: messagesOf(req) }),
+    });
+    if (r.status === 404) { const txt = await askClaude(req); onText(txt); return txt; } // relay from before streaming
+    if (!r.ok || !r.body) {
+      const j = await r.json().catch(() => ({} as Record<string, string>));
+      if (r.status === 401) throw expired();
+      if (r.status === 403 && j.code === 'ai_locked') { set({ modal: 'aicode' }); throw new Error(j.error || 'AI cần mã truy cập.'); }
+      throw new Error(j.error || `Relay /ai/stream trả HTTP ${r.status}`);
+    }
+    const reader = r.body.getReader(); const dec = new TextDecoder();
+    let buf = '', acc = '', done = false;
+    while (!done) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      buf += dec.decode(value, { stream: true });
+      let i: number;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+        const line = chunk.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue; // keep-alive comment
+        const ev = JSON.parse(line.slice(6)) as { t?: string; done?: boolean; error?: string; stop?: string };
+        if (ev.error) throw new Error(ev.error);
+        if (ev.t) { acc += ev.t; onText(acc); }
+        if (ev.done) done = true;
+      }
+    }
+    if (!done && !acc) throw new Error('Relay ngắt kết nối giữa chừng. Thử lại.');
+    return acc;
+  }
+  if (t === 'sample') {
+    const claude = (window as unknown as { claude: { use: (n: string) => Promise<any> } }).claude;
+    const sample = await claude.use('sample');
+    const limits = await sample.limits().catch(() => ({ images: false }));
+    const last = req.turns[req.turns.length - 1];
+    const input = req.turns.map((x, i) => ({ role: x.role, content: i === 0 ? `${req.system}\n\n---\n\n${x.text}` : x.text }));
+    const images: Blob[] = [];
+    if (limits.images && last.images?.length) for (const im of last.images) images.push(b64ToBlob(im.base64, im.mime));
+    const r = await sample(input, { modelTier: 'complex', onText: ({ text }: { text: string }) => onText(text), signal, ...(images.length ? { images } : {}) });
+    return String(r.text || '');
+  }
+  throw new Error('Chưa có cách gọi AI. Vào Cài đặt → AI để dán API key Anthropic, hoặc chạy relay với ANTHROPIC_API_KEY.');
+}
+
+/** Mock streaming for the QA harness: the mock reply, delivered in chunks. */
+async function mockStream(req: AiRequest, onText: (t: string) => void, signal?: AbortSignal): Promise<string> {
+  const full = await mockReply(req);
+  let acc = '';
+  for (let i = 0; i < full.length; i += 400) { if (signal?.aborted) throw new Error('Đã huỷ.'); acc = full.slice(0, i + 400); onText(acc); await new Promise((r) => setTimeout(r, 30)); }
+  return full;
+}
+
 /** Offline stand-in used by the QA harness (Settings → API key = "mock"). */
 async function mockReply(req: AiRequest): Promise<string> {
   await new Promise((r) => setTimeout(r, 600));

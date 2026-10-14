@@ -108,6 +108,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/proxy' && req.method === 'POST') { if (!RELAY_TOKEN && !AUTH.me(bearer(req)) && throttled(`proxy:${ipOf(req)}`, 400, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều request qua relay. Đăng nhập tài khoản relay để không bị giới hạn.' }); return await proxy(await body(req), res); }
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
     if (url.pathname === '/ai' && req.method === 'POST') { if (!aiGate(req, res)) return; return await ai(await body(req), res); }
+    if (url.pathname === '/ai/stream' && req.method === 'POST') { if (!aiGate(req, res)) return; return await aiStream(await body(req), req, res); }
     if (url.pathname.startsWith('/aiaccess')) return await aiAccessRoute(url.pathname.slice('/aiaccess'.length) || '/', req, res);
     if (url.pathname.startsWith('/admin/')) return await adminRoute(url.pathname.slice('/admin'.length), req, res);
     if (url.pathname === '/oauth/start' && req.method === 'POST') return oauthStart(await body(req), res);
@@ -190,6 +191,37 @@ async function ai(p, res) {
   } catch (e) {
     const status = e?.status || 500;
     json(res, status, { error: e?.message || String(e) });
+  }
+}
+
+// Same request, answered as Server-Sent Events: `data: {"t":"…delta"}` per text chunk, then `data: {"done":true,"usage":…}`
+// (or `data: {"error":"…"}`). The studio shows the design being drawn live; a comment line every 15 s keeps proxies open.
+async function aiStream(p, req, res) {
+  if (!anthropic) return json(res, 503, { error: 'Relay chưa có ANTHROPIC_API_KEY trong server/.env' });
+  const { model = 'claude-opus-5-5', max_tokens = 16000, effort = 'medium', system = '', messages = [] } = p || {};
+  if (!Array.isArray(messages) || !messages.length) return json(res, 400, { error: 'thiếu messages' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  const send = (o) => { try { res.write(`data: ${JSON.stringify(o)}\n\n`); } catch { /* client gone */ } };
+  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* gone */ } }, 15_000);
+  let stream = null;
+  req.on('close', () => { try { stream?.abort(); } catch { /* done */ } });
+  try {
+    stream = anthropic.beta.messages.stream({
+      model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),
+      betas: ['server-side-fallback-2026-06-01'],
+      fallbacks: [{ model: 'claude-opus-4-8' }],
+      output_config: { effort },
+      system, messages,
+    });
+    stream.on('text', (delta) => send({ t: delta }));
+    const final = await stream.finalMessage();
+    if (final.stop_reason === 'refusal') send({ error: 'Claude từ chối yêu cầu này.', refused: true });
+    else send({ done: true, stop: final.stop_reason, usage: final.usage });
+  } catch (e) {
+    if (!res.writableEnded) send({ error: e?.message || String(e), status: e?.status || 500 });
+  } finally {
+    clearInterval(ping);
+    try { res.end(); } catch { /* gone */ }
   }
 }
 

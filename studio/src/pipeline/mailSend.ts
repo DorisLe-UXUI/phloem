@@ -2,7 +2,8 @@
 //  • Gmail / Google Workspace: OAuth popup (gmail.send) → the message is sent straight from the browser by Gmail's API,
 //    slices embedded as cid: images (nothing to host). One message per recipient, after an explicit confirmation.
 //  • Any other client: a .eml file; Outlook opens it as a draft (X-Unsent), Apple Mail / Thunderbird can "send again".
-import { buildMime, parseRecipients, plainText, replaceMergeTags, address, type MimePart } from '../../../src/shared/mime';
+import { buildMime, parseRecipients, plainText, replaceMergeTags, address, uniqueCids, type MimePart } from '../../../src/shared/mime';
+import type { Profile } from '../../../src/shared/types';
 import { slug } from '../../../src/shared/utm';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import { mimeOf, extOf } from '../../../src/ui/imageops';
@@ -18,17 +19,36 @@ export interface GmailAccount { email: string; name: string; token: string; expi
 let gmail: GmailAccount | null = null;
 export const gmailAccount = () => (gmail && gmail.expiresAt > Date.now() + 30_000 ? gmail : null);
 
-/** Build the email once: HTML with cid: images + the image parts + a plain-text twin. */
-async function compose(p: Project, sender: string) {
+const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+/** A few lines of REAL text under the image slices: who sent it and how to stop it. An email that is only pictures is
+ *  the strongest spam signal Gmail sees; this also gives every recipient a visible way out. */
+function textFooter(p: Project, sender: string, senderName: string): { html: string; text: string } {
+  const vi = /[ăâđêôơưàảãáạằẳẵắặầẩẫấậèẻẽéẹềểễếệìỉĩíịòỏõóọồổỗốộờởỡớợùủũúụừửữứựỳỷỹýỵ]/i.test(`${p.fields.subject} ${p.fields.preheader}`);
+  const name = senderName || p.brand.name || sender;
+  const site = p.brand.links?.website || '';
+  const unsub = `mailto:${sender}?subject=${encodeURIComponent(vi ? 'Huỷ đăng ký' : 'Unsubscribe')}`;
+  const a = (href: string, t: string) => `<a href="${esc(href)}" style="color:#8a8a8a;text-decoration:underline;">${esc(t)}</a>`;
+  const host = (() => { try { return site ? new URL(site).hostname.replace(/^www\./, '') : ''; } catch { return ''; } })();
+  const html = vi
+    ? `Bạn nhận email này từ <b>${esc(name)}</b> (${esc(sender)}).<br>Không muốn nhận nữa? ${a(unsub, 'Huỷ đăng ký')}${host ? ` · ${a(site, host)}` : ''}`
+    : `You are receiving this email from <b>${esc(name)}</b> (${esc(sender)}).<br>Don't want these emails? ${a(unsub, 'Unsubscribe')}${host ? ` · ${a(site, host)}` : ''}`;
+  const text = vi ? `Bạn nhận email này từ ${name} (${sender}). Huỷ đăng ký: trả lời email này với tiêu đề "Huỷ đăng ký".` : `You are receiving this email from ${name} (${sender}). To unsubscribe, reply with the subject "Unsubscribe".`;
+  return { html, text };
+}
+
+/** Build the email once: HTML with cid: images + the image parts + a plain-text twin (+ a live-text footer when sent). */
+async function compose(p: Project, sender: string, senderName = '') {
   const ex = await exportProject(p, null);
   const parts: MimePart[] = [];
   const images: Record<string, string> = {}, mobileImages: Record<string, string> = {};
   for (const s of ex.slices) { const cid = `${s.key}@phloem`; images[s.key] = `cid:${cid}`; parts.push({ cid, filename: `${s.key}.${extOf(s.format)}`, mime: mimeOf(s.format), bytes: s.bytes }); }
   if (ex.mobile) for (const s of ex.mobile.slices) { const cid = `m-${s.key}@phloem`; mobileImages[s.key] = `cid:${cid}`; parts.push({ cid, filename: `m-${s.key}.${extOf(s.format)}`, mime: mimeOf(s.format), bytes: s.bytes }); }
-  const html = replaceMergeTags(htmlFor(p, null, ex, images, mobileImages, 'full'), sender);
-  const text = plainText(p.fields.preheader || '', ex.plan.slices.map((s) => ({ alt: s.alt, link: s.link })));
-  const kb = Math.round((parts.reduce((a, x) => a + x.bytes.length, 0) + html.length) / 1024);
-  return { html, text, parts, kb, subject: p.fields.subject || p.fields.campaignName || p.name };
+  const foot = sender ? textFooter(p, sender, senderName) : null;
+  const u = uniqueCids(replaceMergeTags(htmlFor(p, foot ? ({ footerHtml: foot.html } as Profile) : null, ex, images, mobileImages, 'full'), sender), parts);
+  const html = u.html;
+  const text = plainText(p.fields.preheader || '', ex.plan.slices.map((s) => ({ alt: s.alt, link: s.link }))) + (foot ? `\n\n${foot.text}` : '');
+  const kb = Math.round((u.parts.reduce((a, x) => a + x.bytes.length, 0) + html.length) / 1024);
+  return { html, text, parts: u.parts, kb, subject: p.fields.subject || p.fields.campaignName || p.name };
 }
 
 export async function downloadEml(p: Project) {
@@ -170,7 +190,7 @@ export async function runQueue(p: Project) {
   running = true; stopFlag = false;
   set({ busy: { label: `Đang gửi qua Gmail · ${q.subject}`, done: q.cursor, total: q.recipients.length } });
   try {
-    const m = await compose(p, acc.email);
+    const m = await compose(p, acc.email, acc.name);
     q.status = 'sending'; saveQueue(q, p.id);
     while (q.cursor < q.recipients.length) {
       if (stopFlag) { q.status = 'paused'; break; }
@@ -207,7 +227,7 @@ export async function sendTest(p: Project) {
   const acc = gmailAccount(); if (!acc) throw new Error('Kết nối Gmail trước.');
   set({ busy: { label: 'Gửi thử…', done: 0, total: 1 } });
   try {
-    const m = await compose(p, acc.email);
+    const m = await compose(p, acc.email, acc.name);
     await sendOne(acc, buildMime({ html: m.html, text: m.text, subject: `[Thử] ${m.subject}`, from: address(acc.name, acc.email), to: acc.email, listUnsubscribe: `mailto:${acc.email}?subject=Unsubscribe`, parts: m.parts }));
     set({ result: { text: `Đã gửi thử tới ${acc.email} (${m.kb} KB, ${m.parts.length} ảnh nhúng). Mở hộp thư để kiểm tra.` } });
     toast('Đã gửi thử.', 'ok');
