@@ -9,6 +9,9 @@ import * as A from '../pipeline/actions';
 import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type GenInput, type Variant } from '../ai/generate';
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
+import { designEmail, docHash, type DesignVariant } from '../ai/design';
+import { prepareHtml } from '../ai/htmlToDoc';
+import * as ops from '../model/ops';
 import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, linksFromSite, type SiteProduct, type SiteProfile } from '../ai/site';
 import { Btn, Eyebrow, Field, Modal, Seg, Select, TextArea, TextInput } from './components';
 import { groupAssets, pageLabel, usedAssetIds } from '../storage/assetGroups';
@@ -31,6 +34,13 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     try { const saved = JSON.parse(localStorage.getItem(LS) || '{}') as Partial<GenInput>; return { ...base, ...saved, imageIds: [], site: null, logoAssetId: null, logoLightAssetId: null, products: [], palette: saved.palette === 'Web' ? 'auto' : (saved.palette ?? 'auto') }; } catch { return base; }
   });
   const [transport, setTransport] = useState<AiTransport | 'checking'>('checking');
+  // "Thiết kế tự do": Claude designs in HTML/CSS → layers (default). "Block": the older block composer.
+  const [mode, setMode] = useState<'design' | 'blocks'>(() => { try { return localStorage.getItem('phloem.ai.mode') === 'blocks' ? 'blocks' : 'design'; } catch { return 'design'; } });
+  const pickMode = (m: 'design' | 'blocks') => { setMode(m); try { localStorage.setItem('phloem.ai.mode', m); } catch { /* ignore */ } };
+  const [review, setReview] = useState(true);
+  const [designs, setDesigns] = useState<DesignVariant[]>([]);
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
   const [busy, setBusy] = useState(false);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [stage, setStage] = useState('');
@@ -39,6 +49,13 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const [pvMode, setPvMode] = useState<'desktop' | 'mobile'>('desktop');
   const [pvUrl, setPvUrl] = useState('');
   useEffect(() => {
+    if (preview !== null && mode === 'design') {
+      const dv = designs[preview]; if (!dv || !dv.doc || !dv.brand) { setPvUrl(''); return; }
+      let alive = true;
+      const draw = () => { try { const doc = pvMode === 'mobile' ? (dv.mobile || makeMobile(dv.doc!)) : dv.doc!; const c = renderToCanvas(doc, dv.brand!, assets, pvMode === 'mobile' ? 2 : 1.5); if (alive) setPvUrl(c.toDataURL('image/jpeg', 0.9)); } catch { /* not ready */ } };
+      draw(); const t = setTimeout(draw, 1500); const off = assets.onChange(draw);
+      return () => { alive = false; clearTimeout(t); off(); };
+    }
     if (preview === null || !variants[preview]) { setPvUrl(''); return; }
     const v = variants[preview];
     const br = brandForVariant(v, baseBrand(), form.webBrand);
@@ -49,12 +66,13 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     const t = setTimeout(draw, 1800); // again once web fonts / images are in
     const off = assets.onChange(draw);
     return () => { alive = false; clearTimeout(t); off(); };
-  }, [preview, pvMode, variants]);
+  }, [preview, pvMode, variants, designs, mode]);
   useEffect(() => {
     if (preview === null) return;
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setPreview(null); } if (e.key === 'ArrowRight') setPreview((p) => (p === null ? p : (p + 1) % variants.length)); if (e.key === 'ArrowLeft') setPreview((p) => (p === null ? p : (p + variants.length - 1) % variants.length)); };
+    const n = mode === 'design' ? designs.length : variants.length;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setPreview(null); } if (e.key === 'ArrowRight') setPreview((p) => (p === null ? p : (p + 1) % n)); if (e.key === 'ArrowLeft') setPreview((p) => (p === null ? p : (p + n - 1) % n)); };
     window.addEventListener('keydown', k, true); return () => window.removeEventListener('keydown', k, true);
-  }, [preview, variants.length]);
+  }, [preview, variants.length, designs.length, mode]);
   const [relayUp, setRelayUp] = useState(false);
   useEffect(() => { const u = (get().settings.relayUrl || '').replace(/\/$/, ''); if (!u) return; fetch(u + '/', { signal: AbortSignal.timeout(2500) }).then((r) => r.json()).then((j) => setRelayUp(!!j?.ai && !!j?.auth)).catch(() => setRelayUp(false)); }, [s.settings.relayUrl, s.user?.id]);
   const [thumbs, setThumbs] = useState<string[]>([]);
@@ -115,13 +133,24 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const toggleImg = (id: string) => upd({ imageIds: form.imageIds.includes(id) ? form.imageIds.filter((x) => x !== id) : [...form.imageIds, id] });
 
   const run = async () => {
-    setBusy(true); setErr(''); setVariants([]); setThumbs([]);
+    setBusy(true); setErr(''); setVariants([]); setThumbs([]); setDesigns([]);
+    abort.current?.abort(); const ac = new AbortController(); abort.current = ac;
     try {
       let input = form;
       if ((form.website || '').trim() && !form.site) { // typed a website but never pressed "AI đọc web": read it first
         const r = await analyzeNow(); if (r) input = r;
       }
       await document.fonts.ready;
+      if (mode === 'design') {
+        let list: DesignVariant[] = [];
+        await designEmail(input, baseBrand(), {
+          onStage: setStage,
+          onPlan: (v) => { list = v; setDesigns(v); },
+          onUpdate: (i, patch) => { list = list.map((x, j) => (j === i ? { ...x, ...patch } : x)); setDesigns(list); },
+        }, { review, signal: ac.signal });
+        if (list.every((x) => x.stage === 'error')) throw new Error(list[0]?.error || 'Không vẽ được phương án nào.');
+        return;
+      }
       const vs = await generateVariants(input, setStage);
       setVariants(vs);
       ensureFonts(vs.flatMap((v) => [v.headingFont || '', v.bodyFont || '']).filter(Boolean));
@@ -157,6 +186,37 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  /** A free-form design lands as layers; its HTML rides along so "AI tự chỉnh" can revise it while untouched. */
+  const useDesign = async (v: DesignVariant) => {
+    if (!v.doc || !v.brand) return;
+    const brand = v.brand;
+    ensureFonts([brand.headingFamily, brand.fontFamily]);
+    await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]);
+    const used = [...new Set([...ops.flat(v.doc.nodes), ...(v.mobile ? ops.flat(v.mobile.nodes) : [])].filter((n) => n.type === 'image' && n.assetId).map((n) => (n as { assetId: string }).assetId))];
+    const land = async (pid: string) => {
+      await assets.persist(used, pid);
+      tagForProject(pid);
+      const cur = get().project; if (!cur) return;
+      A.patchProject({ design: { html: v.html, hash: docHash(cur.desktop), name: v.dir.name, at: new Date().toISOString(), dir: v.dir } });
+    };
+    if (s.project) {
+      if (!(await ask(`Thay toàn bộ nội dung "${s.project.name}" bằng thiết kế "${v.dir.name}"? Có thể hoàn tác bằng ⌘Z.`, 'Thay', false))) return;
+      if (get().variant !== 'desktop') A.setVariant('desktop');
+      A.commit(v.doc);
+      A.patchProject({ brand, fields: v.dir.fields, mobile: v.mobile ?? null });
+      set({ selection: [], modal: null });
+      await land(s.project.id);
+      toast(`Đã áp dụng "${v.dir.name}"${v.mobile ? ' (kèm bản mobile 375px)' : ''}. Bấm vào chữ, ảnh, icon để chỉnh.`, 'ok');
+    } else {
+      onClose();
+      await A.newProject('blank', brand, v.dir.fields.campaignName || v.dir.name);
+      A.commit(v.doc, false);
+      A.patchProject({ fields: v.dir.fields, mobile: v.mobile ?? null });
+      const pid = get().project?.id; if (pid) await land(pid);
+      toast(`Đã tạo project từ "${v.dir.name}".`, 'ok');
+    }
+  };
+
   /** Images the composer worked with (site import, uploads, logo) belong to the project the variant lands in. */
   const tagForProject = (pid: string) => { const ids = [...form.imageIds, form.logoAssetId, form.logoLightAssetId].filter((x): x is string => !!x).filter((id) => !assets.get(id)?.project); if (ids.length) assets.tag(ids, { project: pid }); };
   const all = assets.all();
@@ -169,9 +229,21 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       footer={<>
         <span class="grow small muted">{transport === 'checking' ? 'Đang kiểm tra AI…' : transport === 'key' ? 'Dùng API key của bạn' : transport === 'relay' ? 'Dùng qua relay' : transport === 'sample' ? 'Dùng Claude của claude.ai' : (relayUp ? 'Relay có AI nhưng bạn chưa đăng nhập' : 'Chưa có AI: vào Cài đặt → AI')}</span>
         {transport === null ? <>{relayUp && <Btn kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập relay để dùng AI</Btn>}<a class="btn sm" href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener">Mở bản claude.ai (AI sẵn)</a><Btn kind="ghost" onClick={() => set({ modal: 'settings' })}>Dán API key</Btn></> : null}
-        <Btn kind="primary" icon="sparkle" disabled={busy || transport === 'checking' || transport === null} onClick={run}>{busy ? 'Đang dựng 3 phương án…' : variants.length ? 'Dựng lại' : 'Dựng 3 phương án'}</Btn>
+        {busy && mode === 'design' && <Btn kind="ghost" onClick={() => { abort.current?.abort(); }}>Dừng</Btn>}
+        <Btn kind="primary" icon="sparkle" disabled={busy || transport === 'checking' || transport === null} onClick={run}>{busy ? (mode === 'design' ? 'Đang thiết kế…' : 'Đang dựng 3 phương án…') : (variants.length || designs.length) ? 'Làm lại' : mode === 'design' ? 'Thiết kế 3 phương án' : 'Dựng 3 phương án'}</Btn>
       </>}>
-      <div class="small muted">Dán link website: AI tự vào xem, lấy logo, màu, font, ảnh thật và giọng văn, nhận ra ngành để chọn bố cục riêng. Thêm ảnh và nội dung thô nếu có. Kết quả là 3 phương án khác nhau bằng block của Phloem, chọn một rồi chỉnh tiếp.</div>
+      <div class="ai-mode">
+        <button class={`ai-mode-opt ${mode === 'design' ? 'on' : ''}`} onClick={() => pickMode('design')}>
+          <b><Icon name="sparkle" size={13} /> Thiết kế tự do <span class="chip on">mới</span></b>
+          <span>Claude thiết kế như một art director: bố cục riêng, chữ lớn, gradient, đồ hoạ SVG, icon, sticker, hoạt ảnh. Bạn xem email được vẽ trực tiếp, rồi creative director AI soát lại trên bản render. Mọi thứ thành layer chỉnh được.</span>
+        </button>
+        <button class={`ai-mode-opt ${mode === 'blocks' ? 'on' : ''}`} onClick={() => pickMode('blocks')}>
+          <b><Icon name="blocks" size={13} /> Ghép block Phloem</b>
+          <span>Nhanh hơn, ít tốn hơn: AI chọn và điền các block mẫu có sẵn.</span>
+        </button>
+      </div>
+      {mode === 'design' && <label class="row small" style={{ gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={review} onChange={(e) => setReview((e.target as HTMLInputElement).checked)} /><span>Creative director soát và làm đẹp thêm một vòng trên bản render <span class="muted">(đẹp hơn, lâu gấp đôi: khoảng 4–6 phút)</span></span></label>}
+      <div class="small muted">Dán link website: AI tự vào xem, lấy logo, màu, font, ảnh thật và giọng văn. Thêm ảnh và nội dung thô nếu có.</div>
       <div class="card glow">
         <div class="row"><Icon name="external" style={{ color: 'var(--neon)' }} /><b class="grow">Website thương hiệu</b>{form.site && <span class="chip on">đã đọc {form.site.siteName || form.site.title}</span>}</div>
         <div class="row">
@@ -244,7 +316,31 @@ export function AiModal({ onClose }: { onClose: () => void }) {
         {BRAND_PRESETS.map((p) => <button key={p.name} class={`preset ${form.palette === p.name ? 'on' : ''}`} onClick={() => upd({ palette: p.name })}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}
       </div>
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span>{/đăng nhập/i.test(err) && <Btn sm kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập</Btn>}</div>}
-      {busy && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage === 'refine' ? 'Creative director AI đang duyệt và sửa lại 3 phương án…' : 'AI đang đọc nội dung và ảnh, dựng 3 phương án…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Thường mất 20–60 giây. Kết quả là block Phloem thật, không phải ảnh mockup.</div></div>}
+      {busy && mode === 'blocks' && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage === 'refine' ? 'Creative director AI đang duyệt và sửa lại 3 phương án…' : 'AI đang đọc nội dung và ảnh, dựng 3 phương án…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Thường mất 20–60 giây. Kết quả là block Phloem thật, không phải ảnh mockup.</div></div>}
+      {busy && mode === 'design' && !designs.length && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage || 'Đang bắt đầu…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Bước lên ý tưởng mất khoảng 20–40 giây, sau đó 3 email được vẽ cùng lúc, bạn xem trực tiếp bên dưới.</div></div>}
+      {designs.length > 0 && (
+        <>
+          <Eyebrow>{designs.filter((d) => d.stage === 'ready').length}/{designs.length} thiết kế xong</Eyebrow>
+          <div class="tpl-grid ai-variants">
+            {designs.map((v, i) => (
+              <div key={i} class={`tpl design-card st-${v.stage}`}>
+                <div class="pv">
+                  {v.thumb ? <img src={v.thumb} alt="" /> : v.html ? <LiveHtml html={v.html} ids={[...new Set([...form.imageIds, form.logoAssetId, form.logoLightAssetId].filter((x): x is string => !!x))]} /> : <div class="pv-wait"><div class="progress"><i class="indet" /></div></div>}
+                  <span class={`stage-chip st-${v.stage}`}>{v.stage === 'queued' ? 'Đang chờ' : v.stage === 'drawing' ? 'Đang vẽ trực tiếp…' : v.stage === 'converting' ? 'Đang tách layer…' : v.stage === 'reviewing' ? 'Creative director đang soát…' : v.stage === 'ready' ? (v.reviewed ? 'Xong · đã soát' : 'Xong') : 'Lỗi'}</span>
+                </div>
+                <div class="meta">
+                  <div class="row"><div class="nm grow">{v.dir.name}</div><span class="chip">{v.dir.aesthetic}</span></div>
+                  <div class="row" style={{ gap: 4 }}>{Object.values(v.dir.palette).slice(0, 6).map((c, k) => <i key={k} title={c} style={{ width: 14, height: 14, borderRadius: '50%', background: c, border: '1px solid rgba(255,255,255,.18)', display: 'inline-block' }} />)}<span class="ds mono" style={{ marginLeft: 6 }}>{v.dir.headingFont} + {v.dir.bodyFont}</span></div>
+                  <div class="ds">{v.dir.why}</div>
+                  {v.error && <div class="check err"><span class="lv">LỖI</span><span class="m">{v.error}</span></div>}
+                  {v.warnings && v.warnings.length > 0 && <div class="ds muted">{v.warnings.slice(0, 2).join(' · ')}</div>}
+                  <div class="row" style={{ marginTop: 8 }}><Btn sm icon="eye" disabled={!v.doc} onClick={() => { setPvMode('desktop'); setPreview(i); }}>Xem thử</Btn><Btn sm kind="primary" block disabled={!v.doc} onClick={() => void useDesign(v)}>{!v.doc ? 'Đang vẽ…' : s.project ? 'Dùng, thay nội dung hiện tại' : 'Tạo project từ thiết kế này'}</Btn></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       {variants.length > 0 && (
         <>
           <Eyebrow>3 phương án</Eyebrow>
@@ -264,7 +360,25 @@ export function AiModal({ onClose }: { onClose: () => void }) {
           </div>
         </>
       )}
-      {preview !== null && variants[preview] && (
+      {preview !== null && mode === 'design' && designs[preview] && (() => { const dv = designs[preview]; return (
+        <div class="pv-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setPreview(null); }}>
+          <div class="pv-panel">
+            <div class="pv-head">
+              <Btn sm icon="chevron" title="Phương án trước (←)" onClick={() => setPreview((preview + designs.length - 1) % designs.length)} />
+              <div class="grow"><b>{dv.dir.name}</b> <span class="chip">{preview + 1}/{designs.length}</span> <span class="chip">{dv.dir.aesthetic}</span><div class="dim small">{dv.dir.concept}</div></div>
+              <Seg value={pvMode} options={[{ v: 'desktop', label: 'Desktop 600' }, { v: 'mobile', label: dv.mobile ? 'Mobile 375' : 'Mobile (tự co)' }]} onChange={(v) => setPvMode(v)} />
+              <Btn sm icon="chevron" title="Phương án sau (→)" onClick={() => setPreview((preview + 1) % designs.length)} />
+              <Btn sm icon="close" title="Đóng (Esc)" onClick={() => setPreview(null)} />
+            </div>
+            <div class="pv-body">{pvUrl ? <img src={pvUrl} alt="" style={{ width: pvMode === 'mobile' ? 375 : 600 }} /> : <div class="dim">Đang vẽ…</div>}</div>
+            <div class="pv-foot">
+              <span class="grow small muted">Subject: <b>{dv.dir.fields.subject || '—'}</b>{dv.dir.fields.preheader ? ` · ${dv.dir.fields.preheader}` : ''}</span>
+              <Btn onClick={() => setPreview(null)}>Đóng</Btn>
+              <Btn kind="primary" icon="check" disabled={!dv.doc} onClick={() => { setPreview(null); void useDesign(dv); }}>{s.project ? 'Dùng, thay nội dung hiện tại' : 'Dùng thiết kế này'}</Btn>
+            </div>
+          </div>
+        </div>); })()}
+      {preview !== null && mode === 'blocks' && variants[preview] && (
         <div class="pv-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setPreview(null); }}>
           <div class="pv-panel">
             <div class="pv-head">
@@ -285,4 +399,20 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       )}
     </Modal>
   );
+}
+
+/** The HTML being written, rendered live (scaled to the card): the design appears section by section as Claude types. */
+function LiveHtml({ html, ids }: { html: string; ids: string[] }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const [k, setK] = useState(0.4);
+  useEffect(() => { const w = wrap.current; if (!w) return; const ro = new ResizeObserver(() => setK(w.clientWidth / 600)); ro.observe(w); return () => ro.disconnect(); }, []);
+  useEffect(() => {
+    const f = ref.current; if (!f) return;
+    // partial HTML is fine: the browser closes open tags; scroll follows the newest section
+    try { f.srcdoc = prepareHtml(html, new Set(ids), 600); } catch { /* mid-tag */ }
+    const t = setTimeout(() => { try { const d = f.contentDocument; if (d) d.documentElement.scrollTop = Math.max(0, d.documentElement.scrollHeight - 1320); } catch { /* cross-origin */ } }, 300);
+    return () => clearTimeout(t);
+  }, [html]);
+  return <div ref={wrap} class="live-html"><iframe ref={ref} sandbox="allow-same-origin" title="Đang vẽ" style={{ width: 600, height: 1320, transform: `scale(${k})` }} /></div>;
 }

@@ -100,6 +100,8 @@ export interface TextNode extends BaseNode {
   /** Vertical alignment inside the box when autoHeight is off. */
   vAlign: 'top' | 'middle' | 'bottom';
   effect?: TextEffect | null;
+  /** Rotation in degrees around the box centre (stickers, stamps, tilted labels). */
+  rotate?: number;
 }
 
 export interface ImageNode extends BaseNode {
@@ -108,6 +110,8 @@ export interface ImageNode extends BaseNode {
   fit: 'cover' | 'contain' | 'fill';
   radius: number;
   radii?: Radii | null;
+  /** Pure decoration (a clipped glow, a converted shape): no alt text needed, never counts as a photo. */
+  decor?: boolean;
   /** Source of a vector graphic (icon, sticker, shape) so it can be recoloured and re-rasterised crisply. */
   vector?: { svg: string; color?: string | null; kind?: 'icon' | 'sticker' | 'shape' | 'graphic' } | null;
   /** Background behind contain-fit / placeholder. */
@@ -177,7 +181,7 @@ export interface Project {
   drafts: Record<string, unknown>;
   /** Free-form AI design source: the HTML the layers were converted from, and a hash of the converted desktop doc
    *  (unchanged doc → "AI tự chỉnh" can revise the HTML and convert again without losing hand edits). */
-  design?: { html: string; hash: string; name?: string; at: string } | null;
+  design?: { html: string; hash: string; name?: string; at: string; /** the art direction (design.ts Direction) */ dir?: unknown } | null;
 }
 
 export interface Asset {

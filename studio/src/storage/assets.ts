@@ -31,20 +31,38 @@ export class AssetStore implements ImageSource {
   /** Project currently open in the editor: new assets are tagged with it. */
   context: { project: string | null } = { project: null };
 
-  all(): Asset[] { return [...this.meta.values()].sort((a, b) => (b.at || '').localeCompare(a.at || '') || a.name.localeCompare(b.name)); }
+  /** Assets made for a preview (AI design variants not chosen yet): in memory only, hidden from the library until persist(). */
+  private temp = new Set<string>();
+
+  all(): Asset[] { return [...this.meta.values()].filter((a) => !this.temp.has(a.id)).sort((a, b) => (b.at || '').localeCompare(a.at || '') || a.name.localeCompare(b.name)); }
   get(id: string): Asset | undefined { return this.meta.get(id); }
 
-  async add(file: File | Blob, name = (file as File).name || 'image', extra: { src?: Asset['src']; project?: string | null } = {}): Promise<Asset> {
+  async add(file: File | Blob, name = (file as File).name || 'image', extra: { src?: Asset['src']; project?: string | null; temp?: boolean } = {}): Promise<Asset> {
     const bmp = await createImageBitmap(file);
     const a: Asset = { id: uid('a'), name, mime: file.type || 'image/png', w: bmp.width, h: bmp.height, bytes: file.size, src: extra.src ?? { kind: 'upload' }, project: extra.project === undefined ? this.context.project : extra.project, at: new Date().toISOString() };
     bmp.close();
     this.meta.set(a.id, a);
     this.blobs.set(a.id, file);
+    if (extra.temp) { this.temp.add(a.id); return a; }
     try { await db.putAsset(a, file); } catch (e) { toast(`Không lưu được ảnh vào trình duyệt (${(e as Error).message || 'hết dung lượng?'}). Ảnh chỉ dùng được trong phiên này.`, 'err'); }
     this.emit();
     void cloud.pushAsset(a, file).catch(() => { /* offline: the next full sync retries */ });
     return a;
   }
+
+  /** Save preview assets for real (the chosen AI variant's icons and graphics), tagged with the project. */
+  async persist(ids: string[], project: string | null = this.context.project) {
+    let n = 0;
+    for (const id of ids) {
+      if (!this.temp.has(id)) continue;
+      const a0 = this.meta.get(id), b = this.blobs.get(id); if (!a0 || !b) continue;
+      const a = { ...a0, project }; this.meta.set(id, a); this.temp.delete(id); n++;
+      try { await db.putAsset(a, b); } catch { /* memory only */ }
+      void cloud.pushAsset(a, b).catch(() => { /* next sync */ });
+    }
+    if (n) this.emit();
+  }
+  isTemp(id: string) { return this.temp.has(id); }
 
   /** Update library tags (project / source) on existing assets; persisted locally and mirrored to the relay. */
   tag(ids: string[], patch: { project?: string | null; src?: Asset['src'] }) {

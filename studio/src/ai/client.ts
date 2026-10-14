@@ -11,6 +11,8 @@ export interface AiTurn { role: 'user' | 'assistant'; text: string; images?: AiI
 export interface AiRequest { system: string; turns: AiTurn[]; maxTokens?: number; effort?: 'low' | 'medium' | 'high' }
 
 export type AiTransport = 'key' | 'relay' | 'sample' | null;
+/** Server-side fallback (to Opus 4.8 when overloaded) is an Opus-only feature; other models reject the field. */
+const fallbackOpts = (model: string) => (/^claude-opus-5/.test(model) ? { betas: ['server-side-fallback-2026-06-01'] as const, fallbacks: [{ model: 'claude-opus-4-8' }] } : {}) as Record<string, unknown>;
 
 export const AI_MODELS = [
   { v: 'claude-opus-5-5', label: 'Claude Opus 5.5 (mặc định)' },
@@ -80,8 +82,7 @@ export async function askClaude(req: AiRequest): Promise<string> {
     try {
       const res = await client.beta.messages.create({
         model, max_tokens: maxTokens,
-        betas: ['server-side-fallback-2026-06-01'],
-        fallbacks: [{ model: 'claude-opus-4-8' }],
+        ...fallbackOpts(model),
         output_config: { effort: req.effort ?? 'medium' },
         system: req.system,
         messages: messagesOf(req),
@@ -135,8 +136,7 @@ export async function streamClaude(req: AiRequest, onText: (text: string) => voi
     try {
       const st = client.beta.messages.stream({
         model, max_tokens: maxTokens,
-        betas: ['server-side-fallback-2026-06-01'],
-        fallbacks: [{ model: 'claude-opus-4-8' }],
+        ...fallbackOpts(model),
         output_config: { effort: req.effort ?? 'medium' },
         system: req.system,
         messages: messagesOf(req),

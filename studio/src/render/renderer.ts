@@ -325,6 +325,7 @@ function drawImage(ctx: CanvasRenderingContext2D, n: ImageNode, brand: Brand, s:
 }
 
 function drawText(ctx: CanvasRenderingContext2D, n: TextNode, brand: Brand, s: number) {
+  if (n.rotate) { const hh = n.autoHeight ? layoutText(n, brand, ctx, s).height : n.h * s; rotated(ctx, n.rotate, (n.x + n.w / 2) * s, n.y * s + hh / 2, () => drawText(ctx, { ...n, rotate: 0 }, brand, s)); return; }
   const lay = layoutText(n, brand, ctx, s);
   const color = col(n.color, brand) || '#000';
   ctx.save();

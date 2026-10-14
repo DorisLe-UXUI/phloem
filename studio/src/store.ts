@@ -13,7 +13,7 @@ export type Tool = 'select' | 'rect' | 'text' | 'image' | 'hand';
 export type Variant = 'desktop' | 'mobile';
 export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai' | 'auth' | 'catalog' | 'aicode' | 'aiadmin';
 export type RightTab = 'design' | 'email' | 'export' | 'ai';
-export type LeftTab = 'layers' | 'blocks' | 'assets';
+export type LeftTab = 'layers' | 'blocks' | 'assets' | 'design';
 
 export interface Toast { id: number; text: string; kind: 'ok' | 'err' | 'info' }
 

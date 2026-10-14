@@ -1,8 +1,10 @@
 import { MAX_RECIPIENTS, clearQueue, connectGmail, defaultCap, disconnectGmail, downloadEml, gmailAccount, loadQueue, parseRecipients, pauseQueue, queueRunning, runQueue, sendTest, sentToday, startQueue } from '../pipeline/mailSend';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Check, Suggestion } from '../../../src/shared/types';
-import type { ImageNode, Node, RectNode, TextNode, GroupNode } from '../model/types';
-import { FONTS } from '../model/types';
+import type { AnimKind, ImageNode, Node, RectNode, TextNode, GroupNode } from '../model/types';
+import { FONTS, LOOP_KINDS } from '../model/types';
+import { reraster } from '../design/vector';
+import { colorChoices } from '../design/elements';
 import * as ops from '../model/ops';
 import { assets } from '../storage/assets';
 import { set, useStore, toast } from '../store';
@@ -132,9 +134,9 @@ function NodeProps({ n }: { n: Node }) {
       {n.type === 'group' && <BlockBg g={n} />}
       <Eyebrow>Chuyển động</Eyebrow>
       <div class="row">
-        <div class="grow"><Select value={(n.anim?.kind || 'none') as 'none' | 'fade' | 'up' | 'down' | 'left' | 'right' | 'pop' | 'wipe' | 'marquee' | 'type'} options={[{ v: 'none', label: 'Không' }, { v: 'fade', label: 'Hiện dần' }, { v: 'up', label: 'Trượt lên' }, { v: 'down', label: 'Trượt xuống' }, { v: 'left', label: 'Trượt từ phải' }, { v: 'right', label: 'Trượt từ trái' }, { v: 'pop', label: 'Nảy ra' }, { v: 'wipe', label: 'Mở dần (ảnh)' }, ...(n.type === 'text' ? [{ v: 'marquee' as const, label: 'Chữ chạy (lặp)' }, { v: 'type' as const, label: 'Gõ từng chữ' }] : [])]} onChange={(v) => up({ anim: v === 'none' ? null : { kind: v, delay: n.anim?.delay ?? 0, dur: n.anim?.dur ?? 0.8 } })} /></div>
-        {n.anim && n.anim.kind !== 'marquee' && <div style={{ width: 86 }}><Num label="Trễ" value={n.anim.delay ?? 0} min={0} max={6} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, delay: v } })} /></div>}
-        {n.anim && n.anim.kind !== 'marquee' && <div style={{ width: 86 }}><Num label="Dài" value={n.anim.dur ?? 0.8} min={0.1} max={4} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, dur: v } })} /></div>}
+        <div class="grow"><Select value={(n.anim?.kind || 'none') as AnimKind | 'none'} options={[{ v: 'none', label: 'Không' }, { v: 'fade', label: 'Hiện dần' }, { v: 'up', label: 'Trượt lên' }, { v: 'down', label: 'Trượt xuống' }, { v: 'left', label: 'Trượt từ phải' }, { v: 'right', label: 'Trượt từ trái' }, { v: 'pop', label: 'Nảy ra' }, { v: 'wipe', label: 'Mở dần (ảnh)' }, ...(n.type === 'text' ? [{ v: 'marquee' as const, label: 'Chữ chạy (lặp)' }, { v: 'type' as const, label: 'Gõ từng chữ' }] : []), { v: 'pulse', label: 'Nhịp đập (lặp)' }, { v: 'float', label: 'Lơ lửng (lặp)' }, { v: 'spin', label: 'Xoay tròn (lặp)' }, { v: 'shake', label: 'Lắc (lặp)' }, { v: 'blink', label: 'Nhấp nháy (lặp)' }]} onChange={(v) => up({ anim: v === 'none' ? null : LOOP_KINDS.has(v) && v !== 'marquee' ? { kind: v, delay: 0, dur: v === 'float' || v === 'spin' ? 2.4 : 1.2 } : { kind: v, delay: n.anim?.delay ?? 0, dur: n.anim?.dur ?? 0.8 } })} /></div>
+        {n.anim && !LOOP_KINDS.has(n.anim.kind) && <div style={{ width: 86 }}><Num label="Trễ" value={n.anim.delay ?? 0} min={0} max={6} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, delay: v } })} /></div>}
+        {n.anim && n.anim.kind !== 'marquee' && <div style={{ width: 86 }}><Num label={LOOP_KINDS.has(n.anim.kind) ? 'Chu kỳ' : 'Dài'} value={n.anim.dur ?? 0.8} min={0.1} max={4} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, dur: v } })} /></div>}
       </div>
       {n.anim && <div class="dim small">Bấm ▶ Phát trên thanh công cụ để xem. Khi xuất, lát chứa layer này thành GIF động (Gmail/Apple Mail chạy, Outlook hiện khung cuối).</div>}
       <Eyebrow>Email</Eyebrow>
@@ -211,6 +213,20 @@ function ImageProps({ n }: { n: ImageNode }) {
   const [, bump] = useState(0);
   useEffect(() => assets.onChange(() => bump((x) => x + 1)), []);
   const pick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const f = i.files?.[0]; if (f) { const na = await assets.add(f); up({ assetId: na.id, alt: n.alt || na.name.replace(/\.[a-z0-9]+$/i, '') }); } }; i.click(); };
+  const [recolor, setRecolor] = useState(false);
+  const paint = async (c: string | null) => { if (!n.vector) return; setRecolor(true); try { const id = await reraster(n, c); if (id) up({ assetId: id, vector: { ...n.vector, color: c } }); } catch (e) { toast((e as Error).message, 'err'); } finally { setRecolor(false); } };
+  if (n.vector && n.vector.svg && n.vector.kind !== 'sticker') return (
+    <div class="section">
+      <Eyebrow>{n.vector.kind === 'icon' ? 'Icon' : 'Đồ hoạ'}</Eyebrow>
+      <div class="small muted">Đồ hoạ vector: đổi màu vẫn nét. Kéo góc để đổi cỡ.</div>
+      <div class="dp-colors">
+        {colorChoices(b).map((c) => <button key={c.c} class={`sw ${(n.vector!.color || '').toUpperCase() === c.c.toUpperCase() ? 'on' : ''}`} style={{ background: c.c }} title={c.label} disabled={recolor} onClick={() => void paint(c.c)} />)}
+        <label class="sw pick" title="Màu khác"><input type="color" value={/^#[0-9a-f]{6}$/i.test(n.vector.color || '') ? n.vector.color! : '#000000'} onChange={(e) => void paint((e.target as HTMLInputElement).value.toUpperCase())} /></label>
+      </div>
+      {recolor && <div class="dim small">Đang tô lại…</div>}
+      <Field label="Alt (khi ảnh bị chặn)"><TextInput value={n.alt} onCommit={(v) => up({ alt: v })} /></Field>
+    </div>
+  );
   return (
     <div class="section">
       <Eyebrow>Ảnh</Eyebrow>

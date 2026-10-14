@@ -93,7 +93,9 @@ export function suggest(inp: SuggestInput): { suggestions: Suggestion[]; score: 
   // Labels set small on purpose (eyebrows, stat labels, badges, tickers: uppercase, tracked, short) are design, not copy.
   const isLabel = (t: NNode) => /eyebrow|kicker|label|ticker|badge|pill/i.test(t.name || '') || ((t.text || '').trim().length <= 40 && (t.text || '') === (t.text || '').toUpperCase());
   const small = texts.filter((t) => t.fontSize != null && t.fontSize * scale < 9 && t.y < footerY && (t.text || '').trim().length > 12 && !isLabel(t));
-  if (small.length) {
+  // a real mobile version (its own 375px layout) replaces the shrunk desktop on phones: nothing shrinks
+  if (small.length && inp.hasMobile) out.push({ id: 'text-small', level: 'good', title: 'Có bản mobile riêng', detail: 'Điện thoại nhận bản 375px riêng nên chữ không bị thu nhỏ.' });
+  else if (small.length) {
     penalty += Math.min(12, small.length * 3);
     const minPx = Math.ceil(9 / scale);
     out.push({ id: 'text-small', level: 'tip', title: `${small.length} đoạn chữ sẽ nhỏ hơn 9px trên điện thoại`, detail: `Email là ảnh nên chữ bị thu còn ${(scale * 100).toFixed(0)}% trên màn 375px. Nội dung chính nên ≥ ${minPx}px, hoặc làm bản mobile riêng (footer không tính).`, nodeId: small[0].id, action: { kind: 'focus', nodeId: small[0].id } });

@@ -74,12 +74,12 @@ export function rasterSize(w: number, h: number, max = 1600): { w: number; h: nu
 
 const assetCache = new Map<string, Promise<Asset>>();
 /** One library asset per (svg, colour, size); identical art inserted twice reuses it. */
-export function vectorAsset(svg: string, w: number, h: number, name: string, color?: string | null): Promise<Asset> {
+export function vectorAsset(svg: string, w: number, h: number, name: string, color?: string | null, temp = false): Promise<Asset> {
   const sz = rasterSize(w, h);
-  const key = `${sz.w}x${sz.h}|${color || ''}|${svg.length}|${hashStr(svg)}`;
+  const key = `${sz.w}x${sz.h}|${color || ''}|${svg.length}|${hashStr(svg)}|${temp ? 't' : ''}`;
   let p = assetCache.get(key);
   if (!p) {
-    p = rasterizeSvg(colorSvg(svg, color), sz.w, sz.h).then((blob) => assets.add(blob, name, { src: { kind: 'graphic' } }));
+    p = rasterizeSvg(colorSvg(svg, color), sz.w, sz.h).then((blob) => assets.add(blob, name, { src: { kind: 'graphic' }, temp }));
     p.catch(() => assetCache.delete(key));
     assetCache.set(key, p);
   }

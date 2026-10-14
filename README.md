@@ -222,6 +222,28 @@ Cửa hàng Shopify: relay đọc thêm `/products.json` (tên, giá, giá cũ, 
 
 Bảo mật relay: `/ai`, `/site`, `/image` chỉ phục vụ người đã đăng nhập tài khoản relay (hoặc có `RELAY_TOKEN`); relay chỉ tải host công khai, kiểm tra lại từng bước redirect, kết nối đúng địa chỉ đã kiểm tra (chống DNS rebinding), giới hạn trang 2 MB, ảnh 10 MB, 3 stylesheet; mật khẩu băm scrypt bất đồng bộ; hạn mức lưu trữ `USER_QUOTA_MB` (500) và `TOTAL_QUOTA_MB` (5000).
 
+## Thiết kế tự do bằng AI (mặc định trong "Dựng bằng AI")
+
+Claude làm việc như art director của một studio: **lên 3 hướng thiết kế cùng lúc** (khác concept, bố cục, chữ, cảm xúc; dùng màu/giọng của website nếu đã đọc web), rồi **vẽ từng email bằng HTML/CSS thật** song song, stream trực tiếp (thẻ phương án hiện email đang được vẽ từng phần). Phloem dàn trang HTML trong iframe ẩn và **chuyển mọi thứ thành layer** (`studio/src/ai/htmlToDoc.ts`):
+
+- Khối: màu nền, gradient tuyến tính/toả tròn nhiều điểm dừng (mesh), viền từng cạnh, bo từng góc, bóng, blur, xoay; vùng `overflow:hidden` được cắt đúng (ảnh trong card bo góc, vạch cong theo góc).
+- Chữ: font/cỡ/độ đậm/giãn chữ/text-transform; baseline tính từ metric font nên khớp trình duyệt; đoạn một kiểu thành một layer, tiêu đề có chữ đổi màu tách theo dòng; chữ xoay; neon/viền/đổ bóng từ text-shadow.
+- Ảnh `<img data-img>` từ thư viện (object-fit/position → crop), icon/sticker `<img data-icon="ph:…">` (Iconify, đổi màu được), SVG vẽ tay → ảnh vector nét.
+- Thứ tự lớp theo đúng cách CSS vẽ (z-index, phần tử định vị vẽ sau nội dung). Mỗi `<a>`/card một link thành **một nhóm có link** (ít lát cắt). `data-anim` → hoạt ảnh GIF.
+- Bản mobile: cùng HTML dàn ở 375px (media query) → project có sẵn bản mobile.
+
+Sau đó **creative director AI xem ảnh render** (đúng thứ người nhận thấy) và trả bản HTML tốt hơn (bật/tắt bằng ô "soát thêm một vòng"; ~4–6 phút cho 3 phương án). Màu trùng bảng màu được gắn token thương hiệu, HTML gốc lưu trong `project.design`: bấm **AI tự chỉnh** khi chưa sửa tay → creative director vẽ lại trên bản render; đã sửa tay → chỉ sửa link/alt/huỷ đăng ký, giữ nguyên bố cục. Chế độ cũ "Ghép block Phloem" vẫn còn (nhanh, rẻ hơn). Relay có `POST /ai/stream` (SSE) cho bản vẽ trực tiếp; relay cũ không có route này thì tự rơi về `/ai`.
+
+## Tab Thiết kế (thư viện kiểu Canva)
+
+Cột trái → **Thiết kế**: tìm kiếm, chọn màu (bảng màu thương hiệu + màu tự chọn), bấm để chèn vào giữa vùng đang xem hoặc **kéo thả** vào email.
+- **Hình khối**: chữ nhật, bo góc, tròn, pill, mái vòm, chiếc lá, kẻ, khung viền, thẻ kính, quầng sáng, dải gradient, nền mesh + ~30 hình SVG (sao, nổ sao, lấp lánh, tim, blob, sóng, vòng cung, gạch vẽ tay, mũi tên vẽ tay, ruy băng, nhãn giá, bong bóng chat…).
+- **Đồ hoạ dựng sẵn**: sale burst, huy hiệu MỚI, ruy băng chữ, nhãn giá, mã giảm giá, nút bấm, đánh giá sao, đếm ngược, khung polaroid, điện thoại, trình duyệt, thẻ trích dẫn, băng chữ chạy, cụm lấp lánh, confetti, nhãn LIVE.
+- **Sticker 3D** (Fluent Emoji, MIT) và **Icon** (Phosphor/Lucide/Tabler/MDI… qua Iconify, 5 kiểu nét), tìm được hàng nghìn icon; icon/hình vector **đổi màu được** ở cột phải mà vẫn nét.
+- **Chữ**: tiêu đề lớn, tiêu đề, phụ đề, đoạn văn, nhãn nhỏ, số khổng lồ, chữ 3D, neon, viền, bóng dài.
+- **Ảnh** miễn phí từ Openverse (chỉ giấy phép cho dùng thương mại; nguồn/tác giả lưu theo ảnh).
+- **Hoạt ảnh** cho layer đang chọn: hiện dần, trượt 4 hướng, nảy, mở dần, gõ chữ, chữ chạy, và **lặp liền mạch** nhịp đập / lơ lửng / xoay / lắc / nhấp nháy (chu kỳ chia hết 2,4 giây nên GIF lặp không giật).
+
 ## Thiết kế: vibe, font, hiệu ứng
 
 Brand kit có **Vibe** (clean / playful / bold / luxury / editorial): quyết định bo góc, nút pill phát sáng, bóng đổ card, hình tròn trang trí trên dải màu, cỡ tiêu đề. 45 Google Fonts (sans, display, serif, bo tròn, viết tay, mono) với cờ hỗ trợ tiếng Việt. AI chọn vibe + font tiêu đề/nội dung cho từng phương án theo ngành. Email là ảnh cắt lát nên mọi hiệu ứng (gradient, glow, bóng, chữ display) hiển thị đúng ở mọi hộp thư.

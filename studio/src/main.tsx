@@ -32,6 +32,7 @@ render(<App />, document.getElementById('root')!);
 // preview server, which saves them under landing/thumbs/ for the marketing page. Not used by the app itself.
 import { TEMPLATES, makeTemplate, buildDoc, type BlockSpec } from './model/templates';
 import { BRAND_PRESETS, DEFAULT_BRAND, type Doc } from './model/types';
+import { htmlToDoc } from './ai/htmlToDoc';
 import { polishDesign } from './pipeline/polish';
 import { renderToCanvas } from './render/renderer';
 import { animBlocks, makeMobile } from './model/ops';
@@ -117,6 +118,10 @@ window.addEventListener('online', () => { void A.syncNow().catch(() => { /* repo
 
 (window as unknown as { __phloemDev?: unknown }).__phloemDev = {
   polish: (d: Doc) => polishDesign(d, get().project!.brand),
+  /** The open doc rendered as the export will see it (data URL). */
+  renderPng: (scale = 1) => { const p = get().project!; const d = get().variant === 'mobile' && p.mobile ? p.mobile : p.desktop; return renderToCanvas(d, p.brand, assets, scale).toDataURL('image/png'); },
+  /** HTML → layers (AI designer converter), for browser checks. */
+  htmlToDoc: (html: string, width = 600) => htmlToDoc(html, { width, validIds: new Set(assets.all().map((a) => a.id)), temp: false }),
   get, set, A, assets,
   /** Export the open project's desktop doc as slices (PNG, animated regions as GIF) without uploading. */
   exportSlices: async (fps = 10, format: 'PNG' | 'JPG' = 'PNG') => { const p = get().project!; const plan = planSlices(docToNNode(p.desktop, p.brand), { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: animBlocks(p.desktop.nodes) }); const raw = await exportDocSlices(p.desktop, p.brand, plan, 2, undefined, fps); const slices = await finalizeSlices(raw, format, 85); return slices.map((x) => ({ key: x.key, format: x.format, kb: Math.round(x.bytes.length / 1024), w: x.w, h: x.h, url: x.format === 'GIF' ? URL.createObjectURL(new Blob([x.bytes as BlobPart], { type: 'image/gif' })) : undefined })); },

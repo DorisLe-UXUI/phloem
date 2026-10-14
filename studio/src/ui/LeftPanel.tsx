@@ -9,6 +9,7 @@ import * as A from '../pipeline/actions';
 import { Btn, Eyebrow } from './components';
 import { Icon, type IconName } from './icons';
 import { ask } from './confirm';
+import { DesignPanel } from './DesignPanel';
 
 const ICON: Record<Node['type'], IconName> = { rect: 'rect', text: 'text', image: 'image', group: 'group' };
 
@@ -17,11 +18,12 @@ export function LeftPanel() {
   return (
     <div class={`panel ${s.mobilePane === 'left' ? 'open' : ''}`}>
       <div class="ptabs">
+        <button class={`ptab ${s.leftTab === 'design' ? 'on' : ''}`} onClick={() => set({ leftTab: 'design' })} title="Hình khối, đồ hoạ, icon, sticker 3D, chữ, ảnh, hoạt ảnh"><Icon name="shapes" size={13} />Thiết kế</button>
         <button class={`ptab ${s.leftTab === 'layers' ? 'on' : ''}`} onClick={() => set({ leftTab: 'layers' })}><Icon name="layers" size={13} />Layer</button>
         <button class={`ptab ${s.leftTab === 'blocks' ? 'on' : ''}`} onClick={() => set({ leftTab: 'blocks' })}><Icon name="blocks" size={13} />Block</button>
         <button class={`ptab ${s.leftTab === 'assets' ? 'on' : ''}`} onClick={() => set({ leftTab: 'assets' })}><Icon name="image" size={13} />Ảnh</button>
       </div>
-      <div class="pbody">{s.leftTab === 'layers' ? <Layers /> : s.leftTab === 'blocks' ? <Blocks /> : <Assets />}</div>
+      <div class="pbody">{s.leftTab === 'design' ? <DesignPanel /> : s.leftTab === 'layers' ? <Layers /> : s.leftTab === 'blocks' ? <Blocks /> : <Assets />}</div>
     </div>
   );
 }

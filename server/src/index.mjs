@@ -173,6 +173,8 @@ async function proxy(p, res) {
 }
 
 // ---------- AI (Claude) ----------
+/** Server-side fallback (Opus 5.5 → Opus 4.8 when overloaded) exists for Opus models only; other models reject the field. */
+const fallbackOpts = (model) => (/^claude-opus-5/.test(String(model)) ? { betas: ['server-side-fallback-2026-06-01'], fallbacks: [{ model: 'claude-opus-4-8' }] } : {});
 // The plugin/studio sends {model, max_tokens, effort, system, messages}; the key stays on the server.
 async function ai(p, res) {
   if (!anthropic) return json(res, 503, { error: 'Relay chưa có ANTHROPIC_API_KEY trong server/.env' });
@@ -181,8 +183,7 @@ async function ai(p, res) {
   try {
     const r = await anthropic.beta.messages.create({
       model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),
-      betas: ['server-side-fallback-2026-06-01'],
-      fallbacks: [{ model: 'claude-opus-4-8' }],
+      ...fallbackOpts(model),
       output_config: { effort },
       system, messages,
     });
@@ -208,8 +209,7 @@ async function aiStream(p, req, res) {
   try {
     stream = anthropic.beta.messages.stream({
       model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),
-      betas: ['server-side-fallback-2026-06-01'],
-      fallbacks: [{ model: 'claude-opus-4-8' }],
+      ...fallbackOpts(model),
       output_config: { effort },
       system, messages,
     });

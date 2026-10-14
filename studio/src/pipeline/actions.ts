@@ -4,8 +4,8 @@ import { planSlices } from '../../../src/shared/slicer';
 import { runChecks } from '../../../src/shared/checks';
 import { buildEmailHtml, htmlSizeBytes } from '../../../src/shared/html';
 import { suggest } from '../../../src/shared/suggestions';
-import type { Asset, Brand, Color, Doc, GroupNode, ImageNode, Node, Project, RectNode, TextNode } from '../model/types';
-import { DEFAULT_BRAND, resolveColor, uid } from '../model/types';
+import type { Anim, Asset, Brand, Color, Doc, GroupNode, ImageNode, Node, Project, RectNode, TextNode } from '../model/types';
+import { DEFAULT_BRAND, LOOP_KINDS, resolveColor, uid } from '../model/types';
 import * as ops from '../model/ops';
 import { contrastToken, logoAssetFor, makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
 import type { DraftRecord } from '../../../src/shared/types';
@@ -249,6 +249,38 @@ export function addRect(r: ops.Rect) {
   return n.id;
 }
 
+/** Doc point at the middle of what the user is looking at: new elements from the Thiết kế tab land there. */
+export function viewCenter(): { x: number; y: number } {
+  const d = doc(); const st = get();
+  const el = document.querySelector('.canvas-wrap') as HTMLElement | null;
+  if (!el) return { x: d.width / 2, y: Math.min(d.height / 2, 320) };
+  const r = el.getBoundingClientRect();
+  const x = (r.width / 2 - st.pan.x) / st.zoom, y = (r.height / 2 - st.pan.y) / st.zoom;
+  return { x: Math.round(Math.max(40, Math.min(d.width - 40, x))), y: Math.round(Math.max(40, Math.min(Math.max(80, d.height - 40), y))) };
+}
+
+/** Add ready-made layers (shapes, icons, stickers, graphics) on top, selected. */
+export function insertLayers(nodes: Node[]) {
+  if (!nodes.length) return;
+  const d = doc();
+  const bottom = Math.max(...nodes.map((n) => n.y + n.h));
+  commit({ ...ops.insertNodes(d, nodes), height: d.autoHeight === false ? d.height : Math.max(d.height, Math.ceil(bottom)) });
+  set({ selection: nodes.map((n) => n.id), tool: 'select', enteredGroup: null, editingText: null });
+}
+
+/** Motion preset on the selection (Thiết kế → Hoạt ảnh). Text-only motions skip other layers. */
+export function animateSelection(kind: Anim['kind'] | 'none'): number {
+  let n = 0;
+  updateSelected((x) => {
+    if (kind === 'none') { n++; return { ...x, anim: null }; }
+    if ((kind === 'type' || kind === 'marquee') && x.type !== 'text') return x;
+    n++;
+    const loop = LOOP_KINDS.has(kind);
+    return { ...x, anim: { kind, delay: loop ? 0 : x.anim?.delay ?? 0, dur: loop ? (kind === 'float' || kind === 'spin' ? 2.4 : 1.2) : x.anim?.dur ?? 0.8 } };
+  });
+  return n;
+}
+
 /** Place an asset that is already in the library: onto an image node (replace) or as a new image node. */
 export function placeAsset(id: string, at?: { x: number; y: number }, into?: string): string | null {
   const a = assets.get(id); if (!a) return null;
@@ -475,7 +507,24 @@ export async function autoFix(): Promise<string[]> {
   let fieldPatch: Partial<Project['fields']> = {};
   // 0. the creative director: re-plan the whole email (desktop only, needs AI)
   const transport = await aiTransport().catch(() => null);
-  if (transport && d.width === 600 && get().variant === 'desktop') {
+  // a free-form AI design is composed, not built from blocks: revise its HTML (when untouched) instead of re-planning blocks
+  const free = !!p.design && d.nodes.some((n) => n.type === 'group' && n.src === 'html');
+  let mobilePatch: Doc | null | undefined;
+  let clean = false;
+  if (free) {
+    const { docHash, reviseDesign } = await import('../ai/design');
+    clean = docHash(p.desktop) === p.design!.hash;
+    if (transport && get().variant === 'desktop' && clean) {
+      set({ busy: { label: 'Creative director đang xem bản render…', done: 0, total: 0 } });
+      try {
+        const r = await reviseDesign(p, (m) => set({ busy: { label: m, done: 0, total: 0 } }));
+        if (get().project?.id !== pid) return changes;
+        if (r) { d = r.doc; b = r.brand; mobilePatch = r.mobile; patchProject({ design: { ...p.design!, html: r.html, at: new Date().toISOString() } }); changes.push('Creative director AI vẽ lại thiết kế trên bản render'); }
+        else changes.push('Creative director thấy thiết kế đã ổn');
+      } catch (e) { changes.push(`AI chưa vẽ lại được (${(e as Error).message})`); }
+      finally { set({ busy: null }); }
+    } else changes.push('Thiết kế tự do đã chỉnh tay: giữ nguyên bố cục, chỉ sửa link, alt, huỷ đăng ký');
+  } else if (transport && d.width === 600 && get().variant === 'desktop') {
     set({ busy: { label: 'AI đang xem lại thiết kế…', done: 0, total: 0 } });
     try {
       const r = await redesignDoc(d, b, p.fields, before.score, before.suggestions, (m) => set({ busy: { label: m, done: 0, total: 0 } }));
@@ -488,6 +537,7 @@ export async function autoFix(): Promise<string[]> {
     finally { set({ busy: null }); }
   } else if (!transport) changes.push('Không có AI (đăng nhập relay hoặc nhập key) → chỉ chỉnh theo hệ thiết kế');
   const scale = 375 / d.width;
+  if (free) return finishFree(d, b, mobilePatch, before, changes, pid, clean);
   // 1. text that would shrink under 9px on a phone → 15px (footer excluded)
   const footerY = d.height - 220; let smalls = 0;
   // eyebrows, stat labels, badges and the ticker are set small on purpose (uppercase, tracked); copy is what must stay readable
@@ -549,6 +599,30 @@ export async function autoFix(): Promise<string[]> {
     changes.unshift(`Điểm ${before.score} → ${after.score}`);
     toast(changes.length > 1 ? `AI đã chỉnh · điểm ${before.score} → ${after.score}` : 'Không còn gì để chỉnh.', 'ok');
   }
+  return changes;
+}
+
+/** The tail of autoFix for free-form designs: links, alt, unsubscribe; never restyles or moves the composition. */
+async function finishFree(d0: Doc, b: Brand, mobile: Doc | null | undefined, before: { score: number }, changes: string[], pid: string, clean: boolean): Promise<string[]> {
+  let d = d0;
+  const p = get().project!;
+  const home = b.links?.website || b.links?.nav?.[0]?.url || '';
+  let alts = 0; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.assetId && !n.vector && !n.decor && !(n.alt || '').trim()) { const a = assets.get(n.assetId); n.alt = (a ? a.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ') : n.name) || 'Ảnh'; alts++; } });
+  if (alts) changes.push(`Điền alt cho ${alts} ảnh`);
+  let links = 0;
+  walkAll(d.nodes, (n) => { if (!n.link && home && n.type === 'text' && CTA_RE.test((n.text || '').trim()) && (n.text || '').trim().split(/\s+/).length <= 5) { n.link = home; links++; } });
+  if (links) changes.push(`Gắn link cho ${links} nút`);
+  const withUnsub = addUnsubscribe(d, b, p, changes); if (withUnsub) d = withUnsub;
+  if (get().project?.id !== pid) return changes;
+  if (get().variant !== 'desktop') setVariant('desktop');
+  commit(d);
+  patchProject({ brand: b, ...(mobile !== undefined ? { mobile } : {}) });
+  const cur = get().project!;
+  // still "untouched by hand": the next auto-fix may revise the HTML again
+  if (clean) patchProject({ design: { ...cur.design!, hash: (await import('../ai/design')).docHash(cur.desktop) } });
+  const after = scoreOf(doc(), cur.brand, cur.fields, !!cur.mobile);
+  changes.unshift(`Điểm ${before.score} → ${after.score}`);
+  toast(`AI đã chỉnh · điểm ${before.score} → ${after.score}`, 'ok');
   return changes;
 }
 

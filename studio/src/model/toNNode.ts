@@ -13,7 +13,8 @@ export function docToNNode(doc: Doc, brand: Brand): NNode {
       visible: n.visible && n.opacity > 0,
       link: n.link || null, linkSource: n.link ? 'field' : null,
       alt: n.alt || null, altSource: n.alt ? 'field' : null,
-      hasImage: n.type === 'image' && !!n.assetId,
+      // photos need alt text; drawn decoration (shapes, stickers, icons, converted glows) does not
+      hasImage: n.type === 'image' && !!n.assetId && !n.decor && !n.vector,
       isText: n.type === 'text',
       text: n.type === 'text' ? n.text : null,
       fontSize: n.type === 'text' ? n.fontSize : null,

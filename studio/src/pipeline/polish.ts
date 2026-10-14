@@ -20,7 +20,7 @@ export function polishDesign(d0: Doc, brand: Brand): Polish {
   const T = themeFor(brand.vibe, brand.shape);
   const changes: string[] = [];
   const W = d.width;
-  const blocks = d.nodes.filter((n): n is GroupNode => n.type === 'group');
+  const blocks = d.nodes.filter((n): n is GroupNode => n.type === 'group' && n.src !== 'html'); // free-form AI designs are composed: never restyled
   const kindOf = (g: GroupNode) => g.block || g.name.toLowerCase();
   const bandOf = (g: GroupNode): RectNode | null => g.children.find((k): k is RectNode => k.type === 'rect' && k.w >= W * 0.95 && k.h >= g.h * 0.85 && k.x <= 2) || null;
   const bandColor = (b: RectNode | null): Color | null => (b ? (b.gradient && !b.gradient.radial ? b.gradient.from : b.fill) : null);

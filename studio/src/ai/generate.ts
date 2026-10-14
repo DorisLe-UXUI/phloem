@@ -111,7 +111,7 @@ NGUYÊN TẮC từ email thương hiệu thật (MeUndies, Crate&Barrel, Blue Ap
 BẮT BUỘC: mỗi email có ít nhất một dải tối hoặc gradient (hero-product / dark-band / stats dark / cta dark / hero-center gradient), trừ công thức LUXURY. Không bao giờ đặt block text ngay trước products/articles/steps/reviews/stat-tiles: dùng heading/eyebrow của chính block đó. Tối đa 1 block text mỗi email. Headline của hero-product/dark-band ≤ 6 từ, hero khác ≤ 8 từ. Steps: body ≤ 10 từ. Stats chỉ dùng số thật.
 CHECKLIST PREMIUM (tự kiểm trước khi trả): headline ≤ 8 từ, nói một lợi ích cụ thể, không mở đầu bằng "Chào mừng bạn đến với"; không câu sáo rỗng ("chất lượng cao", "giá tốt nhất"); mỗi block một ý, không lặp ý; số liệu/giá/mã lấy từ nguồn thật; hero và mọi card có ảnh nếu có ảnh; 1 CTA chính, lặp ở cuối với cùng lời kêu gọi; eyebrow ngắn (2–4 từ); subject và preheader bổ sung nhau; 3 phương án khác nhau cả cấu trúc, vibe lẫn font; ít nhất một phương án dùng block "mới" (spotlight / glass-hero / collage / steps) khi ngành phù hợp.`;
 
-const GOAL_DESC: Record<string, string> = {
+export const GOAL_DESC: Record<string, string> = {
   promo: 'promo / khuyến mãi (giá, mã, hạn chót, sản phẩm giảm giá)',
   intro: 'giới thiệu dịch vụ / thương hiệu: email đầu tiên gửi cho khách tiềm năng, nói rõ công ty làm gì, cho ai, khác gì, kết quả đã đạt, cách bắt đầu; CTA là đặt lịch / liên hệ / xem dịch vụ',
   newsletter: 'newsletter định kỳ (tin, bài viết, cập nhật)',

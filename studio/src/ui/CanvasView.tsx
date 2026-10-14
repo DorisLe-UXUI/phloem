@@ -453,6 +453,8 @@ export function CanvasView() {
     const p = local(e); const d = toDoc(p.x, p.y);
     const outside = !insideArtboard(d.x, d.y);
     const target = outside ? null : hit(d.x, d.y, true);
+    const el = e.dataTransfer?.getData('text/phloem-el');
+    if (el) { try { const { insertSpec } = await import('./DesignPanel'); await insertSpec(JSON.parse(el), d); } catch { /* bad payload */ } return; }
     const assetId = e.dataTransfer?.getData('text/phloem-asset');
     if (assetId) { if (outside) A.addScrap(assetId, d); else A.placeAsset(assetId, d, target && target.type === 'image' ? target.id : undefined); return; }
     const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
