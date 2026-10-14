@@ -20,7 +20,7 @@ export interface Toast { id: number; text: string; kind: 'ok' | 'err' | 'info' }
 export interface StudioSettings extends Settings { snap: boolean; grid: boolean; autosave: boolean; anthropicKey: string; aiModel: string }
 
 export interface State {
-  route: { name: 'home' } | { name: 'editor'; projectId: string };
+  route: { name: 'home' } | { name: 'editor'; projectId: string } | { name: 'admin' };
   projects: ProjectMeta[];
   project: Project | null;
   variant: Variant;

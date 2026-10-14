@@ -1,7 +1,7 @@
 // Accounts, shared by the landing page (via studio/dist/auth.js) and Studio.
 // Two modes: 'relay' when the Studio's relay URL answers with auth support, else 'local'
 // (users live in this browser's IndexedDB, passwords hashed with PBKDF2 via WebCrypto).
-export interface User { id: string; name: string; email: string; brand: string; createdAt: string; /** relay: may use the AI */ ai?: boolean; /** relay: manages AI access codes */ admin?: boolean }
+export interface User { id: string; name: string; email: string; brand: string; createdAt: string; /** relay: may use the AI */ ai?: boolean; /** relay: manages AI access codes */ admin?: boolean; /** admin e-mail not yet proven by Google */ adminPending?: boolean }
 export interface Session { token: string; user: User; mode: 'local' | 'relay'; relayUrl?: string }
 export interface AuthOpts { relayUrl?: string; relayToken?: string }
 export interface Credentials { name?: string; email: string; password: string; brand?: string }

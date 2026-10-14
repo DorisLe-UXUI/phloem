@@ -30,6 +30,7 @@ const BACKUP = backupConfig();
 if (BACKUP) { const { mkdirSync } = await import('node:fs'); mkdirSync(DATA_DIR, { recursive: true }); await restoreBackup(BACKUP, DATA_DIR); }
 const ADMIN_EMAILS = String(process.env.ADMIN_EMAILS || 'vankhanh.le@sentryxp.com').toLowerCase().split(/[\s,;]+/).filter(Boolean);
 const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '', adminEmails: ADMIN_EMAILS, adminNeedsGoogle: process.env.ADMIN_REQUIRE_GOOGLE !== '0' });
+const STARTED_AT = new Date().toISOString();
 const RESEND_API_KEY = process.env.RESEND_API_KEY || ''; // optional: e-mail the admin when someone asks for AI access
 const DB = AUTH.db;
 const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR);
@@ -108,6 +109,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
     if (url.pathname === '/ai' && req.method === 'POST') { if (!aiGate(req, res)) return; return await ai(await body(req), res); }
     if (url.pathname.startsWith('/aiaccess')) return await aiAccessRoute(url.pathname.slice('/aiaccess'.length) || '/', req, res);
+    if (url.pathname.startsWith('/admin/')) return await adminRoute(url.pathname.slice('/admin'.length), req, res);
     if (url.pathname === '/oauth/start' && req.method === 'POST') return oauthStart(await body(req), res);
     if (url.pathname.startsWith('/oauth/poll/') && req.method === 'GET') return oauthPoll(url.pathname.split('/').pop(), res);
     if (url.pathname === '/oauth/refresh' && req.method === 'POST') return await oauthRefresh(await body(req), res);
@@ -248,6 +250,43 @@ async function aiAccessRoute(sub, req, res) {
       return json(res, 200, { ok: true });
     }
     return json(res, 404, { error: 'không có route này' });
+  } catch (e) { return json(res, e.status || 500, { error: e.message }); }
+}
+
+// ---------- database console (admins) ----------
+async function adminRoute(sub, req, res) {
+  try {
+    const row = AUTH.meRow(bearer(req));
+    if (!row) return json(res, 401, { error: 'Cần đăng nhập.', code: 'expired' });
+    if (!AUTH.isAdmin(row)) return json(res, 403, { error: 'Chỉ quản trị viên.' });
+    if (sub === '/db' && req.method === 'GET') {
+      const { statSync } = await import('node:fs');
+      const size = (f) => { try { return statSync(f).size; } catch { return 0; } };
+      return json(res, 200, {
+        totals: { ...DB.admin.totals(), dbBytes: size(DB.file) + size(DB.file + '-wal') },
+        backup: BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), error: BACKUPS.error, bucket: BACKUP?.bucket || '', every: BACKUP?.every || 0 } : null,
+        relay: { commit: String(process.env.RENDER_GIT_COMMIT || '').slice(0, 7), startedAt: STARTED_AT, ai: !!anthropic, google: !!GOOGLE_CLIENT_ID, admins: ADMIN_EMAILS },
+        users: DB.admin.users(), projects: DB.admin.projects(), assets: DB.admin.assets(),
+      });
+    }
+    if (sub === '/backup' && req.method === 'POST') {
+      if (!BACKUPS.enabled) return json(res, 400, { error: 'Chưa cấu hình sao lưu (BACKUP_S3_*).' });
+      await BACKUPS.now('manual');
+      return json(res, 200, { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), error: BACKUPS.error });
+    }
+    if (sub === '/db/export' && req.method === 'GET') {
+      // a consistent copy of the whole database (VACUUM INTO), for the owner to keep or inspect with any SQLite tool
+      const { readFileSync, unlinkSync } = await import('node:fs');
+      const tmp = join(DATA_DIR, `export-${process.pid}-${Date.now()}.db`);
+      try { DB.raw.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`); const buf = readFileSync(tmp); res.statusCode = 200; res.setHeader('Content-Type', 'application/vnd.sqlite3'); res.setHeader('Content-Disposition', `attachment; filename="phloem-${new Date().toISOString().slice(0, 10)}.db"`); res.setHeader('Content-Length', buf.length); return res.end(buf); }
+      finally { try { unlinkSync(tmp); } catch { /* gone */ } }
+    }
+    if (sub === '/user/delete' && req.method === 'POST') {
+      const p = await body(req); const id = String(p?.userId || '');
+      if (id === row.id) return json(res, 400, { error: 'Không tự xoá tài khoản admin đang dùng.' });
+      return DB.admin.deleteUser(id) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'không có người dùng này' });
+    }
+    return json(res, 404, { error: 'không có route admin này' });
   } catch (e) { return json(res, e.status || 500, { error: e.message }); }
 }
 
@@ -500,6 +539,7 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Phloem-Token, Authorization, X-Asset-Name, X-Asset-W, X-Asset-H, X-Asset-Meta');
   res.setHeader('Access-Control-Max-Age', '600');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
 }
 function end(res, code) { res.statusCode = code; res.end(); }
 function json(res, code, obj) { res.statusCode = code; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(obj)); }

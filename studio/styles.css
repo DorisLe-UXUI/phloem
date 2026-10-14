@@ -438,6 +438,12 @@ select.in { appearance: none; background-image: linear-gradient(45deg, transpare
 .asset[draggable]:active { cursor: grabbing; }
 
 .google-btn { display: flex; flex-direction: column; align-items: center; margin-bottom: 12px; }
+/* The page is color-scheme: dark and Google's button document is light; a mismatch makes browsers paint the iframe
+   with an opaque white backdrop (the "white frame"). Matching the scheme on the iframe keeps it transparent. */
+.google-btn iframe { color-scheme: light; background: transparent !important; border-radius: 999px; }
+.google-btn > div:first-child { min-height: 44px; display: flex; justify-content: center; }
+.google-btn .or { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px; color: var(--dim); font-size: 11.5px; }
+.google-btn .or::before, .google-btn .or::after { content: ""; flex: 1; height: 1px; background: var(--line-2); }
 
 /* ---------- catalog ---------- */
 .catalog { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r); padding: 6px; }
@@ -533,3 +539,27 @@ select.in { appearance: none; background-image: linear-gradient(45deg, transpare
   .palette-band { padding: 12px; gap: 12px; }
   .feature { grid-template-columns: auto 1fr; } .feature .go { display: none; }
 }
+
+/* ---------- database console ---------- */
+.adm .hero h1 { font-size: 28px; }
+.adm-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.adm-tile { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(180deg, var(--panel), #0a0f0c); }
+.adm-tile span { font: 600 10.5px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--dim); }
+.adm-tile b { font-size: 26px; line-height: 1.1; font-family: var(--sans); color: var(--text); }
+.adm-tile i { font-style: normal; color: var(--muted); font-size: 11.5px; }
+.adm-tile.hot { border-color: var(--neon-line); box-shadow: var(--glow); }
+.adm-tile.hot b { color: var(--neon); }
+.adm-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.adm-table { border: 1px solid var(--line); border-radius: 12px; overflow: auto; max-height: 62vh; background: var(--panel); }
+.adm-table table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.adm-table th { position: sticky; top: 0; z-index: 1; background: var(--panel-2); text-align: left; font: 600 10.5px var(--mono); letter-spacing: 0.8px; text-transform: uppercase; color: var(--dim); padding: 10px 12px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.adm-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+.adm-table td .mono, .adm-table td.mono { font-size: 11px; }
+.adm-table tr:hover td { background: rgba(57, 255, 20, 0.03); }
+.adm-table .n { text-align: right; font-family: var(--mono); }
+.adm-table button.chip { cursor: pointer; background: transparent; }
+.adm-table button.chip:hover { border-color: var(--neon); color: var(--neon); }
+.adm-del { border: 0; background: transparent; color: var(--dim); cursor: pointer; padding: 4px; border-radius: 6px; }
+.adm-del:hover { color: var(--err); background: rgba(255, 92, 92, 0.1); }
+@media (max-width: 1100px) { .adm-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 820px) { .adm-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .adm-cards { grid-template-columns: 1fr; } .adm-tile b { font-size: 22px; } }

@@ -68,7 +68,7 @@ export function createAuth({ dataDir, secret = '', adminEmails = [], adminNeedsG
   // Admin = an ADMIN_EMAILS address whose ownership Google has proven (signed in with Google once); the AI is open to
   // admins and to users an admin granted (or who redeemed an admin's code).
   const isAdmin = (u) => adminEmails.includes(String(u.email).toLowerCase()) && (!adminNeedsGoogle || !!u.google_sub);
-  const pub = (u) => { const admin = isAdmin(u); return { id: u.id, name: u.name, email: u.email, brand: u.brand || '', createdAt: u.created_at || u.createdAt, ai: admin || !!u.ai_access, admin }; };
+  const pub = (u) => { const admin = isAdmin(u); return { id: u.id, name: u.name, email: u.email, brand: u.brand || '', createdAt: u.created_at || u.createdAt, ai: admin || !!u.ai_access, admin, ...(!admin && adminEmails.includes(String(u.email).toLowerCase()) ? { adminPending: true } : {}) }; };
   const session = (u, agent) => { const token = signToken(u.id, secret); db.sessions.add(token, u.id, agent); return { token, user: pub(u) }; };
 
   return {

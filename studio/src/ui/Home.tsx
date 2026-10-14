@@ -74,7 +74,7 @@ export function Home() {
           <div class="acct" title={s.user.email}>
             <div class="avatar">{(s.user.name || '?').trim().slice(0, 1).toUpperCase()}</div>
             <div class="who"><b>{s.user.name}</b><span>{s.user.brand || s.user.email}</span></div>
-            {s.user.admin ? <Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aiadmin' })} title="Duyệt yêu cầu và tạo mã dùng AI">Quản lý AI</Btn>
+            {s.user.admin ? <><Btn kind="ghost" sm icon="grid" onClick={() => set({ route: { name: 'admin' } })} title="Người dùng, project, ảnh, sao lưu trên relay">Database</Btn><Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aiadmin' })} title="Duyệt yêu cầu và tạo mã dùng AI">Quản lý AI</Btn></>
               : !s.user.ai && s.sync.state !== 'off' ? <Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aicode' })} title="AI cần mã từ quản trị viên">Mở khoá AI</Btn> : null}
             <Btn kind="ghost" sm onClick={() => void A.signOut()}>Đăng xuất</Btn>
           </div>
@@ -93,6 +93,9 @@ export function Home() {
         <input ref={file} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={async (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) { try { await A.importProjectJson(f); } catch (err) { toast((err as Error).message, 'err'); } } (e.target as HTMLInputElement).value = ''; }} />
       </div>
       <div class="home-body">
+        {s.user?.adminPending && (
+          <div class="claim"><Icon name="lock" /><span class="grow">Email này là admin. Bấm <b>Continue with Google</b> một lần (cùng email) để mở <b>Database</b> và <b>Quản lý AI</b>. Google xác minh email để không ai giả mạo được quyền admin.</span><Btn sm kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Xác minh bằng Google</Btn></div>
+        )}
         {s.user && s.guestProjects > 0 && (
           <div class="claim"><Icon name="info" /><span class="grow">Có {s.guestProjects} email được tạo khi chưa đăng nhập trên máy này.</span><Btn sm kind="primary" onClick={() => void A.claimGuestProjects()}>Chuyển vào tài khoản</Btn></div>
         )}
