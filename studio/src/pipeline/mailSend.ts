@@ -77,29 +77,112 @@ async function sendOne(acc: GmailAccount, raw: string) {
   throw new Error(`Gmail: ${msg}`);
 }
 
-const MAX_PER_RUN = 100;
-/** Send to the pasted recipients (or to yourself when `test`), one personal message each, after a confirmation. */
-export async function sendWithGmail(p: Project, recipientsRaw: string, test = false) {
+// ---------------------------------------------------------------------------------------------------------------
+// Send queue: 1 to 10,000 recipients from a regular Gmail. Gmail caps recipients per day (~500 for @gmail.com,
+// ~2,000 for Google Workspace), so the queue sends one personal message per recipient at Gmail's pace, stops at the
+// daily cap and resumes from where it stopped the next day. Progress is saved in this browser; nobody gets it twice.
+export const MAX_RECIPIENTS = 10_000;
+export interface MailQueue {
+  id: string; projectId: string; from: string; subject: string; createdAt: string;
+  recipients: string[]; cursor: number; sent: number; failed: { email: string; error: string }[];
+  /** messages sent per local day (YYYY-MM-DD) from this account, for the daily cap */
+  days: Record<string, number>; dailyCap: number;
+  status: 'ready' | 'sending' | 'paused' | 'capped' | 'auth' | 'done';
+}
+const qKey = (projectId: string) => `phloem.mailq.${projectId}`;
+const dayKey = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD in local time
+export function loadQueue(projectId: string): MailQueue | null { try { const q = JSON.parse(localStorage.getItem(qKey(projectId)) || 'null'); return q && Array.isArray(q.recipients) ? q : null; } catch { return null; } }
+function saveQueue(q: MailQueue | null, projectId: string) {
+  try { if (q) localStorage.setItem(qKey(projectId), JSON.stringify(q)); else localStorage.removeItem(qKey(projectId)); } catch { /* storage full: progress still lives in memory for this run */ }
+  set({});
+}
+export function clearQueue(projectId: string) { stopFlag = true; saveQueue(null, projectId); }
+/** Gmail's documented ceilings: consumer accounts ~500 recipients/day, Workspace ~2,000. */
+export function defaultCap(from: string): number { return /@(gmail|googlemail)\.com$/i.test(from) ? 450 : 1800; }
+export function sentToday(q: MailQueue): number { return q.days[dayKey()] || 0; }
+
+/** Background tabs throttle page timers to once a minute; a worker's timers are not, so the queue keeps its pace. */
+let ticker: Worker | null = null; let tickId = 0; const waiting = new Map<number, () => void>();
+function sleep(ms: number): Promise<void> {
+  try {
+    if (!ticker) { ticker = new Worker(URL.createObjectURL(new Blob(['onmessage=(e)=>setTimeout(()=>postMessage(e.data[0]),e.data[1])'], { type: 'text/javascript' }))); ticker.onmessage = (e) => { const f = waiting.get(e.data); if (f) { waiting.delete(e.data); f(); } }; }
+    const id = ++tickId; return new Promise((r) => { waiting.set(id, r); ticker!.postMessage([id, ms]); });
+  } catch { return new Promise((r) => setTimeout(r, ms)); }
+}
+
+let stopFlag = false; let running = false;
+export const queueRunning = () => running;
+export function pauseQueue() { stopFlag = true; }
+
+/** Create (or replace) the queue for this email and start sending, after a confirmation. */
+export async function startQueue(p: Project, recipientsRaw: string, suppressRaw = '', cap?: number) {
   const acc = gmailAccount(); if (!acc) throw new Error('Kết nối Gmail trước.');
-  const list = test ? [acc.email] : parseRecipients(recipientsRaw);
+  if (!p.fields.subject.trim()) throw new Error('Điền Subject ở tab Email trước khi gửi.');
+  const skip = new Set(parseRecipients(suppressRaw));
+  const list = parseRecipients(recipientsRaw).filter((e) => !skip.has(e));
   if (!list.length) throw new Error('Chưa có địa chỉ người nhận hợp lệ.');
-  if (list.length > MAX_PER_RUN) throw new Error(`Tối đa ${MAX_PER_RUN} người mỗi lần gửi (đang có ${list.length}). Danh sách lớn nên dùng Mailchimp/Klaviyo.`);
-  if (!p.fields.subject.trim() && !test) throw new Error('Điền Subject ở tab Email trước khi gửi.');
-  if (!test && !(await ask(`Gửi "${p.fields.subject}" từ ${acc.email} tới ${list.length} người?\n\n${list.slice(0, 8).join(', ')}${list.length > 8 ? `… (+${list.length - 8})` : ''}\n\nMỗi người nhận một email riêng. Không thu hồi được sau khi gửi.`, `Gửi ${list.length} email`, true))) return;
-  set({ busy: { label: test ? 'Gửi thử…' : 'Đang gửi qua Gmail…', done: 0, total: list.length } });
-  let sent = 0; const failed: string[] = [];
+  if (list.length > MAX_RECIPIENTS) throw new Error(`Tối đa ${MAX_RECIPIENTS.toLocaleString('vi-VN')} người mỗi chiến dịch (đang có ${list.length.toLocaleString('vi-VN')}).`);
+  const dailyCap = Math.max(1, Math.min(cap || defaultCap(acc.email), 2000));
+  const days = Math.ceil(list.length / dailyCap);
+  const warn = list.length > dailyCap ? `\n\nGmail chỉ cho khoảng ${dailyCap.toLocaleString('vi-VN')} thư/ngày với tài khoản này, nên ${list.length.toLocaleString('vi-VN')} người sẽ được gửi trong khoảng ${days} ngày: mỗi ngày bấm "Tiếp tục gửi", app gửi tiếp từ chỗ dừng.` : '';
+  if (!(await ask(`Gửi "${p.fields.subject}" từ ${acc.email} tới ${list.length.toLocaleString('vi-VN')} người?${skip.size ? ` (đã loại ${skip.size} địa chỉ huỷ đăng ký)` : ''}\n\nMỗi người nhận một email riêng, khoảng 1 thư/giây. Giữ tab này mở trong lúc gửi (làm việc tab khác vẫn được).${warn}\n\nKhông thu hồi được thư đã gửi.`, `Bắt đầu gửi ${list.length.toLocaleString('vi-VN')} email`, true))) return;
+  const old = loadQueue(p.id);
+  const q: MailQueue = { id: `q_${Date.now().toString(36)}`, projectId: p.id, from: acc.email, subject: p.fields.subject, createdAt: new Date().toISOString(), recipients: list, cursor: 0, sent: 0, failed: [], days: old && old.from === acc.email ? old.days : {}, dailyCap, status: 'ready' };
+  saveQueue(q, p.id);
+  await runQueue(p);
+}
+
+/** Send from the cursor until done, paused, out of today's cap, or the Gmail token needs a fresh consent. */
+export async function runQueue(p: Project) {
+  if (running) return;
+  let q = loadQueue(p.id); if (!q) throw new Error('Chưa có chiến dịch.');
+  const acc = gmailAccount();
+  if (!acc) { q.status = 'auth'; saveQueue(q, p.id); throw new Error('Phiên Gmail hết hạn (1 giờ). Bấm Kết nối Gmail rồi Tiếp tục gửi.'); }
+  if (acc.email !== q.from) throw new Error(`Chiến dịch này gửi từ ${q.from}; đang kết nối ${acc.email}. Kết nối đúng tài khoản.`);
+  running = true; stopFlag = false;
+  set({ busy: { label: `Đang gửi qua Gmail · ${q.subject}`, done: q.cursor, total: q.recipients.length } });
   try {
     const m = await compose(p, acc.email);
-    for (const to of list) {
-      const raw = buildMime({ html: m.html, text: m.text, subject: test ? `[Thử] ${m.subject}` : m.subject, from: address(acc.name, acc.email), to, listUnsubscribe: `mailto:${acc.email}?subject=Unsubscribe`, parts: m.parts });
-      try { await sendOne(acc, raw); sent++; } catch (e) { failed.push(`${to}: ${(e as Error).message}`); if (/hết hạn|giới hạn|chưa cho quyền/.test((e as Error).message)) break; }
-      set({ busy: { label: test ? 'Gửi thử…' : 'Đang gửi qua Gmail…', done: sent + failed.length, total: list.length } });
-      await new Promise((r) => setTimeout(r, 350)); // gentle on Gmail's per-second limits
+    q.status = 'sending'; saveQueue(q, p.id);
+    while (q.cursor < q.recipients.length) {
+      if (stopFlag) { q.status = 'paused'; break; }
+      if (sentToday(q) >= q.dailyCap) { q.status = 'capped'; break; }
+      if (!gmailAccount()) { q.status = 'auth'; break; }
+      const to = q.recipients[q.cursor];
+      const raw = buildMime({ html: m.html, text: m.text, subject: m.subject, from: address(acc.name, acc.email), to, listUnsubscribe: `mailto:${acc.email}?subject=Unsubscribe`, parts: m.parts });
+      try {
+        await sendOne(acc, raw);
+        q.sent++; q.days[dayKey()] = sentToday(q) + 1;
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (/giới hạn/.test(msg)) { q.status = 'capped'; break; } // Gmail said stop for today: retry this recipient tomorrow
+        if (/hết hạn|chưa cho quyền/.test(msg)) { q.status = 'auth'; break; }
+        q.failed.push({ email: to, error: msg.slice(0, 160) });
+      }
+      q.cursor++;
+      if (q.cursor % 10 === 0 || q.cursor === q.recipients.length) saveQueue(q, p.id);
+      set({ busy: { label: `Đang gửi qua Gmail · ${q.subject}`, done: q.cursor, total: q.recipients.length } });
+      await sleep(900); // Gmail allows ~2 sends/s per user; stay well under it
     }
-    log(`Gmail: đã gửi ${sent}/${list.length} email (${m.kb} KB mỗi email, ${m.parts.length} ảnh nhúng).`, sent === list.length ? 'ok' : 'er');
-    for (const f of failed.slice(0, 5)) log(f, 'er');
-    set({ result: { text: test ? `Đã gửi thử tới ${acc.email}. Mở hộp thư để kiểm tra.` : `Đã gửi ${sent}/${list.length} email từ ${acc.email}.` } });
-    if (failed.length) toast(`${failed.length} email lỗi — xem nhật ký bên dưới.`, 'err'); else toast(test ? 'Đã gửi thử.' : `Đã gửi ${sent} email.`, 'ok');
+    if (q.cursor >= q.recipients.length) q.status = 'done';
+    saveQueue(q, p.id);
+    const left = q.recipients.length - q.cursor;
+    if (q.status === 'done') { log(`Gmail: xong chiến dịch — ${q.sent} đã gửi, ${q.failed.length} lỗi.`, 'ok'); toast(`Đã gửi xong ${q.sent.toLocaleString('vi-VN')} email.`, 'ok'); }
+    else if (q.status === 'capped') { log(`Gmail: đã gửi ${sentToday(q)} thư hôm nay (giới hạn ${q.dailyCap}). Còn ${left} người — mai bấm Tiếp tục gửi.`, 'ok'); toast(`Đủ hạn mức hôm nay. Còn ${left.toLocaleString('vi-VN')} người, mai gửi tiếp.`, 'ok'); }
+    else if (q.status === 'auth') toast('Phiên Gmail hết hạn. Bấm Kết nối Gmail rồi Tiếp tục gửi.', 'err');
+    else if (q.status === 'paused') toast(`Đã tạm dừng. Còn ${left.toLocaleString('vi-VN')} người.`, 'ok');
+  } finally { running = false; set({ busy: null }); }
+}
+
+/** One test message to yourself. */
+export async function sendTest(p: Project) {
+  const acc = gmailAccount(); if (!acc) throw new Error('Kết nối Gmail trước.');
+  set({ busy: { label: 'Gửi thử…', done: 0, total: 1 } });
+  try {
+    const m = await compose(p, acc.email);
+    await sendOne(acc, buildMime({ html: m.html, text: m.text, subject: `[Thử] ${m.subject}`, from: address(acc.name, acc.email), to: acc.email, listUnsubscribe: `mailto:${acc.email}?subject=Unsubscribe`, parts: m.parts }));
+    set({ result: { text: `Đã gửi thử tới ${acc.email} (${m.kb} KB, ${m.parts.length} ảnh nhúng). Mở hộp thư để kiểm tra.` } });
+    toast('Đã gửi thử.', 'ok');
   } finally { set({ busy: null }); }
 }
 export { parseRecipients };
