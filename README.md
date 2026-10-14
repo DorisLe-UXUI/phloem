@@ -257,8 +257,8 @@ Trang chủ Studio → **Kho hàng**: nhập sản phẩm từ Google Sheet (sha
 ## Đăng nhập bằng Google
 
 Nút "Continue with Google" hiện trong hộp Đăng nhập khi relay báo có `GOOGLE_CLIENT_ID` (`GET /` → `google`). Cài một lần (chủ repo làm, ~5 phút):
-1. console.cloud.google.com → APIs & Services → **OAuth consent screen**: External, tên app "Phloem Studio", email hỗ trợ, lưu; ở trạng thái Testing thì thêm email người dùng vào Test users (hoặc Publish app).
-2. **Credentials → Create credentials → OAuth client ID → Web application**. Authorized JavaScript origins: `https://dorisle-uxui.github.io` (và `http://localhost:5173` khi dev). Không cần redirect URI (Google Identity Services dùng popup).
+1. console.cloud.google.com → chọn project → **Google Auth Platform** (giao diện mới; bản cũ là APIs & Services → OAuth consent screen): **Branding** → App name "Phloem Studio", User support email, Developer contact email → Save. **Audience** → External; đang Testing thì thêm email người dùng vào Test users (hoặc Publish app — scope cơ bản openid/email/profile không cần Google duyệt).
+2. **Clients → + Create client → Web application**, tên "Phloem Studio". Authorized JavaScript origins: `https://dorisle-uxui.github.io` (và `http://localhost:5173` khi dev). Authorized redirect URIs: để trống (Google Identity Services dùng popup). Create → copy **Client ID**.
 3. Copy Client ID (`…apps.googleusercontent.com`) → Render → service `phloem-relay` → Environment → thêm `GOOGLE_CLIENT_ID` → Save. Relay tự deploy lại (~2 phút).
 4. Trên Studio: Cài đặt → Relay URL phải là `https://phloem-relay.onrender.com` (bản public tự đổi nếu còn giá trị localhost cũ) → Đăng nhập → Continue with Google. Relay xác minh ID token qua `oauth2.googleapis.com/tokeninfo`, tạo/tìm tài khoản theo email và mở phiên relay; project trên máy có thể "Chuyển vào tài khoản".
 
