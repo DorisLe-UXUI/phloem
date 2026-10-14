@@ -1,22 +1,36 @@
-// Left panel → "Thiết kế": a Canva-style element library. Click to drop at the centre of the view, or drag onto the email.
+// Left panel → "Thiết kế": a Canva-style element library (thousands of pieces). Click to drop at the centre of the view,
+// or drag onto the email. Libraries: native shapes, SVG shapes, ready-made graphics, procedural backgrounds/patterns/
+// 3D shapes (endless: generator × palette × variant), Fluent 3D objects (~1,600 renders), colour stickers (Fluent,
+// Noto, flat), icons (Iconify, 5 styles), brand logos, text styles, free photos (Openverse), motion presets.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { get, toast, useStore } from '../store';
 import * as A from '../pipeline/actions';
 import { assets } from '../storage/assets';
-import { ANIM_PRESETS, ELEMENTS, ICONS, ICON_STYLES, STICKERS, colorChoices, iconLayer, type ElCat } from '../design/elements';
-import { ICON_SETS, iconUrl, searchIcons } from '../design/vector';
+import type { ImageNode } from '../model/types';
+import { uid } from '../model/types';
+import { ANIM_PRESETS, ELEMENTS, ICONS, ICON_STYLES, colorChoices, iconLayer, type ElCat } from '../design/elements';
+import { ICON_SETS, iconCollection, iconTileSvg, searchIcons, vectorAsset } from '../design/vector';
+import { GENERATORS, GEN_GROUPS, GEN_PALETTES, genSvg, svgDataUrl, type GenGroup } from '../design/generators';
+import { CAT_VI, fluent3dLayer, fluent3dUrl, loadFluent3d, searchFluent3d, type Fluent3d } from '../design/library';
 import { relayAuth } from '../ai/client';
 import { Btn, Eyebrow } from './components';
 import { Icon } from './icons';
 
-type Cat = 'all' | 'shape' | 'graphic' | 'icon' | 'sticker' | 'text' | 'photo' | 'anim';
+type Cat = 'all' | 'shape' | 'graphic' | 'bg' | '3d' | 'sticker' | 'icon' | 'logo' | 'text' | 'photo' | 'anim';
 const CATS: { v: Cat; label: string }[] = [
-  { v: 'all', label: 'Tất cả' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' }, { v: 'sticker', label: 'Sticker 3D' },
-  { v: 'icon', label: 'Icon' }, { v: 'text', label: 'Chữ' }, { v: 'photo', label: 'Ảnh' }, { v: 'anim', label: 'Hoạt ảnh' },
+  { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' },
+  { v: 'sticker', label: 'Sticker' }, { v: 'icon', label: 'Icon' }, { v: 'logo', label: 'Logo' }, { v: 'text', label: 'Chữ' }, { v: 'photo', label: 'Ảnh' }, { v: 'anim', label: 'Hoạt ảnh' },
 ];
+const STICKER_SETS: { v: string; label: string }[] = [{ v: 'fluent-emoji', label: 'Fluent màu' }, { v: 'noto', label: 'Noto' }, { v: 'fluent-emoji-flat', label: 'Phẳng' }, { v: 'fluent-color', label: 'Icon màu' }, { v: 'flat-color-icons', label: 'Icon phẳng' }];
 
 /** What a tile inserts; also the drag payload (text/phloem-el). */
-export type Spec = { kind: 'el'; id: string; color?: string } | { kind: 'icon'; id: string; color?: string } | { kind: 'sticker'; id: string } | { kind: 'photo'; photo: Photo };
+export type Spec =
+  | { kind: 'el'; id: string; color?: string }
+  | { kind: 'icon'; id: string; color?: string }
+  | { kind: 'sticker'; id: string }
+  | { kind: '3d'; id: string }
+  | { kind: 'gen'; id: string; seed: number; palette: string[] }
+  | { kind: 'photo'; photo: Photo };
 interface Photo { id: string; title: string; url: string; thumb: string; creator: string; license: string; page: string; w: number; h: number }
 
 let lastColor = '';
@@ -31,8 +45,18 @@ export async function insertSpec(spec: Spec, at?: { x: number; y: number }) {
       const def = ELEMENTS.find((e) => e.id === spec.id); if (!def) return;
       A.insertLayers(await def.make({ brand: p.brand, color, at: pt, docW: d.width }));
     } else if (spec.kind === 'icon') A.insertLayers([await iconLayer(spec.id, pt, 64, color)]);
-    else if (spec.kind === 'sticker') A.insertLayers([await iconLayer(`fluent-emoji:${spec.id}`, pt, 110, null)]);
-    else if (spec.kind === 'photo') {
+    else if (spec.kind === 'sticker') A.insertLayers([await iconLayer(spec.id.includes(':') ? spec.id : `fluent-emoji:${spec.id}`, pt, 110, null)]);
+    else if (spec.kind === '3d') A.insertLayers([await fluent3dLayer(spec.id, pt, 128)]);
+    else if (spec.kind === 'gen') {
+      const g = GENERATORS.find((x) => x.id === spec.id); if (!g) return;
+      const full = g.group === 'bg' || g.group === 'pattern';
+      const w = full ? d.width : g.w, h = full ? Math.round(g.h * (d.width / g.w)) : g.h;
+      const svg = genSvg(g.id, spec.palette, spec.seed, w, h)!;
+      const a = await vectorAsset(svg, w, h, g.label, null);
+      const n: ImageNode = { id: uid('n'), type: 'image', name: g.label, x: full ? 0 : Math.round(pt.x - w / 2), y: Math.round(pt.y - h / 2), w, h, visible: true, locked: false, opacity: 1, link: null, alt: '', assetId: a.id, fit: 'fill', radius: 0, fill: null, overlay: null, decor: true, vector: { svg, color: null, kind: 'graphic', gen: { id: g.id, seed: spec.seed, palette: spec.palette } } };
+      A.insertLayers([n]);
+      if (full) toast('Nền đã chèn. Bấm ⌘[ để đưa xuống dưới nội dung.', 'info');
+    } else if (spec.kind === 'photo') {
       toast('Đang tải ảnh…', 'info');
       const blob = await fetchPhoto(spec.photo);
       const a = await assets.add(blob, spec.photo.title || 'Ảnh', { src: { kind: 'stock', url: spec.photo.page, credit: `${spec.photo.title || 'Ảnh'} · ${spec.photo.creator || 'không rõ tác giả'} · ${spec.photo.license}` } });
@@ -66,8 +90,16 @@ const PHOTO_TOPICS: { label: string; q: string }[] = [
   { label: 'Văn phòng', q: 'office work' }, { label: 'Công nghệ', q: 'technology' }, { label: 'Thể thao', q: 'sport fitness' }, { label: 'Lễ hội', q: 'celebration party' },
   { label: 'Gốm', q: 'ceramic pottery' }, { label: 'Hoa', q: 'flowers' }, { label: 'Thú cưng', q: 'pet dog cat' }, { label: 'Kết cấu', q: 'texture background' },
 ];
+const POPULAR_LOGOS = ['facebook', 'instagram-icon', 'tiktok-icon', 'youtube-icon', 'messenger', 'whatsapp-icon', 'telegram', 'google-icon', 'apple', 'twitter', 'linkedin-icon', 'pinterest', 'shopify', 'visa', 'mastercard', 'paypal', 'stripe', 'spotify-icon', 'netflix-icon', 'discord-icon', 'slack-icon', 'figma', 'chrome', 'app-store-ios', 'google-play-icon', 'gmail', 'zoom-icon', 'notion-icon'];
 
 const drag = (spec: Spec) => (e: DragEvent) => { e.dataTransfer?.setData('text/phloem-el', JSON.stringify(spec)); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'; };
+
+/** An icon tile rendered inline from batched icon data (one request per icon set for the whole grid). */
+function IconSvg({ id, color }: { id: string; color?: string | null }) {
+  const [svg, setSvg] = useState('');
+  useEffect(() => { let alive = true; void iconTileSvg(id, color).then((x) => { if (alive) setSvg(x); }); return () => { alive = false; }; }, [id, color]);
+  return svg ? <span class="ic-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : <span class="ic-wait" />;
+}
 
 export function DesignPanel() {
   const s = useStore();
@@ -77,23 +109,41 @@ export function DesignPanel() {
   const setColor = (c: string) => { lastColor = c; setColor0(c); };
   const [q, setQ] = useState('');
   const [style, setStyle] = useState<string>('-duotone');
-  const [found, setFound] = useState<{ icons: string[]; stickers: string[] }>({ icons: [], stickers: [] });
+  const [found, setFound] = useState<{ icons: string[]; stickers: string[]; d3: string[] }>({ icons: [], stickers: [], d3: [] });
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [photoQ, setPhotoQ] = useState('');
   const [loading, setLoading] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [f3, setF3] = useState<Fluent3d | null>(null);
+  const [f3cat, setF3cat] = useState('Objects');
+  const [stSet, setStSet] = useState('fluent-emoji');
+  const [stCats, setStCats] = useState<[string, string[]][]>([]);
+  const [stCat, setStCat] = useState('');
+  const [genGroup, setGenGroup] = useState<GenGroup>('bg');
+  const [palIdx, setPalIdx] = useState(-1); // -1 = brand
+  const [seed, setSeed] = useState(1);
+  const [more, setMore] = useState(1);
   const tm = useRef<number | undefined>(undefined);
   const choices = useMemo(() => (b ? colorChoices(b) : []), [b?.primary, b?.accent, b?.ink, b?.muted, b?.soft]);
+  const brandPal = b ? [b.bg, b.primary, b.accent, b.soft, b.ink] : GEN_PALETTES[0].p;
+  const palette = palIdx < 0 ? brandPal : GEN_PALETTES[palIdx].p;
 
-  // search icons + stickers as you type (debounced); photos on Enter
+  useEffect(() => { setMore(1); }, [cat, f3cat, stCat, stSet]);
+  // 3D library on demand
+  useEffect(() => { if ((cat === '3d' || cat === 'all' || q.trim()) && !f3) void loadFluent3d().then(setF3).catch((e) => toast((e as Error).message, 'err')); }, [cat, q]);
+  // sticker set categories on demand
+  useEffect(() => { if (cat !== 'sticker') return; setStCats([]); void iconCollection(stSet).then((c) => { setStCats(c.cats.length ? c.cats : [['Tất cả', c.all]]); setStCat((c.cats[0] || ['Tất cả'])[0]); }).catch(() => setStCats([])); }, [cat, stSet]);
+  // search icons + stickers + 3D as you type (debounced); photos on Enter
   useEffect(() => {
     clearTimeout(tm.current);
-    if (!q.trim() || cat === 'photo') { setFound({ icons: [], stickers: [] }); return; }
+    if (!q.trim() || cat === 'photo') { setFound({ icons: [], stickers: [], d3: [] }); return; }
     tm.current = window.setTimeout(async () => {
       setLoading('Đang tìm…');
       try {
-        const [icons, stickers] = await Promise.all([searchIcons(q, ICON_SETS, 96).catch(() => []), searchIcons(q, ['fluent-emoji'], 48).catch(() => [])]);
-        setFound({ icons: icons.filter((x) => !/-(thin|light)$/.test(x)), stickers: stickers.filter((x) => !/-(light|medium|dark|medium-light|medium-dark)$/.test(x)) });
+        const sets = cat === 'logo' ? ['logos', 'simple-icons'] : ICON_SETS;
+        const [icons, stickers] = await Promise.all([searchIcons(q, sets as readonly string[], 96).catch(() => []), cat === 'logo' ? Promise.resolve([] as string[]) : searchIcons(q, ['fluent-emoji', 'noto', 'fluent-emoji-flat', 'fluent-color'], 64).catch(() => [])]);
+        const idx = f3 || (await loadFluent3d().catch(() => null));
+        setFound({ icons: icons.filter((x) => !/-(thin|light)$/.test(x)), stickers: stickers.filter((x) => !/-(light|medium|dark|medium-light|medium-dark)$/.test(x)), d3: idx && cat !== 'logo' ? searchFluent3d(idx, q) : [] });
       } finally { setLoading(''); }
     }, 350);
     return () => clearTimeout(tm.current);
@@ -112,29 +162,46 @@ export function DesignPanel() {
       {e.cat !== 'text' && <span class="el-lb">{e.label}</span>}
     </button>
   );
-  const iconTile = (id: string) => (
-    <button key={id} class="ic-tile" title={`${id} · bấm để chèn`} draggable onDragStart={drag({ kind: 'icon', id, color })} onClick={() => void put({ kind: 'icon', id }, id)}>
-      <img src={iconUrl(id, color)} alt="" loading="lazy" />
+  const iconTile = (id: string, mono = true) => (
+    <button key={id} class={`ic-tile ${mono ? '' : 'st'}`} title={`${id} · bấm để chèn`} draggable onDragStart={drag(mono ? { kind: 'icon', id, color } : { kind: 'sticker', id })} onClick={() => void put(mono ? { kind: 'icon', id } : { kind: 'sticker', id }, id)}>
+      <IconSvg id={id} color={mono ? color : null} />
     </button>
   );
-  const stickerTile = (name: string) => (
-    <button key={name} class="ic-tile st" title={`${name} · sticker 3D`} draggable onDragStart={drag({ kind: 'sticker', id: name })} onClick={() => void put({ kind: 'sticker', id: name }, name)}>
-      <img src={iconUrl(`fluent-emoji:${name}`)} alt="" loading="lazy" />
-    </button>
-  );
+  const d3Tile = (id: string) => {
+    const u = f3 ? fluent3dUrl(f3, id) : null;
+    return (
+      <button key={id} class={`ic-tile st d3 ${busy === id ? 'busy' : ''}`} title={`${id.replace(/-/g, ' ')} · vật thể 3D`} draggable onDragStart={drag({ kind: '3d', id })} onClick={() => void put({ kind: '3d', id }, id)}>
+        {u ? <img src={u} alt="" loading="lazy" /> : null}
+      </button>
+    );
+  };
+  const genTile = (gid: string, sd: number) => {
+    const g = GENERATORS.find((x) => x.id === gid)!;
+    const svg = genSvg(gid, palette, sd, g.group === 'shape3d' || g.group === 'deco' ? g.w : 300, g.group === 'shape3d' || g.group === 'deco' ? g.h : Math.round(300 * (g.h / g.w)))!;
+    return (
+      <button key={`${gid}-${sd}`} class={`gen-tile g-${g.group} ${busy === `${gid}-${sd}` ? 'busy' : ''}`} title={`${g.label} · biến thể ${sd}`} draggable onDragStart={drag({ kind: 'gen', id: gid, seed: sd, palette })} onClick={() => void put({ kind: 'gen', id: gid, seed: sd, palette }, `${gid}-${sd}`)}>
+        <img src={svgDataUrl(svg)} alt="" />
+        <span class="el-lb">{g.label}</span>
+      </button>
+    );
+  };
   const head = (label: string, to: Cat) => <Eyebrow action={cat === 'all' ? { label: 'Xem tất cả', onClick: () => setCat(to) } : undefined}>{label}</Eyebrow>;
+  const page = (list: string[], n = 72) => list.slice(0, n * more);
+  const moreBtn = (list: string[], n = 72) => (list.length > n * more ? <Btn sm kind="ghost" onClick={() => setMore((m) => m + 1)}>Xem thêm ({list.length - n * more})</Btn> : null);
   const sel = s.selection.length;
+  const f3list = f3 ? (f3.cats.find(([c]) => c === f3cat)?.[1] || []) : [];
+  const stList = stCats.find(([c]) => c === stCat)?.[1] || [];
 
   if (!s.project) return null;
   return (
     <div class="section design-panel">
       <div class="dp-search">
         <Icon name="search" size={13} />
-        <input value={q} placeholder={cat === 'photo' ? 'Tìm ảnh miễn phí (Enter)…' : 'Tìm icon, sticker… (vd: quà, cà phê, sale)'} onInput={(e) => setQ((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && cat === 'photo') void runPhotos(q); }} />
+        <input value={q} placeholder={cat === 'photo' ? 'Tìm ảnh miễn phí (Enter)…' : cat === 'logo' ? 'Tìm logo thương hiệu…' : 'Tìm 3D, sticker, icon… (vd: quà, cà phê, rocket)'} onInput={(e) => setQ((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && cat === 'photo') void runPhotos(q); }} />
         {q && <button class="x" onClick={() => setQ('')}>×</button>}
       </div>
       <div class="dp-cats">{CATS.map((c) => <button key={c.v} class={`chip ${cat === c.v ? 'on' : ''}`} onClick={() => setCat(c.v)}>{c.label}</button>)}</div>
-      {cat !== 'photo' && cat !== 'anim' && (
+      {!['photo', 'anim', '3d', 'bg', 'sticker'].includes(cat) && (
         <div class="dp-colors" title="Màu cho hình, icon, chữ mới chèn">
           {choices.map((c) => <button key={c.c} class={`sw ${color.toUpperCase() === c.c.toUpperCase() ? 'on' : ''}`} style={{ background: c.c }} title={c.label} onClick={() => setColor(c.c)} />)}
           <label class="sw pick" title="Chọn màu khác"><input type="color" value={/^#[0-9a-f]{6}$/i.test(color) ? color : '#000000'} onInput={(e) => setColor((e.target as HTMLInputElement).value.toUpperCase())} /></label>
@@ -144,20 +211,61 @@ export function DesignPanel() {
 
       {q.trim() && cat !== 'photo' && cat !== 'anim' ? (
         <>
-          {found.stickers.length > 0 && <><Eyebrow>Sticker 3D · {found.stickers.length}</Eyebrow><div class="ic-grid">{found.stickers.map((id) => stickerTile(id.split(':')[1]))}</div></>}
-          {found.icons.length > 0 && <><Eyebrow>Icon · {found.icons.length}</Eyebrow><div class="ic-grid">{found.icons.map(iconTile)}</div></>}
-          {!loading && !found.icons.length && !found.stickers.length && <div class="dim small">Không thấy "{q}". Thử từ tiếng Anh (gift, coffee, star…).</div>}
+          {found.d3.length > 0 && <><Eyebrow>Vật thể 3D · {found.d3.length}</Eyebrow><div class="ic-grid d3">{found.d3.map(d3Tile)}</div></>}
+          {found.stickers.length > 0 && <><Eyebrow>Sticker · {found.stickers.length}</Eyebrow><div class="ic-grid">{found.stickers.map((id) => iconTile(id, false))}</div></>}
+          {found.icons.length > 0 && <><Eyebrow>{cat === 'logo' ? 'Logo' : 'Icon'} · {found.icons.length}</Eyebrow><div class="ic-grid">{found.icons.map((id) => iconTile(id, !id.startsWith('logos:')))}</div></>}
+          {!loading && !found.icons.length && !found.stickers.length && !found.d3.length && <div class="dim small">Không thấy "{q}". Thử từ tiếng Anh (gift, coffee, star…).</div>}
         </>
       ) : (
         <>
+          {cat === 'all' && <div class="dp-count">Hơn 15.000 đồ hoạ: 1.600 vật thể 3D, 10.000+ sticker &amp; icon màu, 2.000 logo, nền &amp; hoạ tiết sinh vô hạn theo màu thương hiệu.</div>}
+          {(cat === 'all' || cat === '3d') && (
+            <>
+              {head('Vật thể 3D', '3d')}
+              {cat === '3d' && f3 && <div class="dp-cats">{f3.cats.map(([c, ids]) => <button key={c} class={`chip ${f3cat === c ? 'on' : ''}`} onClick={() => setF3cat(c)}>{CAT_VI[c] || c} · {ids.length}</button>)}</div>}
+              {!f3 ? <div class="dim small">Đang tải thư viện 3D…</div> : <div class="ic-grid d3">{(cat === 'all' ? ['rocket', 'wrapped-gift', 'fire', 'party-popper', 'sparkles', 'crown', 'money-bag', 'shopping-bags', 'red-heart', 'trophy', 'light-bulb', 'hot-beverage'].filter((id) => f3.paths[id]) : page(f3list, 60)).map(d3Tile)}</div>}
+              {cat === '3d' && moreBtn(f3list, 60)}
+              {cat === '3d' && <div class="dim small">Microsoft Fluent Emoji 3D · giấy phép MIT · dùng thương mại thoải mái.</div>}
+            </>
+          )}
+          {(cat === 'all' || cat === 'bg') && (
+            <>
+              {head('Nền & hoạ tiết', 'bg')}
+              {cat === 'bg' && <div class="dp-cats">{GEN_GROUPS.map((g) => <button key={g.v} class={`chip ${genGroup === g.v ? 'on' : ''}`} onClick={() => setGenGroup(g.v)}>{g.label}</button>)}</div>}
+              <div class="dp-pals">
+                <button class={`pal ${palIdx < 0 ? 'on' : ''}`} title="Màu thương hiệu" onClick={() => setPalIdx(-1)}>{brandPal.slice(0, 4).map((c, i) => <i key={i} style={{ background: c }} />)}</button>
+                {GEN_PALETTES.map((p, i) => <button key={p.name} class={`pal ${palIdx === i ? 'on' : ''}`} title={p.name} onClick={() => setPalIdx(i)}>{p.p.slice(0, 4).map((c, k) => <i key={k} style={{ background: c }} />)}</button>)}
+                <button class="pal shuffle" title="Biến thể khác" onClick={() => setSeed((x) => x + 7)}>↻</button>
+              </div>
+              <div class={`gen-grid g-${cat === 'all' ? 'bg' : genGroup}`}>
+                {(cat === 'all' ? ['waves', 'blur', 'blobs', 'sunburst', 'sphere', 'memphis'] : GENERATORS.filter((g) => g.group === genGroup).map((g) => g.id)).flatMap((gid) => (cat === 'all' ? [genTile(gid, seed)] : [0, 1].map((k) => genTile(gid, seed + k * 101))))}
+              </div>
+            </>
+          )}
           {(cat === 'all' || cat === 'shape') && <>{head('Hình khối', 'shape')}<div class="el-grid">{els(['shape', 'svg'], cat === 'all' ? 8 : undefined).map(tile)}</div></>}
           {(cat === 'all' || cat === 'graphic') && <>{head('Đồ hoạ dựng sẵn', 'graphic')}<div class="el-grid">{els('graphic', cat === 'all' ? 8 : undefined).map(tile)}</div></>}
-          {(cat === 'all' || cat === 'sticker') && <>{head('Sticker 3D', 'sticker')}<div class="ic-grid">{(cat === 'all' ? STICKERS.slice(0, 16) : STICKERS).map(stickerTile)}</div></>}
+          {(cat === 'all' || cat === 'sticker') && (
+            <>
+              {head('Sticker', 'sticker')}
+              {cat === 'sticker' && <div class="dp-cats">{STICKER_SETS.map((x) => <button key={x.v} class={`chip ${stSet === x.v ? 'on' : ''}`} onClick={() => setStSet(x.v)}>{x.label}</button>)}</div>}
+              {cat === 'sticker' && stCats.length > 1 && <div class="dp-cats">{stCats.map(([c, ids]) => <button key={c} class={`chip ${stCat === c ? 'on' : ''}`} onClick={() => setStCat(c)}>{c} · {ids.length}</button>)}</div>}
+              <div class="ic-grid">{(cat === 'all' ? ['fire', 'sparkles', 'party-popper', 'wrapped-gift', 'red-heart', 'star', 'high-voltage', 'hundred-points', 'rocket', 'crown', 'gem-stone', 'shopping-bags'].map((n) => `fluent-emoji:${n}`) : page(stList.filter((x) => !/-(light|medium|dark|medium-light|medium-dark)$/.test(x))).map((n) => `${stSet}:${n}`)).map((id) => iconTile(id, false))}</div>
+              {cat === 'sticker' && moreBtn(stList)}
+            </>
+          )}
           {(cat === 'all' || cat === 'icon') && (
             <>
               {head('Icon', 'icon')}
               {cat === 'icon' && <div class="dp-cats">{ICON_STYLES.map((st) => <button key={st.v} class={`chip ${style === st.v ? 'on' : ''}`} onClick={() => setStyle(st.v)}>{st.label}</button>)}</div>}
-              <div class="ic-grid">{(cat === 'all' ? ICONS.slice(0, 16) : ICONS).map((n) => iconTile(`ph:${n}${style}`))}</div>
+              <div class="ic-grid">{(cat === 'all' ? ICONS.slice(0, 12) : ICONS).map((n) => iconTile(`ph:${n}${style}`))}</div>
+              {cat === 'icon' && <div class="dim small">Gõ vào ô tìm kiếm để có hơn 20.000 icon (Phosphor, Lucide, Tabler, Material…).</div>}
+            </>
+          )}
+          {cat === 'logo' && (
+            <>
+              <Eyebrow>Logo thương hiệu</Eyebrow>
+              <div class="ic-grid">{POPULAR_LOGOS.map((n) => iconTile(`logos:${n}`, false))}</div>
+              <div class="dim small">Gõ tên để tìm trong gần 2.000 logo (CC0). Logo là thương hiệu của chủ sở hữu: chỉ dùng để dẫn link đúng thương hiệu đó.</div>
             </>
           )}
           {(cat === 'all' || cat === 'text') && <>{head('Chữ', 'text')}<div class="el-grid text">{els('text', cat === 'all' ? 4 : undefined).map(tile)}</div></>}

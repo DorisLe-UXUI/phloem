@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Check, Suggestion } from '../../../src/shared/types';
 import type { AnimKind, ImageNode, Node, RectNode, TextNode, GroupNode } from '../model/types';
 import { FONTS, LOOP_KINDS } from '../model/types';
-import { reraster } from '../design/vector';
+import { reraster, vectorAsset } from '../design/vector';
+import { GEN_PALETTES, genSvg } from '../design/generators';
 import { colorChoices } from '../design/elements';
 import * as ops from '../model/ops';
 import { assets } from '../storage/assets';
@@ -132,6 +133,7 @@ function NodeProps({ n }: { n: Node }) {
         </div>
       )}
       {n.type === 'group' && <BlockBg g={n} />}
+      <Effects n={n} />
       <Eyebrow>Chuyển động</Eyebrow>
       <div class="row">
         <div class="grow"><Select value={(n.anim?.kind || 'none') as AnimKind | 'none'} options={[{ v: 'none', label: 'Không' }, { v: 'fade', label: 'Hiện dần' }, { v: 'up', label: 'Trượt lên' }, { v: 'down', label: 'Trượt xuống' }, { v: 'left', label: 'Trượt từ phải' }, { v: 'right', label: 'Trượt từ trái' }, { v: 'pop', label: 'Nảy ra' }, { v: 'wipe', label: 'Mở dần (ảnh)' }, ...(n.type === 'text' ? [{ v: 'marquee' as const, label: 'Chữ chạy (lặp)' }, { v: 'type' as const, label: 'Gõ từng chữ' }] : []), { v: 'pulse', label: 'Nhịp đập (lặp)' }, { v: 'float', label: 'Lơ lửng (lặp)' }, { v: 'spin', label: 'Xoay tròn (lặp)' }, { v: 'shake', label: 'Lắc (lặp)' }, { v: 'blink', label: 'Nhấp nháy (lặp)' }]} onChange={(v) => up({ anim: v === 'none' ? null : LOOP_KINDS.has(v) && v !== 'marquee' ? { kind: v, delay: 0, dur: v === 'float' || v === 'spin' ? 2.4 : 1.2 } : { kind: v, delay: n.anim?.delay ?? 0, dur: n.anim?.dur ?? 0.8 } })} /></div>
@@ -186,6 +188,29 @@ function TextProps({ n }: { n: TextNode }) {
   );
 }
 
+/** Blur for every kind of layer: the layer itself (soft focus), and for shapes the frosted glass behind them. */
+function Effects({ n }: { n: Node }) {
+  const up = (patch: Partial<Node>) => A.updateNode(n.id, patch as Partial<Node>);
+  const kids = (g: GroupNode): Node[] => g.children.flatMap((c) => (c.type === 'group' ? kids(c) : [c]));
+  const groupBlur = n.type === 'group' ? Math.max(0, ...kids(n).map((c) => (c.type === 'rect' || c.type === 'image' || c.type === 'text' ? c.blur ?? 0 : 0))) : 0;
+  const glass = () => up({ fill: 'rgba(255,255,255,0.22)', gradient: null, stroke: { color: 'rgba(255,255,255,0.55)', width: 1 }, backdropBlur: 20, shadow: { blur: 30, y: 12, color: '#000000', opacity: 0.14 } } as Partial<Node>);
+  const glassDark = () => up({ fill: 'rgba(10,10,14,0.38)', gradient: null, stroke: { color: 'rgba(255,255,255,0.18)', width: 1 }, backdropBlur: 24 } as Partial<Node>);
+  return (
+    <div class="section">
+      <Eyebrow>Làm mờ</Eyebrow>
+      {n.type === 'rect' && (
+        <>
+          <Num label="Mờ phía sau (kính mờ)" value={n.backdropBlur ?? 0} min={0} max={60} suffix="px" onChange={(v) => up({ backdropBlur: v || 0 } as Partial<Node>)} title="Làm mờ mọi thứ nằm dưới hình này, trong khung của nó (frosted glass)" />
+          <div class="row"><Btn sm icon="sparkle" onClick={glass}>Kính mờ sáng</Btn><Btn sm onClick={glassDark}>Kính mờ tối</Btn>{(n.backdropBlur ?? 0) > 0 && <Btn sm kind="ghost" onClick={() => up({ backdropBlur: 0 } as Partial<Node>)}>Bỏ</Btn>}</div>
+        </>
+      )}
+      {(n.type === 'rect' || n.type === 'text') && <Num label="Làm mờ chính nó" value={n.blur ?? 0} min={0} max={40} suffix="px" onChange={(v) => up({ blur: v || 0 } as Partial<Node>)} title="Mờ Gaussian: quầng sáng, chiều sâu, chữ nền" />}
+      {n.type === 'group' && <Num label="Làm mờ cả nhóm" value={groupBlur} min={0} max={40} suffix="px" onChange={(v) => A.updateNode(n.id, (g) => (g.type === 'group' ? { ...g, children: g.children.map(function blurAll(c: Node): Node { return c.type === 'group' ? { ...c, children: c.children.map(blurAll) } : { ...c, blur: v || 0 } as Node; }) } : g))} />}
+      {n.type === 'image' && <div class="dim small">Làm mờ ảnh: ô "Làm mờ" ở phần Ảnh phía trên.</div>}
+    </div>
+  );
+}
+
 function RectProps({ n }: { n: RectNode }) {
   const s = useStore(); const b = s.project!.brand;
   const up = (patch: Partial<RectNode>) => A.updateNode(n.id, patch as Partial<Node>);
@@ -215,7 +240,27 @@ function ImageProps({ n }: { n: ImageNode }) {
   const pick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const f = i.files?.[0]; if (f) { const na = await assets.add(f); up({ assetId: na.id, alt: n.alt || na.name.replace(/\.[a-z0-9]+$/i, '') }); } }; i.click(); };
   const [recolor, setRecolor] = useState(false);
   const paint = async (c: string | null) => { if (!n.vector) return; setRecolor(true); try { const id = await reraster(n, c); if (id) up({ assetId: id, vector: { ...n.vector, color: c } }); } catch (e) { toast((e as Error).message, 'err'); } finally { setRecolor(false); } };
-  if (n.vector && n.vector.svg && n.vector.kind !== 'sticker') return (
+  const regen = async (palette: string[], seed: number) => {
+    const g = n.vector?.gen; if (!g) return; setRecolor(true);
+    try { const svg = genSvg(g.id, palette, seed, n.w, n.h); if (!svg) return; const a = await vectorAsset(svg, n.w, n.h, n.name, null); up({ assetId: a.id, vector: { ...n.vector!, svg, gen: { id: g.id, seed, palette } } }); }
+    catch (e) { toast((e as Error).message, 'err'); } finally { setRecolor(false); }
+  };
+  if (n.vector?.gen) {
+    const g = n.vector.gen; const bp = [b.bg, b.primary, b.accent, b.soft, b.ink];
+    return (
+      <div class="section">
+        <Eyebrow>Đồ hoạ tự sinh</Eyebrow>
+        <div class="small muted">Đổi bảng màu hoặc bấm biến thể khác: vẫn nét ở mọi kích thước.</div>
+        <div class="dp-pals">
+          <button class="pal" title="Màu thương hiệu" disabled={recolor} onClick={() => void regen(bp, g.seed)}>{bp.slice(0, 4).map((c, i) => <i key={i} style={{ background: c }} />)}</button>
+          {GEN_PALETTES.map((p0) => <button key={p0.name} class={`pal ${JSON.stringify(p0.p) === JSON.stringify(g.palette) ? 'on' : ''}`} title={p0.name} disabled={recolor} onClick={() => void regen(p0.p, g.seed)}>{p0.p.slice(0, 4).map((c, i) => <i key={i} style={{ background: c }} />)}</button>)}
+        </div>
+        <div class="row"><Btn sm icon="sparkle" disabled={recolor} onClick={() => void regen(g.palette, g.seed + 13)}>Biến thể khác</Btn><Btn sm disabled={recolor} onClick={() => void regen(g.palette, g.seed)}>Vẽ lại đúng cỡ</Btn></div>
+        {recolor && <div class="dim small">Đang vẽ…</div>}
+      </div>
+    );
+  }
+  if (n.vector && n.vector.svg && (n.vector.kind === 'icon' || n.vector.kind === 'shape')) return (
     <div class="section">
       <Eyebrow>{n.vector.kind === 'icon' ? 'Icon' : 'Đồ hoạ'}</Eyebrow>
       <div class="small muted">Đồ hoạ vector: đổi màu vẫn nét. Kéo góc để đổi cỡ.</div>

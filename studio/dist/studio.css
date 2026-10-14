@@ -3660,3 +3660,127 @@ select.in {
     animation: none !important;
   }
 }
+.dp-count {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 8px 10px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-sm);
+  line-height: 1.45;
+}
+.ic-svg {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.ic-svg svg {
+  width: 100%;
+  height: 100%;
+}
+.ic-wait {
+  width: 60%;
+  height: 60%;
+  border-radius: 6px;
+  background:
+    linear-gradient(
+      90deg,
+      var(--panel-3) 25%,
+      var(--line-2) 50%,
+      var(--panel-3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+.ic-grid.d3 {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.ic-tile.d3 {
+  background:
+    radial-gradient(
+      circle at 50% 40%,
+      var(--panel-3),
+      var(--panel-2));
+  padding: 4px;
+}
+.ic-tile.d3 img {
+  transition: transform .15s;
+}
+.ic-tile.d3:hover img {
+  transform: scale(1.12) translateY(-2px);
+}
+.ic-tile.busy {
+  opacity: .5;
+}
+.dp-pals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.pal {
+  display: flex;
+  height: 18px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  padding: 0;
+  cursor: pointer;
+  background: none;
+}
+.pal i {
+  width: 9px;
+  height: 100%;
+  display: block;
+}
+.pal.on {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--neon);
+}
+.pal.shuffle {
+  width: 28px;
+  justify-content: center;
+  align-items: center;
+  color: var(--neon);
+  font-size: 13px;
+}
+.gen-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.gen-grid.g-shape3d,
+.gen-grid.g-deco {
+  grid-template-columns: repeat(3, 1fr);
+}
+.gen-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 0 5px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  overflow: hidden;
+  cursor: grab;
+  font: inherit;
+}
+.gen-tile img {
+  width: 100%;
+  display: block;
+  aspect-ratio: 2 / 1;
+  object-fit: cover;
+  background: #fff;
+}
+.gen-tile.g-shape3d img,
+.gen-tile.g-deco img {
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: repeating-conic-gradient(#1a2a1e 0 25%, #0c120e 0 50%) 0 0 / 12px 12px;
+  padding: 6px;
+}
+.gen-tile:hover {
+  border-color: var(--neon-line);
+}
+.gen-tile.busy {
+  opacity: .5;
+}

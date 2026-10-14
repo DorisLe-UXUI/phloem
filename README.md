@@ -242,6 +242,11 @@ Cột trái → **Thiết kế**: tìm kiếm, chọn màu (bảng màu thương
 - **Sticker 3D** (Fluent Emoji, MIT) và **Icon** (Phosphor/Lucide/Tabler/MDI… qua Iconify, 5 kiểu nét), tìm được hàng nghìn icon; icon/hình vector **đổi màu được** ở cột phải mà vẫn nét.
 - **Chữ**: tiêu đề lớn, tiêu đề, phụ đề, đoạn văn, nhãn nhỏ, số khổng lồ, chữ 3D, neon, viền, bóng dài.
 - **Ảnh** miễn phí từ Openverse (chỉ giấy phép cho dùng thương mại; nguồn/tác giả lưu theo ảnh).
+- **Vật thể 3D**: ~1.600 vật thể render 3D thật (Microsoft Fluent Emoji 3D, MIT) chia 9 nhóm, tìm theo tên/từ khoá (cả tiếng Việt thông dụng). Danh mục ở `studio/data/fluent3d.json` (dựng từ repo microsoft/fluentui-emoji), ảnh tải thẳng từ GitHub.
+- **Nền & hoạ tiết** (`studio/src/design/generators.ts`): ~30 bộ sinh SVG (sóng, núi, blob, gradient mờ, cực quang, low-poly, nắng toả, đồng mức, gradient hạt; chấm, kẻ, sọc, caro, zigzag, Memphis, confetti, kim tuyến; cầu/viên nhộng/lập phương/vòng xuyến/trụ/kim tự tháp bóng 3D; khung răng cưa, vòm, lượn sóng, góc hoa văn, vệt cọ, vé) × bảng màu thương hiệu + 10 bảng màu × biến thể vô hạn; đổi màu/biến thể ở cột phải, luôn nét.
+- **Sticker** theo bộ (Fluent màu, Noto, phẳng, icon màu) và chủ đề, **Logo** thương hiệu (~2.000, CC0). Icon/sticker tải theo lô (1 request mỗi bộ cho cả lưới, có máy chủ dự phòng của Iconify).
+- **Làm mờ** mọi layer: khối/chữ/nhóm làm mờ chính nó; khối có **kính mờ** (làm mờ phía sau, frosted glass) và nút "Kính mờ sáng/tối"; AI dùng được `backdrop-filter: blur()`.
+- Hơn 100 phông Google có tiếng Việt (thêm grotesk hiện đại, serif tạp chí, display, viết tay).
 - **Hoạt ảnh** cho layer đang chọn: hiện dần, trượt 4 hướng, nảy, mở dần, gõ chữ, chữ chạy, và **lặp liền mạch** nhịp đập / lơ lửng / xoay / lắc / nhấp nháy (chu kỳ chia hết 2,4 giây nên GIF lặp không giật).
 
 ## Thiết kế: vibe, font, hiệu ứng

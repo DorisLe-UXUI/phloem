@@ -10,6 +10,8 @@ import { ensureFonts } from '../render/fonts';
 import { renderToCanvas } from '../render/renderer';
 import { assets } from '../storage/assets';
 import { colorSvg, iconSvg, iconUrl, vectorAsset } from '../design/vector';
+import { genSvg, svgDataUrl } from '../design/generators';
+import { fluent3dSync, fluent3dUrl } from '../design/library';
 
 export interface ConvertOptions {
   width: number;
@@ -55,6 +57,10 @@ export function prepareHtml(html: string, validIds: Set<string>, width: number):
     if (id && validIds.has(id)) { img.setAttribute('data-img', id); const u = assets.url(id); if (u) img.setAttribute('src', u); else img.removeAttribute('src'); return; }
     const icon = img.getAttribute('data-icon');
     if (icon && /^[a-z0-9-]+:[a-z0-9-]+$/.test(icon)) { img.setAttribute('src', iconUrl(icon)); return; }
+    const gfx = img.getAttribute('data-gfx');
+    if (gfx) { const g = genSvg(gfx, colorsOf(img), seedOf(img)); if (g) { img.setAttribute('src', svgDataUrl(g)); return; } }
+    const st = img.getAttribute('data-sticker');
+    if (st) { const idx = fluent3dSync(); const u = idx && fluent3dUrl(idx, st.trim().toLowerCase().replace(/[\s_]+/g, '-')); if (u) { img.setAttribute('src', u); img.setAttribute('crossorigin', 'anonymous'); return; } }
     const src = img.getAttribute('src') || '';
     if (!/^(data:image\/|blob:)/i.test(src)) { img.setAttribute('data-missing', '1'); img.removeAttribute('src'); }
   });
@@ -68,6 +74,9 @@ export function prepareHtml(html: string, validIds: Set<string>, width: number):
   if (!doc.querySelector('meta[charset]')) { const m = doc.createElement('meta'); m.setAttribute('charset', 'utf-8'); head.prepend(m); }
   return '<!doctype html>\n' + doc.documentElement.outerHTML;
 }
+
+const colorsOf = (el: Element) => (el.getAttribute('data-colors') || '').split(/[\s,]+/).filter((c) => /^#[0-9a-f]{6}$/i.test(c));
+const seedOf = (el: Element) => Math.abs(parseInt(el.getAttribute('data-seed') || '7', 10)) || 7;
 
 /** Lay the HTML out in a hidden same-origin iframe (no scripts) and resolve once fonts and images settled. */
 async function mount(html: string, width: number): Promise<HTMLIFrameElement> {
@@ -427,6 +436,9 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
       const uniform = has.every((x) => x) && bws.every((w) => w === bws[0]) && bcs.every((c) => c === bcs[0]);
       const base = (): RectNode => ({ ...rectBase(name, b), radius, radii, ...(blur ? { blur } : {}) });
       const nodes: RectNode[] = [];
+      // frosted glass (backdrop-filter: blur) on the bottom-most layer of this box
+      const bf = /blur\(([\d.]+)px\)/.exec((cs as unknown as Record<string, string>).backdropFilter || (cs as unknown as Record<string, string>).webkitBackdropFilter || '');
+      if (bf && +bf[1] > 0) nodes.push({ ...base(), name: `${name} · kính mờ`, backdropBlur: +bf[1], fill: null });
       if (fill) nodes.push({ ...base(), fill });
       for (const g of layers.slice().reverse()) {
         const stops: GradStop[] = g.stops.map((s) => ({ color: s.color, at: s.at }));
@@ -666,6 +678,28 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
         if (ctx.clip && !ctx.rot) { const st = inClip(base, ctx); if (st === 'out') return; if (st !== 'in') cropTo(base, st, base.w, base.h); }
         push(base, ctx, section);
         pending.push(iconSvg(icon).then(async (svg) => { base.vector!.svg = svg; base.assetId = (await vectorAsset(svg, b.w, b.h, base.name, color, temp)).id; }).catch(() => { warnings.push(`Icon ${icon} không tồn tại`); base.visible = false; }));
+        return;
+      }
+      const gfx = el.getAttribute('data-gfx');
+      if (gfx) {
+        // procedural graphic, redrawn at its real size (patterns stay crisp) and kept editable (palette / variant)
+        const pal = colorsOf(el), seed = seedOf(el);
+        const svg = genSvg(gfx, pal, seed, b.w, b.h);
+        if (svg) {
+          base.fit = 'fill'; base.name = el.getAttribute('data-name') || `Đồ hoạ ${gfx}`; base.decor = true; base.vector = { svg, color: null, kind: 'graphic', gen: { id: gfx, seed, palette: pal } };
+          if (ctx.clip && !ctx.rot) { const st = inClip(base, ctx); if (st === 'out') return; if (st !== 'in') cropTo(base, st, b.w, b.h); }
+          push(base, ctx, section);
+          pending.push(vectorAsset(svg, b.w, b.h, base.name, null, temp).then((a) => { base.assetId = a.id; }).catch(() => { base.visible = false; }));
+          return;
+        }
+      }
+      const sticker = el.getAttribute('data-sticker');
+      if (sticker && el.currentSrc) {
+        base.fit = 'contain'; base.name = `${sticker} 3D`; base.decor = !base.alt;
+        if (ctx.clip && !ctx.rot) { const st = inClip(base, ctx); if (st === 'out') return; }
+        push(base, ctx, section);
+        const src = el.currentSrc;
+        pending.push((async () => { try { const blob = await (await fetch(src)).blob(); base.assetId = (await assets.add(blob, base.name, { src: { kind: 'graphic' }, temp })).id; } catch { base.visible = false; warnings.push(`Không tải được vật thể 3D "${sticker}"`); } })());
         return;
       }
       if (el.getAttribute('data-missing')) { warnings.push('Ảnh ngoài (URL) bị bỏ: chỉ dùng ảnh trong thư viện.'); return; }

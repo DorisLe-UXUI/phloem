@@ -81,6 +81,8 @@ export interface RectNode extends BaseNode {
   rotate?: number;
   /** Gaussian blur in px: soft glows and orbs behind content. */
   blur?: number;
+  /** Frosted glass: blur (px) of everything drawn BEHIND this shape, inside its outline (CSS backdrop-filter). */
+  backdropBlur?: number;
 }
 
 export interface TextNode extends BaseNode {
@@ -102,6 +104,8 @@ export interface TextNode extends BaseNode {
   effect?: TextEffect | null;
   /** Rotation in degrees around the box centre (stickers, stamps, tilted labels). */
   rotate?: number;
+  /** Gaussian blur in px (soft, out-of-focus type). */
+  blur?: number;
 }
 
 export interface ImageNode extends BaseNode {
@@ -113,7 +117,7 @@ export interface ImageNode extends BaseNode {
   /** Pure decoration (a clipped glow, a converted shape): no alt text needed, never counts as a photo. */
   decor?: boolean;
   /** Source of a vector graphic (icon, sticker, shape) so it can be recoloured and re-rasterised crisply. */
-  vector?: { svg: string; color?: string | null; kind?: 'icon' | 'sticker' | 'shape' | 'graphic' } | null;
+  vector?: { svg: string; color?: string | null; kind?: 'icon' | 'sticker' | 'shape' | 'graphic'; /** procedural graphic: regenerate with another palette / variant */ gen?: { id: string; seed: number; palette: string[] } | null } | null;
   /** Background behind contain-fit / placeholder. */
   fill: Color | null;
   /** Colour overlay (e.g. darken photo behind text). `gradient` fades from transparent at the top to the colour at the bottom. */
@@ -284,7 +288,62 @@ export const FONTS: { family: string; label: string; google?: string; cat: FontC
   { family: 'Caveat', label: 'Caveat', google: 'Caveat:wght@400;500;600;700', cat: 'script', vi: false },
   // mono
   { family: 'JetBrains Mono', label: 'JetBrains Mono', google: 'JetBrains+Mono:wght@400;500;600;700;800', cat: 'mono', vi: true },
-  { family: 'Space Mono', label: 'Space Mono', google: 'Space+Mono:wght@400;700', cat: 'mono', vi: false },
+  { family: 'Space Mono', label: 'Space Mono', google: 'Space+Mono:wght@400;700', cat: 'mono', vi: true },
+  // more Vietnamese-ready faces (2026-10): modern grotesks, editorial serifs, display and handwriting
+  { family: 'Bricolage Grotesque', label: 'Bricolage Grotesque', google: 'Bricolage+Grotesque:wght@300;400;500;600;700;800', cat: 'display', vi: true },
+  { family: 'Darker Grotesque', label: 'Darker Grotesque', google: 'Darker+Grotesque:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Epilogue', label: 'Epilogue', google: 'Epilogue:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Archivo', label: 'Archivo', google: 'Archivo:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Hanken Grotesk', label: 'Hanken Grotesk', google: 'Hanken+Grotesk:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Familjen Grotesk', label: 'Familjen Grotesk', google: 'Familjen+Grotesk:wght@400;500;600;700', cat: 'sans', vi: true },
+  { family: 'Onest', label: 'Onest', google: 'Onest:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Geologica', label: 'Geologica', google: 'Geologica:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Inter Tight', label: 'Inter Tight', google: 'Inter+Tight:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Libre Franklin', label: 'Libre Franklin', google: 'Libre+Franklin:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Barlow', label: 'Barlow', google: 'Barlow:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Barlow Condensed', label: 'Barlow Condensed', google: 'Barlow+Condensed:wght@300;400;500;600;700;800;900', cat: 'display', vi: true },
+  { family: 'Saira Condensed', label: 'Saira Condensed', google: 'Saira+Condensed:wght@300;400;500;600;700;800;900', cat: 'display', vi: true },
+  { family: 'Kanit', label: 'Kanit', google: 'Kanit:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Encode Sans Expanded', label: 'Encode Sans Expanded', google: 'Encode+Sans+Expanded:wght@300;400;500;600;700;800;900', cat: 'display', vi: true },
+  { family: 'League Spartan', label: 'League Spartan', google: 'League+Spartan:wght@300;400;500;600;700;800;900', cat: 'display', vi: true },
+  { family: 'Lexend Exa', label: 'Lexend Exa', google: 'Lexend+Exa:wght@300;400;500;600;700;800;900', cat: 'display', vi: true },
+  { family: 'Wix Madefor Display', label: 'Wix Madefor Display', google: 'Wix+Madefor+Display:wght@400;500;600;700;800', cat: 'sans', vi: true },
+  { family: 'Reddit Sans', label: 'Reddit Sans', google: 'Reddit+Sans:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Noto Sans Display', label: 'Noto Sans Display', google: 'Noto+Sans+Display:wght@300;400;500;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Prata', label: 'Prata', google: 'Prata', cat: 'serif', vi: true },
+  { family: 'Old Standard TT', label: 'Old Standard TT', google: 'Old+Standard+TT:wght@400;700', cat: 'serif', vi: true },
+  { family: 'Alegreya', label: 'Alegreya', google: 'Alegreya:wght@400;500;600;700;800;900', cat: 'serif', vi: true },
+  { family: 'Literata', label: 'Literata', google: 'Literata:wght@300;400;500;600;700;800;900', cat: 'serif', vi: true },
+  { family: 'Newsreader', label: 'Newsreader', google: 'Newsreader:wght@300;400;500;600;700;800', cat: 'serif', vi: true },
+  { family: 'Spectral', label: 'Spectral', google: 'Spectral:wght@300;400;500;600;700;800', cat: 'serif', vi: true },
+  { family: 'EB Garamond', label: 'EB Garamond', google: 'EB+Garamond:wght@400;500;600;700;800', cat: 'serif', vi: true },
+  { family: 'Cormorant', label: 'Cormorant', google: 'Cormorant:wght@300;400;500;600;700', cat: 'serif', vi: true },
+  { family: 'Bitter', label: 'Bitter', google: 'Bitter:wght@300;400;500;600;700;800;900', cat: 'serif', vi: true },
+  { family: 'Noto Serif Display', label: 'Noto Serif Display', google: 'Noto+Serif+Display:wght@300;400;500;600;700;800;900', cat: 'serif', vi: true },
+  { family: 'Playfair Display SC', label: 'Playfair Display SC', google: 'Playfair+Display+SC:wght@400;700;900', cat: 'serif', vi: true },
+  { family: 'Yeseva One', label: 'Yeseva One', google: 'Yeseva+One', cat: 'serif', vi: true },
+  { family: 'Dela Gothic One', label: 'Dela Gothic One', google: 'Dela+Gothic+One', cat: 'display', vi: true },
+  { family: 'Alfa Slab One', label: 'Alfa Slab One', google: 'Alfa+Slab+One', cat: 'display', vi: true },
+  { family: 'Black Ops One', label: 'Black Ops One', google: 'Black+Ops+One', cat: 'display', vi: true },
+  { family: 'Tilt Warp', label: 'Tilt Warp', google: 'Tilt+Warp', cat: 'display', vi: true },
+  { family: 'Rowdies', label: 'Rowdies', google: 'Rowdies:wght@300;400;700', cat: 'display', vi: true },
+  { family: 'Paytone One', label: 'Paytone One', google: 'Paytone+One', cat: 'display', vi: true },
+  { family: 'Bungee Shade', label: 'Bungee Shade', google: 'Bungee+Shade', cat: 'display', vi: true },
+  { family: 'Grandstander', label: 'Grandstander', google: 'Grandstander:wght@300;400;500;600;700;800;900', cat: 'rounded', vi: true },
+  { family: 'Gluten', label: 'Gluten', google: 'Gluten:wght@300;400;500;600;700;800;900', cat: 'rounded', vi: true },
+  { family: 'Comfortaa', label: 'Comfortaa', google: 'Comfortaa:wght@300;400;500;600;700', cat: 'rounded', vi: true },
+  { family: 'Coiny', label: 'Coiny', google: 'Coiny', cat: 'rounded', vi: true },
+  { family: 'Sriracha', label: 'Sriracha', google: 'Sriracha', cat: 'script', vi: true },
+  { family: 'Patrick Hand', label: 'Patrick Hand', google: 'Patrick+Hand', cat: 'script', vi: true },
+  { family: 'Itim', label: 'Itim', google: 'Itim', cat: 'script', vi: true },
+  { family: 'Mali', label: 'Mali', google: 'Mali:wght@300;400;500;600;700', cat: 'script', vi: true },
+  { family: 'Charm', label: 'Charm', google: 'Charm:wght@400;700', cat: 'script', vi: true },
+  { family: 'Great Vibes', label: 'Great Vibes', google: 'Great+Vibes', cat: 'script', vi: true },
+  { family: 'Allura', label: 'Allura', google: 'Allura', cat: 'script', vi: true },
+  { family: 'Playball', label: 'Playball', google: 'Playball', cat: 'script', vi: true },
+  { family: 'Merienda', label: 'Merienda', google: 'Merienda:wght@300;400;500;600;700;800;900', cat: 'script', vi: true },
+  { family: 'Amatic SC', label: 'Amatic SC', google: 'Amatic+SC:wght@400;700', cat: 'script', vi: true },
+  { family: 'Sedgwick Ave', label: 'Sedgwick Ave', google: 'Sedgwick+Ave', cat: 'script', vi: true },
   // system fallbacks (no download)
   { family: 'Helvetica', label: 'Helvetica / Arial', cat: 'system', vi: true },
   { family: 'Georgia', label: 'Georgia', cat: 'system', vi: true },

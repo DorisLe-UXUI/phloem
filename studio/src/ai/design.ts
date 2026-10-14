@@ -11,6 +11,7 @@ import { askClaude, extractJson, streamClaude, type AiImage } from './client';
 import { GOAL_DESC, thumbOf, type GenInput } from './generate';
 import { siteSummary } from './site';
 import { extractHtml, htmlToDoc, tokenize } from './htmlToDoc';
+import { loadFluent3d } from '../design/library';
 
 export interface Palette { bg: string; surface: string; ink: string; muted: string; primary: string; accent: string; onPrimary: string; line: string }
 export interface Direction {
@@ -49,6 +50,13 @@ DETAILS & DEPTH
 - Photos are heroes: crop boldly with object-fit/object-position; never shrink them into timid thumbnails.
 - Polish components: buttons with real presence (min 48px tall, generous padding, considered radius/shadow), badges, cards, a designed footer.
 
+FIGMA-LEVEL POLISH (what separates a hand-made design from a template)
+- Define the system first in CSS: one spacing scale (8/12/16/24/32/48/64/96), one type scale, 2–3 radii, 1–2 shadow styles; every value comes from it.
+- Optical details: headline tracking tight, line-height tight on display and generous on body; balanced line breaks (<br> where a phrase should hold together); no orphans; numbers set big and tabular; consistent icon size and stroke.
+- Depth with restraint: real 3D objects or photos as heroes, soft layered shadows (0 24px 48px -12px rgba(…)), glass cards (backdrop-filter blur) over imagery, subtle textures; never flat grey boxes.
+- Every section has a reason to look different (background, scale, alignment), yet all share the same system so the email feels like one piece.
+- Final check before you answer: alignment to the grid, consistent gutters, contrast, nothing touching an edge accidentally, CTA obvious within the first 600px.
+
 AVOID (generic AI look)
 - Purple-on-white gradients by default; everything centred in identical rounded cards; emoji bullet lists; grey boxes; 24px headlines; Inter/Roboto everywhere; cookie-cutter SaaS sections; decoration unrelated to the brand; "Welcome to our newsletter" copy.
 
@@ -60,15 +68,17 @@ OUTPUT: one complete HTML document inside a single \`\`\`html fenced block, noth
 CANVAS: <body> holds exactly one <div id="email" data-email> with width:600px and the email background colour; inside it, 6–10 <section data-name="Short name"> stacked vertically. Sections own their padding. Absolutely positioned decoration must sit inside a position:relative section (use overflow:hidden on that section when decoration bleeds).
 CONVERTS (use freely):
 - Layout: flex, grid, absolute positioning, negative margins, overlap, z-index.
-- Boxes: background-color; background-image with linear-gradient()/radial-gradient() (several layers OK: mesh glows); borders (all or single sides); border-radius (per corner OK); outer box-shadow; opacity; transform rotate()/translate()/scale(); filter: blur() for glows.
+- Boxes: background-color; background-image with linear-gradient()/radial-gradient() (several layers OK: mesh glows); borders (all or single sides); border-radius (per corner OK); outer box-shadow; opacity; transform rotate()/translate()/scale(); filter: blur() for glows; backdrop-filter: blur(16–28px) with a translucent rgba() fill and a 1px light border for frosted-glass cards over photos or colour.
 - Text: font-family (ONLY allowed fonts), font-size, font-weight, font-style, line-height, letter-spacing, text-transform, text-align, color, text-decoration, text-shadow (glow or hard long shadow), -webkit-text-stroke with transparent fill (outline display type). <br> for intentional breaks. <span> may change colour/weight/font inside a heading.
 - Photos: ONLY <img data-img="IMAGE_ID" alt="…"> with ids from the image list; size with CSS width/height; object-fit:cover|contain; object-position to choose the focus.
 - Icons & stickers: <img data-icon="set:name" alt="" style="width:28px;height:28px;color:#hex"> (always width+height; colour via CSS color for monochrome sets). Sets: ph (Phosphor — e.g. ph:arrow-right-bold, ph:star-fill, ph:truck-duotone, ph:lightning-fill, ph:check-circle-fill, ph:gift-duotone, ph:clock-countdown-fill), lucide, tabler, mdi, simple-icons (brand logos: simple-icons:instagram, simple-icons:facebook, simple-icons:tiktok, simple-icons:youtube, simple-icons:x, simple-icons:linkedin), fluent-emoji (colourful 3D-style stickers: fluent-emoji:fire, fluent-emoji:sparkles, fluent-emoji:party-popper, fluent-emoji:wrapped-gift, fluent-emoji:rocket, fluent-emoji:red-heart, fluent-emoji:star, fluent-emoji:high-voltage, fluent-emoji:shopping-bags, fluent-emoji:crown, fluent-emoji:gem-stone, fluent-emoji:hundred-points, fluent-emoji:alarm-clock, fluent-emoji:delivery-truck, fluent-emoji:hot-beverage, fluent-emoji:cherry-blossom). Only real icon names.
+- 3D objects (studio-quality renders, transparent PNG — the fastest way to make an email look designed and premium): <img data-sticker="name" alt="" style="width:120px;height:120px"> (square, 64–220px; float them over cards, tilt with rotate(), overlap edges, add a soft shadow ellipse or glow under them; 1–4 per email). Names: rocket, wrapped-gift, fire, party-popper, confetti-ball, sparkles, glowing-star, star, crown, gem-stone, money-bag, money-with-wings, dollar-banknote, coin, shopping-bags, shopping-cart, package, delivery-truck, credit-card, label, megaphone, bell, alarm-clock, hourglass-not-done, stopwatch, calendar, spiral-calendar, trophy, 1st-place-medal, sports-medal, red-heart, sparkling-heart, heart-with-ribbon, high-voltage, collision, hundred-points, thumbs-up, clapping-hands, waving-hand, raising-hands, flexed-biceps, smiling-face-with-heart-eyes, star-struck, partying-face, smiling-face-with-sunglasses, face-blowing-a-kiss, eyes, light-bulb, gear, wrench, hammer-and-wrench, magnifying-glass-tilted-left, laptop, desktop-computer, mobile-phone, headphone, camera, camera-with-flash, video-game, joystick, game-die, puzzle-piece, teddy-bear, balloon, birthday-cake, shortcake, cupcake, doughnut, cookie, ice-cream, soft-ice-cream, hot-beverage, teacup-without-handle, bubble-tea, tropical-drink, cocktail-glass, beer-mug, wine-glass, pizza, hamburger, sushi, bento-box, steaming-bowl, strawberry, lemon, peach, cherries, watermelon, avocado, herb, seedling, potted-plant, four-leaf-clover, cherry-blossom, sunflower, tulip, bouquet, rose, sun, sun-behind-cloud, rainbow, cloud, snowflake, droplet, water-wave, globe-showing-asia-australia, world-map, compass, airplane, house, house-with-garden, office-building, cityscape, beach-with-umbrella, camping, national-park, mountain, books, open-book, graduation-cap, pencil, memo, envelope, love-letter, incoming-envelope, open-mailbox-with-raised-flag, key, shield, chart-increasing, bar-chart, clipboard, briefcase, handshake, robot, alien-monster, ghost, unicorn, butterfly, lady-beetle, dog-face, cat-face, panda, fox, rabbit-face, chicken, t-shirt, dress, jeans, running-shoe, high-heeled-shoe, handbag, ring, lipstick, lotion-bottle, sponge, soap, crystal-ball, magic-wand, christmas-tree, jack-o-lantern, red-envelope, moon-cake, firecracker, fireworks, sparkler, red-paper-lantern, dragon.
+- Generated graphics (drawn in the brand palette, crisp at any size): <img data-gfx="ID" data-colors="#bg,#c1,#c2,#c3,#ink" data-seed="7" alt="" style="width:600px;height:260px">. Backgrounds: waves, peaks, blobs, blur (soft gradient mesh), aurora, lowpoly, sunburst, steps, topo, grain. Patterns: dots, grid, stripes, checker, zigzag, plus, rings, halftone, memphis, confetti, sparkles. Glossy 3D shapes: sphere, capsule, cube, torus, cylinder, pyramid. Decoration: frame-scallop, arch-frame, wavy-frame, corners, scribble-circle, brush, ticket. Use them as section backgrounds (absolutely positioned behind content), texture bands, frames around photos, or floating accents; change data-seed for a different variant.
 - Illustration & decoration: inline <svg viewBox="…" width="…" height="…"> with paths/shapes (blobs, waves, arcs, stars, squiggles, dot grids, arrows, abstract illustrations), colours as fill/stroke attributes or CSS. No <text> inside SVG.
 - Links: every clickable element inside <a href="real URL">. Wrap each product/offer card in ONE <a> so the whole card is clickable; at most 6 distinct destinations per email. Unsubscribe <a href="*|UNSUB|*">, preferences <a href="*|UPDATE_PROFILE|*">.
 - Footer: brand line, website or address, social icons (simple-icons inside links), and the exact words "Huỷ đăng ký" (Vietnamese copy) or "Unsubscribe" (English) linked to *|UNSUB|*.
 - Motion (exported as GIF): data-anim on 3–6 elements. Entrances "fade|up|down|left|right|pop|wipe|type" with data-delay="0.15" (seconds), only in the first section or two. Loops "pulse|float|spin|shake|blink" on at most 2 small stickers/badges (every animated area becomes a GIF, keep them few and small).
-NEVER (lost in conversion): ::before/::after content, CSS background url(), background-clip:text or gradient-filled text, mask, clip-path, mix-blend-mode, backdrop-filter, CSS animations/transitions, <video>, <canvas>, <script>, iframes, list bullets (use icon/shape markers), fonts not in the list, <link> tags, external image URLs, text baked into SVG.
+NEVER (lost in conversion): ::before/::after content, CSS background url(), background-clip:text or gradient-filled text, mask, clip-path, mix-blend-mode, backdrop-filter other than blur(), CSS animations/transitions, <video>, <canvas>, <script>, iframes, list bullets (use icon/shape markers), fonts not in the list, <link> tags, external image URLs, text baked into SVG.
 MOBILE: add @media (max-width:480px) rules: #email{width:100%!important}; stack columns; display type ≈0.6×; side padding 20–24px; images full width. Phloem renders the same HTML at 375px for the mobile version, so nothing may overflow 375px there.
 SIZE: total height 1600–2600px at 600px wide. Body text ≥ 15px, labels ≥ 12px, footer ≥ 12px, buttons ≥ 48px tall. Text on photos needs a scrim or a solid card behind it.`;
 
@@ -111,6 +121,7 @@ async function buildCtx(inp: GenInput): Promise<{ ctx: Ctx; images: AiImage[] }>
 }
 
 const PLAN = `You are the creative director of a top design studio. Plan THREE email designs for the brief: three genuinely different art directions (different concept, composition, mood and type — not colour swaps), each one right for this brand and goal. If a website profile is given, all three must feel like that brand's own team made them (its colours, its voice); still vary concept and composition.
+The designer has: the user's photos, a library of studio-quality 3D objects (gifts, rockets, food, devices, hearts, trophies…), procedural backgrounds/patterns/glossy 3D shapes in any palette, thousands of icons and stickers, frosted-glass cards, and ~100 Google fonts with Vietnamese. Plan directions that use these deliberately (e.g. a hero built around one big 3D object, a glass card over a photo, a patterned band).
 Aesthetic territories to draw from (pick what fits, combine, or invent): editorial magazine, Swiss grid, neo-brutalist poster, luxury minimal, soft pastel / organic, playful toy-like stickers, retro-futuristic chrome, Y2K, art deco geometric, Japanese minimal, bold sports campaign, product-on-stage studio lighting, collage / scrapbook, monochrome high-contrast, warm craft / handmade.
 Return ONLY JSON:
 {"directions":[{"name":"short name in the copy language","why":"one sentence: why this direction for this goal","aesthetic":"2–5 words","concept":"3–5 sentences of art direction: the unforgettable idea, hero composition, mood, type treatment, decorative motifs, how photos are used","palette":{"bg":"#hex email background","surface":"#hex cards/sections","ink":"#hex main text","muted":"#hex secondary text","primary":"#hex brand/CTA colour","accent":"#hex second colour","onPrimary":"#hex text on primary","line":"#hex hairlines"},"headingFont":"from list","bodyFont":"from list","vibe":"clean|playful|bold|luxury|editorial","layout":["Section 1 — what it is and how it looks", "… 6–9 entries"],"motifs":"decoration + icons/stickers + motion plan","images":[{"id":"image id","use":"where/how"}],"fields":{"campaignName":"short","subject":"30–55 chars, concrete benefit","preheader":"40–90 chars, continues the subject"}}]}`;
@@ -154,7 +165,7 @@ export async function drawDirection(c: Ctx, d: Direction, onHtml: (html: string)
   const text = await streamClaude({
     system: `${DESIGN_CRAFT}\n\n${DESIGN_TECH}\n\nAllowed fonts (font-family values, exact spelling): ${c.fonts}.`,
     turns: [{ role: 'user', text: `${c.brief}\n\n${dirText(d)}\n\nIMAGE LIST (data-img ids; the attached images are the first ${imgs.length} of the direction's picks, in order):\n${c.imageLines.join('\n') || '(no images: build the visuals with type, colour, SVG shapes, icons and stickers)'}\n\nDesign and code this email now.`, images: imgs }],
-    maxTokens: 28000, effort: 'medium',
+    maxTokens: 32000, effort: 'high',
   }, (t) => onHtml(extractHtml(t)), signal);
   const html = extractHtml(text);
   if (!/<(div|section|table)[\s>]/i.test(html)) throw new Error('AI không trả về HTML.');
@@ -180,7 +191,7 @@ export async function reviewDirection(c: Ctx, d: Direction, html: string, doc: D
   const text = await streamClaude({
     system: `${CRITIC}\n\n${DESIGN_CRAFT}\n\n${DESIGN_TECH}\n\nAllowed fonts: ${c.fonts}.`,
     turns: [{ role: 'user', text: `${c.brief}\n\n${dirText(d)}\n\nIMAGE LIST:\n${c.imageLines.join('\n') || '(none)'}\n\n${notes.length ? `CONVERTER NOTES:\n- ${notes.join('\n- ')}\n\n` : ''}The attached ${imgs.length} screenshot(s) are the Phloem render, top to bottom (600px wide).\n\nCURRENT HTML:\n\`\`\`html\n${html}\n\`\`\``, images: imgs }],
-    maxTokens: 28000, effort: 'medium',
+    maxTokens: 32000, effort: 'high',
   }, (t) => onHtml(extractHtml(t)), signal);
   const out = extractHtml(text);
   return /<(div|section|table)[\s>]/i.test(out) ? out : html;
@@ -217,6 +228,7 @@ export function thumbOfDoc(doc: Doc, brand: Brand, width = 480, ratio = 2.2): st
 /** Whole flow: plan 3 → draw each (live) → convert → creative-director review → convert. Updates arrive per variant. */
 export async function designEmail(inp: GenInput, base: Brand, cb: { onPlan: (v: DesignVariant[]) => void; onUpdate: (i: number, patch: Partial<DesignVariant>) => void; onStage: (m: string) => void }, opts: { review: boolean; signal?: AbortSignal }): Promise<void> {
   cb.onStage('Đang xem ảnh và nội dung…');
+  await loadFluent3d().catch(() => null);
   const { ctx, images } = await buildCtx(inp);
   cb.onStage('Creative director đang lên 3 hướng thiết kế…');
   const dirs = await planDirections(inp, ctx, images, opts.signal);
@@ -249,6 +261,7 @@ export async function designEmail(inp: GenInput, base: Brand, cb: { onPlan: (v: 
 /** "AI tự chỉnh" on an untouched free-form design: the creative director reviews the current render and redraws it. */
 export async function reviseDesign(p: Project, onStage: (m: string) => void): Promise<{ html: string; doc: Doc; mobile: Doc | null; brand: Brand; warnings: string[] } | null> {
   const dz = p.design; if (!dz || !dz.dir) return null;
+  await loadFluent3d().catch(() => null);
   const d = dz.dir as Direction;
   const ids = [...new Set([...dz.html.matchAll(/data-img="([^"]+)"/g)].map((m) => m[1]).filter((id) => assets.get(id)))];
   const inp: GenInput = { goal: 'other', brandName: p.brand.name, brief: `Subject: ${p.fields.subject}\nPreheader: ${p.fields.preheader}`, content: '', tone: '', imageIds: ids, palette: 'auto', language: /[ăâđêôơư]/i.test(`${p.fields.subject} ${p.fields.preheader}`) ? 'vi' : 'en' };

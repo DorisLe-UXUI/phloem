@@ -91,6 +91,7 @@ function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: n
     ctx.restore(); return;
   }
   const path = () => shapePath(ctx, n, x, y, w, h, s);
+  if (n.backdropBlur && n.backdropBlur > 0) frost(ctx, path, x, y, w, h, n.backdropBlur * s);
   const fill = col(n.fill, brand);
   const g0 = n.gradient;
   const firstStop = g0 ? (g0.stops && g0.stops.length >= 2 ? g0.stops[0].color : g0.from) : null;
@@ -130,6 +131,24 @@ function drawRect(ctx: CanvasRenderingContext2D, n: RectNode, brand: Brand, s: n
       ctx.strokeStyle = sc; ctx.lineWidth = sw; ctx.stroke();
     }
   }
+}
+
+/** Frosted glass: copy what is already painted under the shape, blur it, and paint it back inside the outline. */
+function frost(ctx: CanvasRenderingContext2D, path: () => void, x: number, y: number, w: number, h: number, radius: number) {
+  try {
+    const m = ctx.getTransform();
+    const pts = [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].map(([px, py]) => [m.a * px + m.c * py + m.e, m.b * px + m.d * py + m.f]);
+    const k = Math.hypot(m.a, m.b) || 1, r = radius * k, pad = Math.ceil(r * 2);
+    const cw = ctx.canvas.width, ch = ctx.canvas.height;
+    const x0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[0])) - pad)), y0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[1])) - pad));
+    const x1 = Math.min(cw, Math.ceil(Math.max(...pts.map((p) => p[0])) + pad)), y1 = Math.min(ch, Math.ceil(Math.max(...pts.map((p) => p[1])) + pad));
+    const dw = x1 - x0, dh = y1 - y0; if (dw < 2 || dh < 2) return;
+    const off = document.createElement('canvas'); off.width = dw; off.height = dh;
+    const oc = off.getContext('2d')!;
+    oc.filter = `blur(${r}px)`;
+    oc.drawImage(ctx.canvas, x0, y0, dw, dh, 0, 0, dw, dh);
+    ctx.save(); path(); ctx.clip(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(off, x0, y0); ctx.restore();
+  } catch { /* no filter support: the shape's own fill still reads as glass */ }
 }
 
 function hexRgb(hex: string): [number, number, number] {
@@ -329,6 +348,7 @@ function drawText(ctx: CanvasRenderingContext2D, n: TextNode, brand: Brand, s: n
   const lay = layoutText(n, brand, ctx, s);
   const color = col(n.color, brand) || '#000';
   ctx.save();
+  if (n.blur && n.blur > 0) { try { ctx.filter = `blur(${n.blur * s}px)`; } catch { /* unsupported */ } }
   ctx.font = lay.font;
   try { (ctx as any).letterSpacing = `${n.letterSpacing * s}px`; } catch { /* unsupported */ }
   ctx.fillStyle = color;
