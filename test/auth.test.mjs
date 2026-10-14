@@ -93,3 +93,12 @@ test('db: projects, assets, encrypted profiles are scoped per owner', () => {
   assert.equal(db.stats('u1').projects.n, 0);
   db.close();
 });
+
+import { sign } from '../server/src/backup.mjs';
+test('backup: AWS SigV4 matches the documented S3 GET example', () => {
+  // https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html — GET object example
+  const cfg = { endpoint: 'https://examplebucket.s3.amazonaws.com', bucket: '', key: 'AKIAIOSFODNN7EXAMPLE', secret: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', region: 'us-east-1' };
+  const r = sign({ ...cfg }, 'GET', 'test.txt', Buffer.alloc(0), { range: 'bytes=0-9' }, new Date('2013-05-24T00:00:00Z'));
+  assert.equal(r.url.pathname, '/test.txt');
+  assert.equal(r.signature, 'f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41');
+});

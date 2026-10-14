@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { createAuth } from './auth.mjs';
+import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -24,8 +25,12 @@ const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', import.meta.url).pathname);
+// Ephemeral hosts: pull the last database snapshot from the backup bucket before opening it (no-op without BACKUP_S3_*).
+const BACKUP = backupConfig();
+if (BACKUP) { const { mkdirSync } = await import('node:fs'); mkdirSync(DATA_DIR, { recursive: true }); await restoreBackup(BACKUP, DATA_DIR); }
 const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '' });
 const DB = AUTH.db;
+const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR);
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 const OAUTH = {
@@ -84,6 +89,7 @@ const server = createServer(async (req, res) => {
         db: true,
         site: true,
         google: GOOGLE_CLIENT_ID,
+        backup: BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), error: BACKUPS.error } : null,
         commit: String(process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '').slice(0, 7), // which build answers (Render sets RENDER_GIT_COMMIT)
         users: AUTH.count(),
       });

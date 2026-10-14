@@ -15,6 +15,18 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Free durability: an S3-compatible bucket (Cloudflare R2 free tier) the relay restores from at boot and snapshots to
+      # every 10 minutes and on shutdown. Leave unset on a paid instance with a disk.
+      - key: BACKUP_S3_ENDPOINT
+        sync: false
+      - key: BACKUP_S3_BUCKET
+        sync: false
+      - key: BACKUP_S3_KEY
+        sync: false
+      - key: BACKUP_S3_SECRET
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: MAILCHIMP_CLIENT_ID

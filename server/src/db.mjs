@@ -100,6 +100,7 @@ export function openDb(file) {
 
   return {
     file,
+    raw: db,
     users: {
       byEmail: (email) => S.userByEmail.get(email) || null,
       byId: (id) => S.userById.get(id) || null,

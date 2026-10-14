@@ -262,7 +262,10 @@ Nút "Continue with Google" hiện trong hộp Đăng nhập khi relay báo có 
 3. Copy Client ID (`…apps.googleusercontent.com`) → Render → service `phloem-relay` → Environment → thêm `GOOGLE_CLIENT_ID` → Save. Relay tự deploy lại (~2 phút).
 4. Trên Studio: Cài đặt → Relay URL phải là `https://phloem-relay.onrender.com` (bản public tự đổi nếu còn giá trị localhost cũ) → Đăng nhập → Continue with Google. Relay xác minh ID token qua `oauth2.googleapis.com/tokeninfo`, tạo/tìm tài khoản theo email và mở phiên relay; project trên máy có thể "Chuyển vào tài khoản".
 
-Lưu ý gói free Render: SQLite nằm trong container nên **tài khoản và project trên relay bị xoá mỗi lần deploy**. Muốn dùng thật: Render Starter + Persistent Disk 1 GB mount vào `/app/server/data` (khoảng 7 USD/tháng), hoặc đổi `db.mjs` sang Postgres/Turso.
+Lưu ý gói free Render: SQLite nằm trong container nên **tài khoản và project trên relay bị xoá mỗi lần deploy**. Hai cách giữ dữ liệu:
+- **Miễn phí — sao lưu lên bucket S3** (`server/src/backup.mjs`, không phụ thuộc thư viện): lúc khởi động container mới, relay tải `phloem.db` + `auth-secret` từ bucket về; sau đó cứ 10 phút (và khi Render tắt instance cũ, SIGTERM) chụp bản nhất quán (`VACUUM INTO`) và đẩy lên nếu có thay đổi. Cài: Cloudflare → R2 → Create bucket (ví dụ `phloem`) → Manage R2 API Tokens → token quyền Object Read & Write cho bucket đó → Render → Environment thêm `BACKUP_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`, `BACKUP_S3_BUCKET=phloem`, `BACKUP_S3_KEY`, `BACKUP_S3_SECRET` (+ `BACKUP_S3_REGION=auto`, mặc định). Backblaze B2 / AWS S3 / MinIO dùng y vậy (region đúng của bucket). Health `GET /` trả `backup: {at, kb, error}` để kiểm tra. Mất tối đa 10 phút dữ liệu nếu instance chết đột ngột.
+- **Trả phí** — Render Starter + Persistent Disk 1 GB mount `/var/data` và `DATA_DIR=/var/data` (khoảng 7 USD/tháng): không cần bucket.
+Đặt thêm `AUTH_SECRET` (chuỗi ngẫu nhiên dài) trên Render để token/phiên và hồ sơ client mã hoá không phụ thuộc file secret trong container.
 
 ## Import từ Figma
 
