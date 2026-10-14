@@ -121,11 +121,11 @@ export async function connectOAuth(p: Profile, onDone: (p: Profile) => void) {
 }
 
 // ---------- pipeline ----------
-interface Exported { plan: SlicePlan; slices: ExportedSlice[]; mobile: { plan: SlicePlan; slices: ExportedSlice[] } | null }
+export interface Exported { plan: SlicePlan; slices: ExportedSlice[]; mobile: { plan: SlicePlan; slices: ExportedSlice[] } | null }
 
 function busy(label: string, done = 0, total = 0) { set({ busy: { label, done, total } }); }
 
-async function exportProject(p: Project, prof: Profile | null): Promise<Exported> {
+export async function exportProject(p: Project, prof: Profile | null): Promise<Exported> {
   const format = prof?.imageFormat ?? 'JPG', scale = prof?.scale ?? 2, q = prof?.jpgQuality ?? 85; // JPG mode keeps a slice as PNG when that is smaller (flat colour, text)
   const bg = solidHex(resolveColor(p.desktop.bg, p.brand) || '#ffffff');
   const s = get().settings;

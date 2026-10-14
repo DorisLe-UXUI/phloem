@@ -259,6 +259,18 @@ Ai cũng đăng ký/đăng nhập (email hoặc Google), nhưng `/ai` của rela
 - Bảo mật: tài khoản mật khẩu chưa xác minh trùng email với một lần đăng nhập Google sẽ bị Google "nhận lại" (mật khẩu cũ và các phiên bị huỷ), nên không ai đăng ký trước email của admin để chiếm quyền được.
 - Relay: `GET /aiaccess`, `POST /aiaccess/request`, `POST /aiaccess/redeem`, admin `GET /aiaccess/admin`, `POST /aiaccess/admin/code`, `POST /aiaccess/admin/grant`; bảng `ai_codes`, `ai_requests`, cột `users.ai_access`.
 
+## Gửi bằng email thường (không cần Mailchimp/Klaviyo)
+
+Tab Xuất → **Gửi bằng email thường**:
+- **Gmail / Google Workspace**: Kết nối Gmail (popup Google, quyền `gmail.send` + email/profile; token chỉ nằm trong bộ nhớ trình duyệt) → dán người nhận (mỗi dòng/phẩy, tự lọc trùng) → **Gửi thử cho tôi** hoặc **Gửi tới N người** (hộp xác nhận liệt kê người nhận). Mỗi người nhận một email riêng, gửi thẳng từ trình duyệt qua `gmail.googleapis.com/upload/.../messages/send` (MIME `message/rfc822`, tối đa 35 MB). Tối đa 100 người mỗi lần bấm; Gmail giới hạn ~500 thư/ngày (Workspace ~2.000).
+- **Outlook / Apple Mail / Thunderbird**: **Tải .eml** (có `X-Unsent: 1` → Outlook mở thành bản nháp; Apple Mail/Thunderbird dùng Gửi lại).
+- Email dựng bằng `src/shared/mime.ts`: multipart/related (text + HTML) với các lát ảnh nhúng `cid:` nên không cần host ảnh; link `*|UNSUB|*`/`*|UPDATE_PROFILE|*` đổi thành mailto về người gửi, thêm header `List-Unsubscribe`.
+- Google Cloud (project `phloem-studio`): Gmail API đã bật, scope `gmail.send` đã khai báo trong Data access. Đây là scope nhạy cảm: đến khi Google duyệt (cần video demo YouTube), người dùng thấy màn hình "Google chưa xác minh ứng dụng" (bấm Nâng cao → Tiếp tục) và app giới hạn 100 người dùng.
+
+## Database (admin)
+
+Email admin (`ADMIN_EMAILS`, mặc định `vankhanh.le@sentryxp.com`) đăng nhập bằng Google một lần → Home hiện **Database** và **Quản lý AI**. Trang Database: số liệu tổng (người dùng, project, ảnh, dung lượng, mã AI, yêu cầu chờ), thẻ Sao lưu (Sao lưu ngay lên R2, Tải file .db bản đầy đủ), thẻ Relay (commit, AI, Google), bảng người dùng (cấp/thu hồi AI, xoá tài khoản kèm toàn bộ dữ liệu), bảng project và ảnh, tìm kiếm. Relay: `GET /admin/db`, `POST /admin/backup`, `GET /admin/db/export`, `POST /admin/user/delete`.
+
 ## Kho hàng và gợi ý nên đẩy gì
 
 Trang chủ Studio → **Kho hàng**: nhập sản phẩm từ Google Sheet (share "Anyone with the link" hoặc Publish to web → CSV; relay tải qua `POST /csv`), file CSV, hoặc cửa hàng Shopify. Cột tự nhận (VI/EN): tên, giá, giá cũ, giá vốn, tồn kho, đã bán, danh mục, ảnh, link, mô tả. Bấm **AI gợi ý**: Claude đọc kho (tồn nhiều/bán chậm, bán chạy, sắp hết, biên cao, mùa vụ) và trả 3–5 chiến dịch nên làm, mỗi gợi ý có sản phẩm cụ thể, lý do, loại email, subject. Tick sản phẩm (hoặc bấm "Dựng email từ gợi ý") → mở Dựng bằng AI với đúng tên/giá/link/ảnh sản phẩm. Kho lưu trên máy và đồng bộ lên relay (`/db/kv/catalog`) khi có tài khoản relay. Ảnh sản phẩm trong email hiển thị trọn (contain), không cắt.

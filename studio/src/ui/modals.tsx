@@ -238,7 +238,8 @@ function ProfileForm({ p, isNew, onBack, onClose, onChange }: { p: Profile; isNe
           <Field label={p.provider === 'mailchimp' ? 'API key Mailchimp' : 'Private API key Klaviyo'} hint={p.provider === 'mailchimp' ? 'Account → Extras → API keys · dạng xxxx-us21' : 'Settings → API keys → Create private key · pk_…'}>
             <div class="row"><TextInput type="password" mono value={p.auth.apiKey} onInput={setKey} onCommit={setKey} placeholder={p.provider === 'mailchimp' ? 'xxxxxxxx-us21' : 'pk_xxxxxxxx'} /><Btn disabled={busy || !p.auth.apiKey} onClick={test}>{busy ? '…' : 'Kiểm tra'}</Btn></div>
           </Field>
-          <div class="row small muted"><span class="grow">{canOauth ? 'Hoặc đăng nhập để dùng đúng quyền đã được cấp. Nhiều tài khoản: mỗi lần đăng nhập chọn một.' : `Đăng nhập ${providerName(p.provider)} (OAuth) cần relay có CLIENT_ID. Xem server/.env.example.`}</span><Btn sm disabled={!canOauth || busy} onClick={oauth}>Đăng nhập {providerName(p.provider)}</Btn></div>
+          {canOauth && <div class="row small muted"><span class="grow">Hoặc đăng nhập để dùng đúng quyền đã được cấp. Nhiều tài khoản: mỗi lần đăng nhập chọn một.</span><Btn sm disabled={busy} onClick={oauth}>Đăng nhập {providerName(p.provider)}</Btn></div>}
+          {!canOauth && <div class="small dim">Dán API key rồi bấm <b>Kiểm tra</b>: Phloem tải danh sách audience và tài khoản ngay. Không có {providerName(p.provider)}? Dùng <b>Gửi bằng email thường</b> (Gmail / .eml) ở tab Xuất.</div>}
         </>
       )}
       {connected && <div class="check ok"><span class="lv">OK</span><span class="m">Đã kết nối: {p.accountLabel}</span></div>}
@@ -267,7 +268,7 @@ function ProfileForm({ p, isNew, onBack, onClose, onChange }: { p: Profile; isNe
       <Field label="Mẫu UTM" hint="{provider} {campaign} {frame} {slice} {date} {host}"><TextInput value={p.utmTemplate} mono placeholder={DEFAULT_UTM} onCommit={(v) => mut((x) => { x.utmTemplate = v.trim(); })} /></Field>
       <Field label="Footer HTML riêng" hint="thêm dưới email; để trống nếu template đã có"><TextArea mono value={p.footerHtml} placeholder='<p>Công ty ABC · 123 Lê Lợi · <a href="*|UNSUB|*">Huỷ đăng ký</a></p>' onCommit={(v) => mut((x) => { x.footerHtml = v; })} /></Field>
       <div class="grid3">
-        <Field label="Định dạng ảnh" hint={p.imageFormat === 'JPG' ? 'ảnh → JPG, lát phẳng/chữ vẫn PNG nếu nhỏ hơn' : 'mọi lát PNG (nặng hơn 3–5 lần với ảnh)'}><Seg block value={p.imageFormat} options={[{ v: 'JPG', label: 'JPG thông minh' }, { v: 'PNG', label: 'PNG' }]} onChange={(v) => mut((x) => { x.imageFormat = v; })} /></Field>
+        <Field label="Định dạng ảnh"><Seg block value={p.imageFormat} options={[{ v: 'JPG', label: 'JPG thông minh' }, { v: 'PNG', label: 'PNG' }]} onChange={(v) => mut((x) => { x.imageFormat = v; })} /></Field>
         <Field label="Độ phân giải"><Seg block value={p.scale} options={[{ v: 1, label: '1x' }, { v: 2, label: '2x' }]} onChange={(v) => mut((x) => { x.scale = v as 1 | 2; })} /></Field>
         <Field label="JPG quality"><Num value={p.jpgQuality} min={40} max={100} onChange={(v) => mut((x) => { x.jpgQuality = Math.round(v); })} /></Field>
       </div>

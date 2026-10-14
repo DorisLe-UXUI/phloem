@@ -7,3 +7,4 @@ export * from './hash';
 export * from './zip';
 export * from './html';
 export * from './suggestions';
+export * from './mime';

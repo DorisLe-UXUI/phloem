@@ -1,3 +1,4 @@
+import { connectGmail, disconnectGmail, downloadEml, gmailAccount, parseRecipients, sendWithGmail } from '../pipeline/mailSend';
 import { useEffect, useState } from 'preact/hooks';
 import type { Check, Suggestion } from '../../../src/shared/types';
 import type { ImageNode, Node, RectNode, TextNode, GroupNode } from '../model/types';
@@ -361,6 +362,7 @@ function ExportTab() {
         <Btn sm block icon="play" disabled={busy} onClick={() => set({ modal: 'preview' })}>Xem trước như trong hộp thư</Btn>
         {draft?.campaignId && <div class="row small muted"><span class="grow">Draft {new Date(draft.updatedAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })} · {Object.keys(draft.files).length} ảnh</span>{draft.webUrl && <a href={draft.webUrl} target="_blank" rel="noopener">Mở ↗</a>}<Btn xs kind="ghost" title="Quên draft — lần sau tạo mới" onClick={() => { if (prof) A.patchProject({ drafts: Object.fromEntries(Object.entries(p.drafts).filter(([k]) => k !== prof.id)) }); }}>✕</Btn></div>}
       </div>
+      <MailCard />
       {(s.busy || s.log.length > 0) && (
         <div class="card">
           {s.busy && <><div class="row small"><span class="grow">{s.busy.label}</span><span class="mono dim">{s.busy.total ? `${s.busy.done}/${s.busy.total}` : ''}</span></div><Progress done={s.busy.done} total={s.busy.total} /></>}
@@ -393,6 +395,42 @@ function BlockBg({ g }: { g: GroupNode }) {
         {band.gradient ? <Num label="Góc" value={band.gradient.angle} min={0} max={360} suffix="°" onChange={(v) => up({ gradient: { ...band.gradient!, angle: Math.round(v) } })} /> : <div />}
         <Num label="Mờ nền" value={Math.round(band.opacity * 100)} min={0} max={100} suffix="%" onChange={(v) => up({ opacity: v / 100 })} />
       </div>
+    </div>
+  );
+}
+
+
+/** Không có Mailchimp/Klaviyo: gửi thẳng bằng Gmail, hoặc tải .eml cho Outlook / Apple Mail. */
+function MailCard() {
+  const s = useStore();
+  const p = s.project!;
+  const [to, setTo] = useState(() => { try { return localStorage.getItem('phloem.mail.to') || ''; } catch { return ''; } });
+  const [err, setErr] = useState('');
+  const acc = gmailAccount();
+  const n = parseRecipients(to).length;
+  const busy = !!s.busy;
+  const art = isArtifact();
+  const run = async (fn: () => Promise<unknown>) => { setErr(''); try { await fn(); } catch (e) { setErr((e as Error).message); } };
+  const saveTo = (v: string) => { setTo(v); try { localStorage.setItem('phloem.mail.to', v); } catch { /* ignore */ } };
+  return (
+    <div class="card">
+      <div class="row"><Icon name="mail" style={{ color: 'var(--neon)' }} /><b class="grow">Gửi bằng email thường</b><span class="chip">không cần Mailchimp</span></div>
+      <div class="small muted">Gmail / Google Workspace gửi thẳng từ hộp thư của bạn; ảnh nhúng sẵn trong email nên không cần host ở đâu.</div>
+      {acc ? (
+        <>
+          <div class="row small"><span class="chip on">Gmail</span><span class="grow mono">{acc.email}</span><Btn xs kind="ghost" onClick={() => disconnectGmail()}>Ngắt</Btn></div>
+          <TextArea value={to} rows={3} placeholder={'Người nhận: mỗi dòng một email, hoặc dán cả danh sách\nan@congty.com, binh@gmail.com…'} onInput={saveTo} onCommit={saveTo} />
+          <div class="grid2">
+            <Btn sm disabled={busy} onClick={() => void run(() => sendWithGmail(p, to, true))}>Gửi thử cho tôi</Btn>
+            <Btn sm kind="primary" icon="send" disabled={busy || !n} onClick={() => void run(() => sendWithGmail(p, to))}>{n ? `Gửi tới ${n} người` : 'Gửi'}</Btn>
+          </div>
+        </>
+      ) : (
+        <Btn sm block icon="mail" disabled={busy || art} onClick={() => void run(() => connectGmail())} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : ''}>Kết nối Gmail</Btn>
+      )}
+      <div class="row small"><span class="grow muted">Outlook, Apple Mail, Thunderbird…</span><Btn xs icon="download" disabled={busy} onClick={() => void downloadEml(p)}>Tải .eml</Btn></div>
+      {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
+      <div class="dim small">Gmail giới hạn ~500 thư/ngày (Workspace ~2.000), tối đa 100 người mỗi lần bấm. Danh sách lớn, theo dõi mở/click: dùng Mailchimp/Klaviyo. Link huỷ đăng ký trong footer thành email trả lời cho bạn.</div>
     </div>
   );
 }

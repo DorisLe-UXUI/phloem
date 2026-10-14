@@ -7,7 +7,7 @@ let gisLoading: Promise<void> | null = null;
 let initialized = '';
 /** The latest modal's callbacks: GIS is initialised once, its callback always reaches the button on screen. */
 const handlers: { opts: AuthOpts; onDone: () => void; onError: (m: string) => void } = { opts: {}, onDone: () => {}, onError: () => {} };
-function loadGis(): Promise<void> {
+export function loadGis(): Promise<void> {
   if (window.google?.accounts?.id) return Promise.resolve();
   if (!gisLoading) gisLoading = new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.onload = () => ok(); s.onerror = () => no(new Error('gsi')); document.head.appendChild(s); });
   return gisLoading;
