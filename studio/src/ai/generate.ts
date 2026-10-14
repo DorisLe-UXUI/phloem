@@ -1,7 +1,7 @@
 // "Give me images and copy, get 3 layouts": Claude composes block specs, Phloem renders them deterministically.
 import type { EmailFields, Brand, Doc } from '../model/types';
 import { BRAND_PRESETS, DEFAULT_BRAND, FONTS, VIBES, type Vibe } from '../model/types';
-import { buildDoc, type BlockSpec } from '../model/templates';
+import { BLOCKS, buildDoc, type BlockContent, type BlockSpec } from '../model/templates';
 import { assets } from '../storage/assets';
 import { askClaude, extractJson, type AiImage } from './client';
 import { siteSummary, type SiteProduct, type SiteProfile } from './site';
@@ -167,13 +167,32 @@ export async function thumbOf(assetId: string): Promise<AiImage | null> {
 
 const CRITIC = `Bạn là creative director khó tính của một agency email hàng đầu. Bạn nhận JSON 3 phương án email (cùng schema bạn sẽ trả về). Hãy chấm từng phương án theo checklist premium và SỬA TRỰC TIẾP những chỗ yếu: headline nhạt hoặc dài → viết lại sắc hơn; copy sáo rỗng → cụ thể; block thừa hoặc lặp ý → bỏ/thay; thiếu ảnh ở hero/card khi có imageId → gán ảnh hợp ngữ cảnh; 2 phương án quá giống nhau → đổi cấu trúc một cái; vibe/font không hợp ngành → đổi; subject/preheader yếu → viết lại; email không có dải tối/gradient (trừ luxury) → đổi cta sang style "dark" hoặc hero sang hero-product/dark-band; block text đứng ngay trước products/articles/steps/reviews → xoá text và chuyển heading vào block đó; steps có body dài → rút còn ≤ 10 từ; stats bịa số → bỏ; hero-product/dark-band headline > 6 từ → rút; thời trang/lifestyle mà dùng bold hoặc nhiều pill/badge → chuyển sang công thức LOOKBOOK/BOUTIQUE (hero-card hoặc hero, zigzag, gallery caption); zigzag/menu/gallery có item thiếu ảnh trong khi còn ảnh phù hợp → gán ảnh. Giữ nguyên imageId, URL, giá, tên sản phẩm thật. Trả về CHỈ JSON cùng schema {"variants":[…]}, không giải thích.`;
 
+/** Whatever shape the model returned, every field a block reads is the type makeBlock expects (strings, arrays of objects). */
+export function coerceContent(raw: unknown): BlockContent {
+  const c = (raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) } : {}) as Record<string, unknown>;
+  const str = (v: unknown, d = ''): string => (v == null ? d : String(v));
+  const opt = (v: unknown): string | undefined => (v == null ? undefined : String(v));
+  for (const k of ['brand', 'eyebrow', 'headline', 'heading', 'subhead', 'body', 'quote', 'author', 'address', 'imageAlt', 'unsubscribeLabel', 'preferencesLabel', 'badge'] as const) if (c[k] != null && typeof c[k] !== 'string') c[k] = String(c[k]);
+  const link = (v: unknown, dl: string) => { const o = v && typeof v === 'object' ? (v as Record<string, unknown>) : null; return o ? { label: str(o.label, dl), url: str(o.url) } : undefined; };
+  if (c.button !== undefined) c.button = link(c.button, 'Shop');
+  if (c.link !== undefined) c.link = link(c.link, '→');
+  const links = (v: unknown) => (Array.isArray(v) ? v.filter((l) => l && typeof l === 'object').map((l) => ({ label: str((l as Record<string, unknown>).label), url: str((l as Record<string, unknown>).url) })).filter((l) => l.url) : undefined);
+  if (c.links !== undefined) c.links = links(c.links);
+  if (c.social !== undefined) c.social = links(c.social)?.map((l) => ({ ...l, label: l.label || 'Web' }));
+  if (c.items !== undefined) c.items = Array.isArray(c.items) ? c.items.filter((it) => it && typeof it === 'object').map((it0) => { const it = it0 as Record<string, unknown>; return { ...it, name: str(it.name, 'Item'), price: opt(it.price), oldPrice: opt(it.oldPrice), badge: opt(it.badge), body: opt(it.body), url: opt(it.url), image: it.image == null ? null : String(it.image) }; }) : undefined;
+  if (c.stats !== undefined) c.stats = Array.isArray(c.stats) ? c.stats.filter((x) => x && typeof x === 'object').map((x0) => { const x = x0 as Record<string, unknown>; return { value: str(x.value), label: str(x.label) }; }) : undefined;
+  if (c.image != null && typeof c.image !== 'string') c.image = String(c.image);
+  return c as BlockContent;
+}
+
 function normalizeVariants(parsed: { variants?: Variant[] } | null, inp: GenInput, presets: string[], lang: 'vi' | 'en'): Variant[] {
   const variants = (parsed?.variants || []).filter((v) => v && Array.isArray(v.blocks) && v.blocks.length).slice(0, 3);
   const validIds = new Set(inp.imageIds);
+  const kinds = new Set(BLOCKS.map((b) => b.kind));
   for (const v of variants) {
-    v.blocks = v.blocks.filter((b) => b && typeof b.kind === 'string');
+    v.blocks = v.blocks.filter((b) => b && typeof b.kind === 'string' && kinds.has(b.kind));
     for (const b of v.blocks) {
-      const c = (b.content ||= {});
+      const c = (b.content = coerceContent(b.content));
       if (c.image && !validIds.has(String(c.image))) c.image = null;
       if (c.items) for (const it of c.items) if (it.image && !validIds.has(String(it.image))) it.image = null;
       if (c.style && !['light', 'band', 'gradient', 'ink', 'dark', 'card', 'right', 'soft', 'menu', 'center', 'plain'].includes(String(c.style))) delete c.style;

@@ -2,7 +2,7 @@
 // relay's database. IndexedDB stays the working copy, so the editor never waits on the network.
 import type { Profile } from '../../../src/shared/types';
 import type { Asset } from '../model/types';
-import { getSession } from '../auth/core';
+import { expired, getSession } from '../auth/core';
 import { db, type StoredProject } from './idb';
 import { get, set, history, type State } from '../store';
 import { normalizeProject } from '../pipeline/actions';
@@ -32,8 +32,8 @@ const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } ca
 
 async function req<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(`${base()}${path}`, { ...init, headers: headers({ ...(init.body && typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...((init.headers as Record<string, string>) || {}) }), signal: AbortSignal.timeout(20_000) });
-  if (r.status === 401) throw new Error('Phiên đăng nhập hết hạn. Đăng nhập lại.');
-  if (!r.ok) { let m = `HTTP ${r.status}`; try { m = (await r.json()).error || m; } catch { /* ignore */ } throw new Error(m); }
+  if (r.status === 401) throw expired(); // the relay revoked or expired the session: forget it so the UI asks to sign in
+  if (!r.ok) { let m = `HTTP ${r.status}`; let j: any = null; try { j = await r.json(); m = j.error || m; } catch { /* ignore */ } throw Object.assign(new Error(m), { status: r.status, code: j?.code, updatedAt: j?.updatedAt }); }
   return (r.headers.get('content-type') || '').includes('json') ? r.json() : (r as unknown as T);
 }
 
@@ -42,13 +42,20 @@ export const cloud = {
   active(): boolean { return !!session() && !!base(); },
 
   // ---------- projects ----------
-  async listProjects(): Promise<RemoteProjectMeta[]> { return (await req<{ projects: RemoteProjectMeta[] }>('/db/projects')).projects; },
+  async listProjects(): Promise<{ projects: RemoteProjectMeta[]; deleted: { id: string; at: string }[] }> { const r = await req<{ projects: RemoteProjectMeta[]; deleted?: { id: string; at: string }[] }>('/db/projects'); return { projects: r.projects, deleted: r.deleted || [] }; },
   async getProject(id: string): Promise<StoredProject | null> { try { return (await req<{ project: StoredProject }>(`/db/projects/${encodeURIComponent(id)}`)).project; } catch { return null; } },
   async pushProject(p: StoredProject): Promise<void> {
     const s = session(); if (!s || !base()) return;
     if (p.owner && p.owner !== s.user.id) return; // never push a body that belongs to another account
     const { owner, ...rest } = p;
-    await req(`/db/projects/${encodeURIComponent(p.id)}`, { method: 'PUT', body: JSON.stringify(rest) });
+    try { await req(`/db/projects/${encodeURIComponent(p.id)}`, { method: 'PUT', body: JSON.stringify(rest) }); }
+    catch (e) {
+      if ((e as { status?: number }).status !== 409) throw e;
+      // the relay holds a newer copy (another device): take it unless this editor has unsaved edits
+      const full = await this.getProject(p.id); if (!full) return;
+      if (get().project?.id === p.id) { if (get().dirty) return; const { thumb: _a, thumbMobile: _b, provider: _c, owner: _d, ...proj } = full; history.clear(); set({ project: normalizeProject(proj), savedAt: proj.updatedAt, selection: [], editingText: null, enteredGroup: null, cropping: null, cutting: null }); }
+      await db.putProject({ ...full, owner: s.user.id });
+    }
   },
   /** Debounced push after a local save: the editor saves often, the relay should not. Pushes for one id are chained in order. */
   pushProjectSoon(p: StoredProject, delay = 1500): void {
@@ -70,7 +77,7 @@ export const cloud = {
     await Promise.allSettled(items.map(({ p }) => this.pushNow(p)));
     await Promise.allSettled([...inflight.values()]);
   },
-  async deleteProject(id: string): Promise<void> { if (!this.active()) return; const cur = pending.get(id); if (cur) { clearTimeout(cur.t); pending.delete(id); } try { await req(`/db/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch { /* best effort */ } },
+  async deleteProject(id: string): Promise<void> { if (!this.active()) return; const cur = pending.get(id); if (cur) { clearTimeout(cur.t); pending.delete(id); } try { await req(`/db/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }); await db.clearTombstone(id); } catch { /* the local tombstone makes the next sync retry */ } },
 
   // ---------- assets ----------
   async listAssets(): Promise<RemoteAsset[]> { return (await req<{ assets: RemoteAsset[] }>('/db/assets')).assets; },
@@ -95,7 +102,7 @@ export const cloud = {
   async kvPut(key: string, value: unknown, updatedAt?: string): Promise<void> { if (!this.active()) return; try { await req(`/db/kv/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify({ value, updatedAt }) }); } catch { /* best effort */ } },
 
   // ---------- client profiles (encrypted at rest on the relay) ----------
-  async pullProfiles(): Promise<{ profiles: Profile[]; updatedAt: string | null }> { const r = await req<{ profiles: Profile[]; updatedAt: string | null }>('/db/profiles'); return { profiles: r.profiles || [], updatedAt: r.updatedAt ?? null }; },
+  async pullProfiles(): Promise<{ profiles: Profile[]; updatedAt: string | null; corrupt?: boolean }> { const r = await req<{ profiles: Profile[]; updatedAt: string | null; corrupt?: boolean }>('/db/profiles'); return { profiles: r.profiles || [], updatedAt: r.updatedAt ?? null, corrupt: !!r.corrupt }; },
   async pushProfiles(profiles: Profile[]): Promise<void> {
     if (!this.active()) return;
     try { const { updatedAt } = await req<{ updatedAt: string }>('/db/profiles', { method: 'PUT', body: JSON.stringify({ profiles }) }); lsSet(AT_KEY, updatedAt); } catch { /* best effort */ }
@@ -116,12 +123,24 @@ export const cloud = {
     if (!this.active() || !owner) { status({ state: 'off' }); return out; }
     status({ state: 'syncing' });
     try {
-      const [remote, local] = await Promise.all([this.listProjects(), db.allProjects(owner)]);
-      const localById = new Map(local.map((p) => [p.id, p]));
+      const [{ projects: remote, deleted }, local0, tombs] = await Promise.all([this.listProjects(), db.allProjects(owner), db.tombstones()]);
+      // deletes travel both ways: ours reach the relay (retried until they do), the relay's reach this device
       const remoteById = new Map(remote.map((p) => [p.id, p]));
-      for (const r of remote) {
+      for (const t of tombs) { if (remoteById.has(t.id)) { try { await req(`/db/projects/${encodeURIComponent(t.id)}`, { method: 'DELETE' }); } catch { continue; } remoteById.delete(t.id); } await db.clearTombstone(t.id); }
+      const localGone = new Set<string>();
+      for (const d of deleted) {
+        const l = local0.find((p) => p.id === d.id);
+        if (!l || l.updatedAt > d.at) continue; // edited here after the delete elsewhere: it lives again (pushed below)
+        if (get().project?.id === d.id && get().dirty) continue;
+        await db.deleteProject(d.id); await db.clearTombstone(d.id); localGone.add(d.id);
+        if (get().project?.id === d.id) set({ route: { name: 'home' }, project: null, selection: [], modal: null });
+      }
+      const local = local0.filter((p) => !localGone.has(p.id));
+      const localById = new Map(local.map((p) => [p.id, p]));
+      for (const r of [...remoteById.values()]) {
         const l = localById.get(r.id);
         if (l && l.updatedAt >= r.updatedAt) continue;
+        const lNow = await db.getProject(r.id); if (lNow && lNow.updatedAt >= r.updatedAt) continue; // a save landed while we were pulling
         const full = await this.getProject(r.id); if (!full) continue;
         if (get().project?.id === r.id) {
           if (get().dirty) continue; // mid-edit here: keep local, the autosave pushes it as the newer copy
@@ -149,8 +168,14 @@ export const cloud = {
       const remoteP = await this.pullProfiles();
       const seenAt = lsGet(AT_KEY);
       const localProfiles = get().profiles;
-      if (remoteP.updatedAt && remoteP.updatedAt !== seenAt) { out.profiles = remoteP.profiles; lsSet(AT_KEY, remoteP.updatedAt); } // someone else wrote since we last synced
-      else if (localProfiles.length || remoteP.profiles.length) { await this.pushProfiles(localProfiles); }
+      if (remoteP.corrupt) { if (localProfiles.length) await this.pushProfiles(localProfiles); } // relay secret changed: our copy is the only readable one
+      else if (remoteP.updatedAt && remoteP.updatedAt !== seenAt && remoteP.profiles.length) {
+        // someone else wrote since we last synced: remote wins per client id, ours that the relay lacks are kept and pushed
+        const byId = new Map(localProfiles.map((p) => [p.id, p])); for (const p of remoteP.profiles) byId.set(p.id, p);
+        const merged = [...byId.values()]; out.profiles = merged; lsSet(AT_KEY, remoteP.updatedAt);
+        if (merged.length !== remoteP.profiles.length) await this.pushProfiles(merged);
+      }
+      else if (localProfiles.length) { await this.pushProfiles(localProfiles); } // never replace a non-empty local list with an empty remote one
       status({ state: 'idle', at: new Date().toISOString() });
     } catch (e) { status({ state: 'error', msg: (e as Error).message }); }
     return out;

@@ -160,7 +160,7 @@ export function Home() {
         </section>
 
         <div class="feature-row">
-          <div class="feature"><div class="ic"><Icon name="desktop" /></div><div><div class="t">Thiết kế đúng chuẩn email</div><div class="d">{TEMPLATES.length - 1} mẫu có nội dung thật, 22 block, brand kit với logo riêng, gợi ý theo luật: CTA trên fold, chữ đủ to, tương phản.</div></div><button class="go" onClick={() => set({ modal: 'templates' })}><Icon name="chevron" size={14} /></button></div>
+          <div class="feature"><div class="ic"><Icon name="desktop" /></div><div><div class="t">Thiết kế đúng chuẩn email</div><div class="d">{TEMPLATES.length - 1} mẫu có nội dung thật, 42 block, brand kit với logo riêng, gợi ý theo luật: CTA trên fold, chữ đủ to, tương phản.</div></div><button class="go" onClick={() => set({ modal: 'templates' })}><Icon name="chevron" size={14} /></button></div>
           <div class="feature"><div class="ic"><Icon name="bolt" /></div><div><div class="t">Cắt lát thông minh</div><div class="d">Mỗi vùng link thành một lát ảnh. Lưới sản phẩm dày, chữ đè ảnh, nền ảnh: đều ra đúng như vẽ, ở mọi hộp thư.</div></div><button class="go" onClick={() => set({ modal: 'ai' })}><Icon name="chevron" size={14} /></button></div>
           <div class="feature"><div class="ic"><Icon name="send" /></div><div><div class="t">Draft chứ không gửi</div><div class="d">Tạo hoặc cập nhật đúng bản nháp trong Mailchimp / Klaviyo, hoặc copy HTML dán vào template có brand. Bạn duyệt và bấm gửi.</div></div><button class="go" onClick={() => set({ modal: 'clients' })}><Icon name="chevron" size={14} /></button></div>
         </div>

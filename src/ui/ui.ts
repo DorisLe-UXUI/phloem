@@ -558,7 +558,7 @@ async function connectOAuth(p: Profile) {
 interface Exported { plan: SlicePlan; slices: ExportedSlice[]; mobile: { plan: SlicePlan; slices: ExportedSlice[] } | null }
 
 async function exportFrame(f: FrameSummary, p: Profile | null): Promise<Exported> {
-  const format = p?.imageFormat ?? 'PNG', scale = p?.scale ?? 2, q = p?.jpgQuality ?? 85;
+  const format = p?.imageFormat ?? 'JPG', scale = p?.scale ?? 2, q = p?.jpgQuality ?? 85;
   S.busy = { label: `Cắt & xuất ảnh “${f.name}”…`, done: 0, total: 0 }; render();
   post({ type: 'export', frameIds: [f.id], format, scale, jpgQuality: q });
   const done = await waitFor((m): m is Extract<ToUI, { type: 'export-done' | 'export-error' }> => (m.type === 'export-done' || m.type === 'export-error') && m.frameId === f.id, 10 * 60_000);

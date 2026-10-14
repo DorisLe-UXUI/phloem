@@ -25,10 +25,25 @@ export function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** Spaces and non-ASCII in an href break ESP click-tracking rewrites; percent-encode only those (never re-encode an encoded URL). */
+export function safeHref(u: string): string { return u.replace(/ /g, '%20').replace(/[^\x21-\x7E]/g, (c) => encodeURIComponent(c)); }
 function hrefFor(link: string, sliceKey: string, inp: HtmlInput): string {
-  if (!inp.utm) return link;
-  return applyUtm(link, inp.utm.template, { ...inp.utm.vars, slice: sliceKey });
+  return safeHref(inp.utm ? applyUtm(link, inp.utm.template, { ...inp.utm.vars, slice: sliceKey }) : link);
 }
+/** A flat #rrggbb for bgcolor= attributes and JPG flattening: rgba() composited over white, #rgb expanded, anything else white. */
+export function solidHex(c: string | null | undefined): string {
+  const s = String(c || '').trim();
+  let m = /^#([0-9a-f]{3})$/i.exec(s); if (m) return `#${m[1].split('').map((x) => x + x).join('')}`.toLowerCase();
+  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s);
+  if (m) { if (!m[2]) return `#${m[1]}`.toLowerCase(); const a = parseInt(m[2], 16) / 255; const n = parseInt(m[1], 16); return over([(n >> 16) & 255, (n >> 8) & 255, n & 255], a); }
+  m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i.exec(s);
+  if (m) { let a = m[4] === undefined ? 1 : parseFloat(m[4]); if (m[4] && m[4].endsWith('%')) a /= 100; return over([+m[1], +m[2], +m[3]], Math.max(0, Math.min(1, a))); }
+  return '#ffffff';
+}
+function over(rgb: number[], a: number): string { return '#' + rgb.map((v) => Math.round(v * a + 255 * (1 - a)).toString(16).padStart(2, '0')).join(''); }
+/** Outlook's Word engine ignores max-width and stretches width:100% tables across the pane: a fixed-width ghost table pins them. */
+const msoOpen = (W: number) => `<!--[if mso]><table role="presentation" width="${W}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->`;
+const msoClose = `<!--[if mso]></td></tr></table><![endif]-->`;
 
 function imgTag(src: string, w: number, h: number, alt: string, cls: string, fluid: boolean): string {
   const style = fluid
@@ -61,7 +76,7 @@ function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlIn
       `<tr><td style="padding:0;margin:0;line-height:0;font-size:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;table-layout:fixed;"><tr>${tds.join('')}</tr></table></td></tr>`,
     );
   }
-  return `<table role="presentation" class="${cls}" width="${W}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W}px;border-collapse:collapse;margin:0 auto;">${rows.join('')}</table>`;
+  return `${msoOpen(W)}<table role="presentation" class="${cls}" width="${W}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W}px;border-collapse:collapse;margin:0 auto;">${rows.join('')}</table>${msoClose}`;
 }
 
 export function buildEmailHtml(inp: HtmlInput): string {
@@ -89,7 +104,7 @@ export function buildEmailHtml(inp: HtmlInput): string {
 
   if (inp.footerHtml && inp.footerHtml.trim()) {
     parts.push(
-      `<table role="presentation" width="${W}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W}px;border-collapse:collapse;margin:0 auto;"><tr><td style="padding:16px 24px;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#8a8a8a;text-align:center;">${inp.footerHtml}</td></tr></table>`,
+      `${msoOpen(W)}<table role="presentation" width="${W}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${W}px;border-collapse:collapse;margin:0 auto;"><tr><td style="padding:16px 24px;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#8a8a8a;text-align:center;">${inp.footerHtml}</td></tr></table>${msoClose}`,
     );
   }
 
@@ -97,12 +112,13 @@ export function buildEmailHtml(inp: HtmlInput): string {
   .ph-main-img,.ph-desktop-img,.ph-mobile-img{-ms-interpolation-mode:bicubic;}
   @media only screen and (max-width:${W}px){
     .ph-main,.ph-desktop,.ph-mobile{width:100%!important;max-width:100%!important;}
+    .ph-main-img,.ph-desktop-img,.ph-mobile-img{max-width:100%!important;}
     ${hasMobile ? `.ph-desktop{display:none!important;max-height:0!important;overflow:hidden!important;}
     .ph-mobile-wrap,.ph-mobile{display:block!important;max-height:none!important;overflow:visible!important;}` : ''}
   }
 </style>`;
 
-  const bg = inp.bgColor || '#ffffff';
+  const bg = solidHex(inp.bgColor || '#ffffff');
   const body = `<!-- Phloem: generated from Figma frame "${esc(plan.frameName)}" (${W}×${plan.height}). ${plan.slices.length} slices. Never auto-sent. -->
 ${style}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${bg}" style="width:100%;border-collapse:collapse;background-color:${bg};"><tr><td align="center" valign="top" style="padding:0;">

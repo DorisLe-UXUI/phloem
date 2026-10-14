@@ -102,3 +102,12 @@ test('suggestions: white text on a photo is not flagged as low contrast', () => 
   assert.ok(c, 'grey-on-white text should be flagged');
   assert.ok(c.detail.includes('mờ'), 'the flagged text is the grey one, not the one on the photo');
 });
+
+test('html: MSO ghost table pins the width in Outlook, hrefs are click-tracking safe, bgcolor is a flat hex', () => {
+  const plan = planSlices(node({ id: 'f', type: 'FRAME', w: 600, h: 300, children: [node({ y: 0, w: 600, h: 300, link: 'https://shop.test/sản phẩm/a b?x=1' })] }));
+  const html = buildEmailHtml({ plan, images: { r0c0: 'https://cdn.test/r0c0.png' }, mobile: null, title: 'T', preheader: '', includePreheader: false, fullDocument: false, footerHtml: '', bgColor: 'rgba(255,0,0,0.5)', provider: null, utm: null });
+  assert.ok(html.includes('<!--[if mso]><table role="presentation" width="600"'), 'ghost table');
+  assert.ok(html.includes('href="https://shop.test/s%E1%BA%A3n%20ph%E1%BA%A9m/a%20b?x=1"'), 'href encoded: ' + html.match(/href="[^"]*"/)[0]);
+  assert.ok(html.includes('bgcolor="#ff8080"'), 'rgba composited over white');
+  assert.ok(html.includes('.ph-main-img,.ph-desktop-img,.ph-mobile-img{max-width:100%!important;}'), 'mobile img cap');
+});

@@ -87,11 +87,21 @@ export function createAuth({ dataDir, secret = '' }) {
       if (!(await verifyPassword(input.password, u.password))) throw fail(401, 'badpass', 'Mật khẩu không đúng.');
       return session(u, agent);
     },
-    /** Google Sign-In: the relay verified the ID token with Google; find or create the user by email. */
-    async loginWithGoogle(profile, agent = '') {
+    /** Google Sign-In: the relay verified the ID token with Google. Matched by Google subject first; an existing
+     *  password account with that email is linked only when its owner is signed in (otherwise anyone who pre-registered
+     *  the victim's email would own the Google login too). */
+    async loginWithGoogle(profile, agent = '', linkedUserId = '') {
       const email = String(profile.email).trim().toLowerCase();
-      let u = db.users.byEmail(email);
-      if (!u) u = db.users.insert({ id: `u_${randomBytes(8).toString('hex')}`, name: String(profile.name || email.split('@')[0]).slice(0, 80), email, brand: '', password: await hashPassword(randomBytes(24).toString('hex')), createdAt: new Date().toISOString() });
+      const sub = String(profile.sub || '');
+      let u = db.users.byGoogle(sub);
+      if (!u) {
+        u = db.users.byEmail(email);
+        if (u && !u.google_sub) {
+          if (linkedUserId !== u.id) throw fail(409, 'exists', 'Email này đã có tài khoản mật khẩu. Đăng nhập bằng mật khẩu trước, rồi bấm Google để liên kết.');
+          db.users.linkGoogle(u.id, sub);
+        }
+        if (!u) u = db.users.insert({ id: `u_${randomBytes(8).toString('hex')}`, name: String(profile.name || email.split('@')[0]).slice(0, 80), email, brand: '', password: await hashPassword(randomBytes(24).toString('hex')), createdAt: new Date().toISOString(), googleSub: sub });
+      }
       return session(u, agent || 'google');
     },
     /** Token → user, or null when the signature, expiry or the session row (revoked) fails. */

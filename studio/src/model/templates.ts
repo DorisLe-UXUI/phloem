@@ -60,7 +60,8 @@ function badgeCircle(brand: Brand, label: string, cx: number, cy: number, d: num
 
 const base = (name: string) => ({ id: uid(), name, visible: true, locked: false, opacity: 1, link: null as string | null, alt: '' });
 
-export function text(brand: Brand, t: string, o: Partial<TextNode> & { x: number; y: number; w: number }): TextNode {
+export function text(brand: Brand, t0: unknown, o: Partial<TextNode> & { x: number; y: number; w: number }): TextNode {
+  const t = t0 == null ? '' : String(t0); // the AI sometimes sends numbers (prices) or nothing at all
   const n: TextNode = {
     ...base(o.name ?? t.slice(0, 24)), type: 'text', text: t, h: 0,
     fontFamily: o.fontFamily ?? 'brand', fontSize: o.fontSize ?? 15, fontWeight: o.fontWeight ?? 400, italic: false, underline: false, strike: false,
@@ -201,7 +202,7 @@ const DEF = {
   footer: { address: '123 Đường Lê Lợi, Quận 1, TP.HCM · hello@example.com', unsubscribeUrl: 'https://example.com/unsubscribe', preferencesUrl: 'https://example.com/preferences' },
 };
 
-const up = (s: string) => s.toUpperCase();
+const up = (s: unknown) => (s == null ? '' : String(s)).toUpperCase();
 const B0 = 'https://example.com';
 
 /** Brand logo slot: the uploaded logo image when the brand has one, otherwise the wordmark text. */
@@ -288,7 +289,7 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       const behind: Color = st === 'dark' ? { token: 'ink' } : st === 'band' ? { token: 'primary' } : st === 'soft' ? { token: 'soft' } : { token: 'bg' };
       const linkTok = st === 'dark' ? contrastToken(brand, { token: 'ink' }) : st === 'band' ? 'onPrimary' : 'muted';
       const links = (c.links && c.links.length ? c.links : brand.links?.nav && brand.links.nav.length ? brand.links.nav : DEF.links).slice(0, 5);
-      const home = brand.links?.website || (c.links?.[0]?.url ? c.links[0].url.replace(/\/[^/]*$/, '') : 'https://example.com');
+      const home = brand.links?.website || (() => { try { return c.links?.[0]?.url ? new URL(c.links[0].url).origin : 'https://example.com'; } catch { return 'https://example.com'; } })();
       if (st === 'menu') {
         // Boutique header: logo centred, a thin ruled row of category links under it.
         h = 112;
@@ -304,9 +305,12 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
       if (st === 'light' || st === 'soft') kids.push(rect({ x: 0, y, w: W, h: 4, fill: { token: 'primary' }, name: 'Accent bar' }));
       kids.push(logoNode(brand, c, PAD, y + 38, 30, 'left', home, behind));
       let x = W - PAD;
+      const logoRight = PAD + 236; // the logo slot: links never run over it
       for (let i = Math.min(4, links.length) - 1; i >= 0; i--) {
         const t = text(brand, links[i].label, { x: 0, y: y + 30, w: 120, fontSize: 13, fontWeight: 600, color: { token: linkTok }, align: 'right', name: links[i].label, link: links[i].url, opacity: st === 'light' || st === 'soft' ? 1 : 0.8 });
-        const tw = Math.ceil(measureWidth(brand, t)) + 2; t.w = tw; t.x = x - tw; x -= tw + 24;
+        const tw = Math.ceil(measureWidth(brand, t)) + 2;
+        if (x - tw < logoRight) break; // out of room: the menu shows what fits (the home link still covers the rest)
+        t.w = tw; t.x = x - tw; x -= tw + 24;
         kids.push(t);
       }
       break;
@@ -395,7 +399,12 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
         if (it.price) {
           const pr = text(brand, it.price, { x: x + padC + 2, y: name.y + name.h + 6, w: cw - padC * 2 - 4, fontSize: n === 3 ? 18 : 22, fontWeight: 800, color: { token: 'primary' }, fontFamily: 'heading', letterSpacing: T.track / 2, name: 'Price' });
           extra.push(pr); last = pr;
-          if (it.oldPrice) { const pw = Math.ceil(measureWidth(brand, pr)); const o = text(brand, it.oldPrice, { x: pr.x + pw + 8, y: pr.y + Math.max(0, pr.h - 18), w: Math.max(40, cw - padC * 2 - pw - 12), fontSize: 13, color: { token: 'muted' }, strike: true, name: 'Old price' }); extra.push(o); }
+          if (it.oldPrice) {
+            const pw = Math.ceil(measureWidth(brand, pr));
+            const o = text(brand, it.oldPrice, { x: pr.x + pw + 8, y: pr.y + Math.max(0, pr.h - 18), w: Math.max(40, cw - padC * 2 - pw - 12), fontSize: 13, color: { token: 'muted' }, strike: true, name: 'Old price' });
+            if (pw + 8 + Math.ceil(measureWidth(brand, o)) > cw - padC * 2 - 4) { o.x = pr.x; o.w = cw - padC * 2 - 4; o.y = pr.y + pr.h + 2; o.h = textHeight(o, brand); last = o; } // no room beside the price: its own line, and the card grows
+            extra.push(o);
+          }
         } else if (it.oldPrice) { const o = text(brand, it.oldPrice, { x: x + padC + 2, y: last.y + last.h + 4, w: cw - padC * 2, fontSize: 13, color: { token: 'muted' }, strike: true, name: 'Old price' }); extra.push(o); last = o; }
         if (it.body && n === 2) { const b = text(brand, it.body, { x: x + padC + 2, y: last.y + last.h + 6, w: cw - padC * 2 - 4, fontSize: 13, color: { token: 'muted' }, lineHeight: 1.45, name: 'Body' }); extra.push(b); last = b; }
         if (it.badge) { const bt = text(brand, it.badge, { x: 0, y: 0, w: 200, fontSize: 11, fontWeight: 800, color: { token: 'onPrimary' }, name: 'Badge' }); const bw = Math.ceil(measureWidth(brand, bt)) + 18; const bg = rect({ x: x + padC + 6, y: top + padC + 6, w: bw, h: 24, fill: { token: 'primary' }, radius: 999, name: 'Badge bg' }); bt.x = bg.x + 9; bt.w = bw - 18; bt.y = bg.y + Math.round((24 - bt.h) / 2); extra.push(bg, bt); }
@@ -479,14 +488,15 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'hero-overlay': {
       const d = DEF.hero; const btnC = c.button ?? d.button;
-      const HH = 520;
+      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: 0, w: inner - 60, fontSize: 17, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
+      const head = H(c.headline || d.headline, { x: PAD, y: 0, w: inner - 20, fontSize: hs(46), lineHeight: 1.02, color: '#FFFFFF', name: 'Headline' });
+      const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD + 12, y: 0, w: 300, fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: { token: 'onPrimary' }, name: 'Eyebrow' });
+      // the photo grows with the copy: a long headline never climbs over the block above
+      const HH = Math.max(520, S(64) + 26 + 16 + head.h + 14 + sub.h + 20 + T.btnH + S(36));
       const img = image({ x: 0, y, w: W, h: HH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: darken(brand.primary, 0.72), opacity: 0.8, gradient: true } });
       const btn = button(brand, btnC.label, btnC.url, PAD, y + HH - S(36) - T.btnH);
-      const sub = text(brand, c.subhead || d.subhead, { x: PAD, y: 0, w: inner - 60, fontSize: 17, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
       sub.y = btn.y - 20 - sub.h;
-      const head = H(c.headline || d.headline, { x: PAD, y: 0, w: inner - 20, fontSize: hs(46), lineHeight: 1.02, color: '#FFFFFF', name: 'Headline' });
       head.y = sub.y - 14 - head.h;
-      const pillT = text(brand, up(c.eyebrow || d.eyebrow), { x: PAD + 12, y: 0, w: 300, fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: { token: 'onPrimary' }, name: 'Eyebrow' });
       const pw = Math.ceil(measureWidth(brand, pillT)) + 26; pillT.w = pw - 24;
       const pill = rect({ x: PAD, y: head.y - 16 - 26, w: pw, h: 26, fill: { token: 'primary' }, radius: 999, name: 'Eyebrow pill' });
       pillT.y = pill.y + Math.round((26 - pillT.h) / 2);
@@ -694,14 +704,14 @@ export function makeBlock(kind: BlockKind, brand: Brand, y: number, c: BlockCont
     }
     case 'glass-hero': {
       const d = DEF.hero; const btnC = c.button ?? d.button;
-      const HH = 520;
-      const img = image({ x: 0, y, w: W, h: HH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: '#07100b', opacity: 0.3 } });
       const cardX = PAD, cardW = inner, pad = 26;
       const btn = button(brand, btnC.label, btnC.url, cardX + pad, 0);
       const sub = text(brand, c.subhead || d.subhead, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 16, color: '#FFFFFF', lineHeight: 1.5, name: 'Subhead', opacity: 0.9 });
       const head = H(c.headline || d.headline, { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: hs(38), lineHeight: 1.04, color: '#FFFFFF', name: 'Headline' });
       const eb = text(brand, up(c.eyebrow || d.eyebrow), { x: cardX + pad, y: 0, w: cardW - pad * 2, fontSize: 11, fontWeight: 800, letterSpacing: 1.8, color: '#FFFFFF', name: 'Eyebrow', opacity: 0.85 });
       const cardH = pad + eb.h + 12 + head.h + 12 + sub.h + 20 + btn.h + pad;
+      const HH = Math.max(520, cardH + 28 + S(56)); // the photo grows with the card
+      const img = image({ x: 0, y, w: W, h: HH, name: 'Hero image', alt: c.imageAlt || d.imageAlt, link: btnC.url, assetId: c.image ?? null, overlay: { color: '#07100b', opacity: 0.3 } });
       const cardY = y + HH - 28 - cardH;
       const glass = rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: '#FFFFFF', opacity: 0.16, radius: R, name: 'Glass', stroke: { color: '#FFFFFF', width: 1 } });
       const glass2 = rect({ x: cardX, y: cardY, w: cardW, h: cardH, fill: null, radius: R, name: 'Glass edge', stroke: { color: '#FFFFFF', width: 1 }, opacity: 0.45 });

@@ -139,7 +139,8 @@ export function brandFromSite(p: SiteProfile, extra: { logoColors?: string[] } =
   const vars = p.vars || [], logo = (extra.logoColors || []).filter(usable), buttons = (p.ctaColors || []).map((b) => b.hex).filter(usable);
   const isPrimaryName = (n: string) => /primary|brand|main|theme/.test(n), isAccentName = (n: string) => /accent|secondary|cta|highlight/.test(n);
   // The logo is the brand: its dominant colour wins when it has one; theme-level CSS tokens (often framework defaults) come after.
-  const primary = logo[0] || vars.find((v) => isPrimaryName(v.name) && usable(v.hex))?.hex || (usable(p.themeColor) ? p.themeColor : '') || buttons[0] || p.colors[0]?.hex || p.themeColor || '#0F3D2E';
+  const themeHex = /^#[0-9a-f]{6}$/i.test(p.themeColor || '') ? p.themeColor : '';
+  const primary = logo[0] || vars.find((v) => isPrimaryName(v.name) && usable(v.hex))?.hex || (usable(themeHex) ? themeHex : '') || buttons[0] || p.colors[0]?.hex || themeHex || '#0F3D2E';
   const different = (h: string) => usable(h) && dHue(hue(h), hue(primary)) > 25;
   const accent = logo.find(different) || vars.find((v) => isAccentName(v.name) && different(v.hex))?.hex || buttons.find(different) || p.colors.map((c) => c.hex).find(different) || mix(primary, lum(primary) > 0.3 ? '#000000' : '#ffffff', 0.35);
   const onPrimary = lum(primary) > 0.45 ? '#111111' : '#FFFFFF';

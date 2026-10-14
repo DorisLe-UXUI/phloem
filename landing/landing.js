@@ -117,7 +117,7 @@
   const slicePhone = document.getElementById('slicePhone');
   const sliceBadge = document.getElementById('sliceBadge');
   if (sliceTrack && sliceEmail) {
-    const IMG = 'landing/thumbs/generic-news.jpg?v=202610131706';
+    const IMG = 'landing/thumbs/generic-news.jpg?v=202610140648';
     const STRIPS = [0.085, 0.2, 0.14, 0.17, 0.17, 0.12, 0.115]; // row heights as fractions of the image (nav, hero, copy, products, quote, cta, footer)
     const labels = ['nav', 'hero · link', 'copy', 'r3c1 · link', 'quote', 'cta · link', 'footer'];
     let acc = 0;
@@ -173,6 +173,8 @@
   // ---------- ACCOUNT: sign up / sign in straight into Studio ----------
   const form = document.getElementById('signupForm');
   const A = window.PhloemAuth;
+  // Whatever happens to auth.js, the form never does a native GET with the password in the URL.
+  if (form && !A) form.addEventListener('submit', (e) => { e.preventDefault(); const err = document.getElementById('suErr'); if (err) { err.textContent = 'Không tải được module tài khoản. Tải lại trang hoặc mở Studio để đăng nhập.'; err.hidden = false; } });
   if (form && A) {
     const $ = (id) => document.getElementById(id);
     const t = (k) => { const d = (window.PHLOEM_I18N && window.PHLOEM_I18N[document.documentElement.lang]) || {}; return d[k] || k; };

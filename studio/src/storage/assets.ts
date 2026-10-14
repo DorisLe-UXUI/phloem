@@ -4,6 +4,7 @@ import { uid } from '../model/types';
 import { db } from './idb';
 import type { ImageSource } from '../render/renderer';
 import { cloud, type RemoteAsset } from './sync';
+import { toast } from '../store';
 
 type Listener = () => void;
 
@@ -39,7 +40,7 @@ export class AssetStore implements ImageSource {
     bmp.close();
     this.meta.set(a.id, a);
     this.blobs.set(a.id, file);
-    try { await db.putAsset(a, file); } catch { /* keep in memory */ }
+    try { await db.putAsset(a, file); } catch (e) { toast(`Không lưu được ảnh vào trình duyệt (${(e as Error).message || 'hết dung lượng?'}). Ảnh chỉ dùng được trong phiên này.`, 'err'); }
     this.emit();
     void cloud.pushAsset(a, file).catch(() => { /* offline: the next full sync retries */ });
     return a;
@@ -111,7 +112,7 @@ export class AssetStore implements ImageSource {
     if (b) { const nu = URL.createObjectURL(b); this.urls.set(id, nu); return nu; }
     const f = this.failedAt.get(id); if (f && Date.now() - f < 60_000) return undefined;
     void this.blob(id).then((bb) => {
-      if (bb) { this.urls.set(id, URL.createObjectURL(bb)); this.emit(); }
+      if (bb) { if (!this.urls.has(id)) this.urls.set(id, URL.createObjectURL(bb)); this.emit(); } // one URL per asset, even when two draws race
       else { const img = this.images.get(id); if (img && !img.src) this.images.delete(id); } // offline / relay error: the next draw retries
     });
     return undefined;
@@ -136,11 +137,12 @@ export class AssetStore implements ImageSource {
       if (!this.meta.has(id)) return;
       await this.blob(id);
       const u = this.url(id);
+      if (!u) return; // bytes unreachable (offline, deleted on the relay): export draws the placeholder instead of hanging
       const img = this.images.get(id) ?? new Image();
       this.images.set(id, img);
-      if (!img.src && u) img.src = u;
-      if (img.complete && img.naturalWidth) return;
-      await new Promise<void>((res) => { img.onload = () => { this.emit(); res(); }; img.onerror = () => res(); });
+      if (!img.src) img.src = u;
+      if (img.complete) return;
+      await new Promise<void>((res) => { const t = setTimeout(res, 8000); img.onload = () => { clearTimeout(t); this.emit(); res(); }; img.onerror = () => { clearTimeout(t); res(); }; });
     }));
   }
 }

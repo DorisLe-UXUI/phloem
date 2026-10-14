@@ -128,6 +128,6 @@ export async function oauthPoll(settings: Settings, sessionId: string): Promise<
 export async function oauthRefresh(settings: Settings, provider: Provider, refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresAt?: number }> {
   const res = await fetch(settings.relayUrl.replace(/\/$/, '') + '/oauth/refresh', { method: 'POST', headers: relayHeaders(settings), body: JSON.stringify({ provider, refreshToken }) });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || data.errors?.[0]?.detail || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(data.error_description || data.error || data.errors?.[0]?.detail || `HTTP ${res.status}`);
   return data;
 }

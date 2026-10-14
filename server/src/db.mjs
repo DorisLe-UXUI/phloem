@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS kv (
 CREATE TABLE IF NOT EXISTS profiles (
   owner TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, enc BLOB NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_tombstones (
+  id TEXT PRIMARY KEY, owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tombstones_owner ON project_tombstones(owner);
 `;
 
 export const sha256 = (s) => createHash('sha256').update(s).digest('hex');
@@ -58,9 +62,13 @@ export function openDb(file) {
   db.exec(SCHEMA);
   // Migrations (idempotent): asset meta (source website / project tags) added 2026-10.
   try { db.exec('ALTER TABLE assets ADD COLUMN meta TEXT'); } catch { /* column exists */ }
+  try { db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); } catch { /* column exists */ }
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users(google_sub) WHERE google_sub IS NOT NULL'); } catch { /* exists */ }
+  // housekeeping: sessions idle for 30 days and tombstones older than 90 days are gone
+  try { db.prepare("DELETE FROM sessions WHERE last_seen < ?").run(new Date(Date.now() - 30 * 86400e3).toISOString()); db.prepare('DELETE FROM project_tombstones WHERE at < ?').run(new Date(Date.now() - 90 * 86400e3).toISOString()); } catch { /* ignore */ }
   const q = (sql) => db.prepare(sql);
   const S = {
-    userByEmail: q('SELECT * FROM users WHERE email = ?'), userById: q('SELECT * FROM users WHERE id = ?'),
+    userByEmail: q('SELECT * FROM users WHERE email = ?'), userById: q('SELECT * FROM users WHERE id = ?'), userByGoogle: q('SELECT * FROM users WHERE google_sub = ?'), userLinkGoogle: q('UPDATE users SET google_sub = ? WHERE id = ?'),
     userInsert: q('INSERT INTO users (id, name, email, brand, password, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
     userCount: q('SELECT COUNT(*) AS n FROM users'),
     sessAdd: q('INSERT OR REPLACE INTO sessions (token_hash, user_id, agent, created_at, last_seen) VALUES (?, ?, ?, ?, ?)'),
@@ -71,7 +79,9 @@ export function openDb(file) {
     projGet: q('SELECT * FROM projects WHERE owner = ? AND id = ?'),
     projPut: q(`INSERT INTO projects (id, owner, name, json, thumb, thumb_mobile, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at WHERE projects.owner = excluded.owner AND excluded.updated_at >= projects.updated_at`),
-    projDel: q('DELETE FROM projects WHERE owner = ? AND id = ?'), projCount: q('SELECT COUNT(*) AS n, COALESCE(SUM(length(json)), 0) AS bytes FROM projects WHERE owner = ?'),
+    projDel: q('DELETE FROM projects WHERE owner = ? AND id = ?'),
+    tombPut: q('INSERT INTO project_tombstones (id, owner, at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, at = excluded.at'), tombDel: q('DELETE FROM project_tombstones WHERE id = ?'), tombList: q('SELECT id, at FROM project_tombstones WHERE owner = ?'),
+    projCount: q('SELECT COUNT(*) AS n, COALESCE(SUM(length(json)), 0) AS bytes FROM projects WHERE owner = ?'),
     assetList: q('SELECT id, name, mime, w, h, bytes, meta, created_at FROM assets WHERE owner = ? ORDER BY created_at DESC'),
     assetGet: q('SELECT * FROM assets WHERE owner = ? AND id = ?'), assetMeta: q('SELECT id, name, mime, w, h, bytes, meta, created_at FROM assets WHERE owner = ? AND id = ?'),
     assetPut: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -93,7 +103,9 @@ export function openDb(file) {
     users: {
       byEmail: (email) => S.userByEmail.get(email) || null,
       byId: (id) => S.userById.get(id) || null,
-      insert: (u) => { S.userInsert.run(u.id, u.name, u.email, u.brand || '', u.password, u.createdAt || now()); return u; },
+      byGoogle: (sub) => (sub ? S.userByGoogle.get(sub) || null : null),
+      linkGoogle: (id, sub) => { S.userLinkGoogle.run(sub, id); },
+      insert: (u) => { S.userInsert.run(u.id, u.name, u.email, u.brand || '', u.password, u.createdAt || now()); if (u.googleSub) S.userLinkGoogle.run(u.googleSub, u.id); return u; },
       count: () => Number(S.userCount.get().n),
     },
     sessions: {
@@ -106,13 +118,17 @@ export function openDb(file) {
     projects: {
       list: (owner) => S.projList.all(owner).map(meta),
       get: (owner, id) => { const p = S.projGet.get(owner, id); return p ? { ...JSON.parse(p.json), thumb: p.thumb || undefined, thumbMobile: p.thumb_mobile || undefined, provider: p.provider || undefined, updatedAt: p.updated_at, createdAt: p.created_at } : null; },
+      /** Upsert; a body older than the stored copy is refused (`stale`, with the stored updatedAt) instead of silently ignored. */
       put: (owner, p) => {
         const { thumb, thumbMobile, provider, ...rest } = p;
         const updated = p.updatedAt || now();
-        S.projPut.run(p.id, owner, String(p.name || 'Email').slice(0, 200), JSON.stringify(rest), thumb || null, thumbMobile || null, provider || null, p.createdAt || updated, updated);
+        const r = S.projPut.run(p.id, owner, String(p.name || 'Email').slice(0, 200), JSON.stringify(rest), thumb || null, thumbMobile || null, provider || null, p.createdAt || updated, updated);
+        if (!Number(r.changes)) { const cur = S.projGet.get(owner, p.id); return { id: p.id, updatedAt: cur ? cur.updated_at : updated, stale: true }; }
+        S.tombDel.run(p.id); // re-saved after a delete elsewhere: it lives again
         return { id: p.id, updatedAt: updated };
       },
-      remove: (owner, id) => { S.projDel.run(owner, id); },
+      remove: (owner, id) => { S.projDel.run(owner, id); S.tombPut.run(id, owner, now()); },
+      tombstones: (owner) => S.tombList.all(owner),
       count: (owner) => S.projCount.get(owner),
     },
     assets: {
@@ -125,7 +141,7 @@ export function openDb(file) {
       usage: (owner) => S.assetUsage.get(owner),
     },
     profiles: {
-      get: (owner, secret) => { const r = S.profGet.get(owner); if (!r) return { profiles: [], updatedAt: null }; try { return { profiles: JSON.parse(decrypt(secret, r.enc)), updatedAt: r.updated_at }; } catch { return { profiles: [], updatedAt: r.updated_at }; } },
+      get: (owner, secret) => { const r = S.profGet.get(owner); if (!r) return { profiles: [], updatedAt: null }; try { return { profiles: JSON.parse(decrypt(secret, r.enc)), updatedAt: r.updated_at }; } catch { return { profiles: [], updatedAt: r.updated_at, corrupt: true }; } }, // corrupt = secret changed: the client must keep its own copy
       put: (owner, secret, profiles) => { const t = now(); S.profPut.run(owner, encrypt(secret, JSON.stringify(profiles)), t); return { updatedAt: t }; },
     },
     kv: {

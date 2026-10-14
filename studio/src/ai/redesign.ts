@@ -10,7 +10,7 @@ import type { BlockKind, Suggestion } from '../../../src/shared/types';
 import { assets } from '../storage/assets';
 import { renderToCanvas } from '../render/renderer';
 import { askClaude, extractJson, type AiImage } from './client';
-import { BLOCK_DOC, DESIGN_DOC, thumbOf } from './generate';
+import { BLOCK_DOC, DESIGN_DOC, coerceContent, thumbOf } from './generate';
 
 export interface DocBlock { index: number; kind: string; content: BlockContent; keep: boolean; reason?: string; h: number }
 export interface Redesign { doc: Doc; fields: Partial<EmailFields>; vibe?: Vibe; note: string; problems: string[]; kept: number; rebuilt: number }
@@ -145,7 +145,7 @@ ${BLOCK_DOC}`;
     const e = raw as { keep?: unknown; kind?: unknown; content?: unknown };
     if (typeof e.keep === 'number' && blocks[e.keep]) { if (!entries.some((x) => 'keep' in x && x.keep === e.keep)) entries.push({ keep: e.keep }); continue; }
     if (typeof e.kind !== 'string' || !kinds.has(e.kind as BlockKind)) continue;
-    const c = (e.content && typeof e.content === 'object' ? e.content : {}) as BlockContent;
+    const c = coerceContent(e.content);
     if (c.image && !validIds.has(String(c.image))) c.image = null;
     if (c.items) for (const it of c.items) { if (it.image && !validIds.has(String(it.image))) it.image = null; if (it.url) it.url = fixUrl(it.url); }
     if (c.style && !['light', 'band', 'gradient', 'ink', 'dark', 'card', 'right', 'soft', 'menu', 'center', 'plain'].includes(String(c.style))) delete c.style;
@@ -159,13 +159,15 @@ ${BLOCK_DOC}`;
     if (c.preferencesUrl && /example\.com/i.test(c.preferencesUrl)) delete c.preferencesUrl;
     entries.push({ kind: e.kind as BlockKind, content: c });
   }
-  // hand-composed blocks must survive: drop them in where the first anchor landed, or right after the nav
+  // hand-composed blocks must survive: a hero replaces the first anchor the AI built, the rest line up after the nav in order
+  let cursor = Math.min(1, entries.length);
   for (const b of blocks) {
     if (!b.keep || entries.some((x) => 'keep' in x && x.keep === b.index)) continue;
     const at = entries.findIndex((x) => 'kind' in x && /hero|statement|dark-band|overlap|spotlight|glass/.test(x.kind));
-    if (at >= 0 && /hero|statement|dark-band|overlap|spotlight|glass/.test(b.kind)) entries.splice(at, 1, { keep: b.index });
-    else entries.splice(Math.min(1, entries.length), 0, { keep: b.index });
+    if (at >= 0 && /hero|statement|dark-band|overlap|spotlight|glass/.test(b.kind)) { entries.splice(at, 1, { keep: b.index }); cursor = Math.max(cursor, at + 1); }
+    else { entries.splice(cursor, 0, { keep: b.index }); cursor++; }
   }
+  if (!entries.length) throw new Error('AI không trả về bố cục dùng được.');
   const kindAt = (e: Entry) => ('keep' in e ? blocks[e.keep].kind : e.kind);
   if (kindAt(entries[0]) !== 'nav') entries.unshift({ kind: 'nav', content: { brand: brand.name, links: (L.nav || []).slice(0, 4) } });
   if (kindAt(entries[entries.length - 1]) !== 'footer') entries.push({ kind: 'footer', content: { brand: brand.name, social: L.socials, unsubscribeUrl: '*|UNSUB|*', preferencesUrl: '*|UPDATE_PROFILE|*' } });

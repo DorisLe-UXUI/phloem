@@ -35,6 +35,7 @@ import { BRAND_PRESETS, DEFAULT_BRAND, type Doc } from './model/types';
 import { polishDesign } from './pipeline/polish';
 import { renderToCanvas } from './render/renderer';
 import { animBlocks, makeMobile } from './model/ops';
+import { finalizeSlices } from '../../src/ui/imageops';
 (window as unknown as { __phloemExportThumbs?: (base?: string) => Promise<string[]> }).__phloemExportThumbs = async (base = '') => {
   const out: string[] = [];
   for (const t of TEMPLATES) {
@@ -111,9 +112,12 @@ import { animBlocks, makeMobile } from './model/ops';
 };
 
 // Dev/testing hook: store + actions + assets, used by browser checks.
+// back online → push what was saved offline and pull what others changed
+window.addEventListener('online', () => { void A.syncNow().catch(() => { /* reported in the sync chip */ }); });
+
 (window as unknown as { __phloemDev?: unknown }).__phloemDev = {
   polish: (d: Doc) => polishDesign(d, get().project!.brand),
   get, set, A, assets,
   /** Export the open project's desktop doc as slices (PNG, animated regions as GIF) without uploading. */
-  exportSlices: async (fps = 10) => { const p = get().project!; const plan = planSlices(docToNNode(p.desktop, p.brand), { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: animBlocks(p.desktop.nodes) }); const slices = await exportDocSlices(p.desktop, p.brand, plan, 2, undefined, fps); return slices.map((x) => ({ key: x.key, format: x.format, kb: Math.round(x.bytes.length / 1024), w: x.w, h: x.h, url: x.format === 'GIF' ? URL.createObjectURL(new Blob([x.bytes as BlobPart], { type: 'image/gif' })) : undefined })); },
+  exportSlices: async (fps = 10, format: 'PNG' | 'JPG' = 'PNG') => { const p = get().project!; const plan = planSlices(docToNNode(p.desktop, p.brand), { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: animBlocks(p.desktop.nodes) }); const raw = await exportDocSlices(p.desktop, p.brand, plan, 2, undefined, fps); const slices = await finalizeSlices(raw, format, 85); return slices.map((x) => ({ key: x.key, format: x.format, kb: Math.round(x.bytes.length / 1024), w: x.w, h: x.h, url: x.format === 'GIF' ? URL.createObjectURL(new Blob([x.bytes as BlobPart], { type: 'image/gif' })) : undefined })); },
 };

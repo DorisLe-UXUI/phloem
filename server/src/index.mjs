@@ -48,9 +48,14 @@ const OAUTH = {
 /** Endpoints that would send or schedule mail. Refused unconditionally: the human presses send. */
 const FORBIDDEN = [
   /\/campaigns\/[^/]+\/actions\/(send|schedule|test|resume)\b/i, // mailchimp
+  /\/automations\/[^/]+\/actions\/(start-all-emails|pause-all-emails)/i, // mailchimp automations
+  /\/automations\/[^/]+\/emails\/[^/]+\/(actions\/(start|pause)|queue)\b/i, // queueing a subscriber = sending
   /\/campaign-send-jobs/i, // klaviyo
   /\/campaign-message-send/i,
+  /\/campaign-recipient-estimation-jobs/i,
 ];
+/** Writes that could switch a flow live or send through an existing object: only reads are proxied for these. */
+const READ_ONLY = [/\/flows\b/i, /\/automations\b/i];
 
 const sessions = new Map(); // id -> { provider, verifier, state, createdAt, result }
 setInterval(() => {
@@ -90,7 +95,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/site' && req.method === 'POST') { if (!gate(req, res)) return; return await siteRoute(await body(req), res); }
     if (url.pathname === '/csv' && req.method === 'POST') { if (!gate(req, res)) return; return await csvRoute(await body(req), res); }
     if (url.pathname === '/image' && req.method === 'GET') { if (!gate(req, res)) return; return await imageRoute(url.searchParams.get('url') || '', res); }
-    if (url.pathname === '/proxy' && req.method === 'POST') return await proxy(await body(req), res);
+    if (url.pathname === '/proxy' && req.method === 'POST') { if (!RELAY_TOKEN && !AUTH.me(bearer(req)) && throttled(`proxy:${ipOf(req)}`, 400, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều request qua relay. Đăng nhập tài khoản relay để không bị giới hạn.' }); return await proxy(await body(req), res); }
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
     if (url.pathname === '/ai' && req.method === 'POST') { if (!gate(req, res)) return; return await ai(await body(req), res); }
     if (url.pathname === '/oauth/start' && req.method === 'POST') return oauthStart(await body(req), res);
@@ -128,6 +133,7 @@ async function proxy(p, res) {
   let canon; try { canon = decodeURIComponent(target.pathname); } catch { return json(res, 400, { error: 'path không hợp lệ' }); }
   if (!canon.startsWith(new URL(base).pathname + '/') && canon !== new URL(base).pathname) return json(res, 400, { error: 'path ra ngoài API' });
   if (FORBIDDEN.some((re) => re.test(canon)) || /\\/.test(path)) return json(res, 403, { error: 'Phloem không bao giờ gửi email. Hãy duyệt và bấm gửi trong Mailchimp/Klaviyo.' });
+  if (String(method).toUpperCase() !== 'GET' && READ_ONLY.some((re) => re.test(canon))) return json(res, 403, { error: 'Phloem chỉ đọc automation/flow, không bật hay sửa chúng.' });
   if (query) for (const [k, v] of Object.entries(query)) target.searchParams.set(k, String(v));
 
   let fetchBody;
@@ -246,7 +252,7 @@ async function oauthCallback(url, res) {
       const ar = await fetch('https://a.klaviyo.com/api/accounts', { headers: { Authorization: `Bearer ${tok.access_token}`, revision: KLAVIYO_REVISION } });
       const acc = await ar.json().catch(() => ({}));
       const a = acc?.data?.[0];
-      auth.accountName = a?.attributes?.contact_information?.organization_name || a?.attributes?.test_account ? 'Test account' : (a?.attributes?.contact_information?.organization_name || '');
+      auth.accountName = a?.attributes?.contact_information?.organization_name || (a?.attributes?.test_account ? 'Test account' : '');
       auth.accountId = a?.id || '';
       auth.scopes = tok.scope || cfg.scopes;
     }
@@ -284,9 +290,20 @@ async function oauthRefresh(p, res) {
 
 // ---------- helpers ----------
 // Accounts: register / login / me / logout. Tokens are HMAC-signed, users live in DATA_DIR/users.json.
+// Password guessing and mass registration are throttled per IP (in memory; a restart resets it, which is fine).
+const buckets = new Map();
+function throttled(key, max, windowMs) {
+  const t = Date.now(); let b = buckets.get(key);
+  if (!b || t > b.reset) { b = { n: 0, reset: t + windowMs }; buckets.set(key, b); }
+  if (buckets.size > 5000) for (const [k, v] of buckets) if (t > v.reset) buckets.delete(k);
+  b.n++; return b.n > max;
+}
+const ipOf = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
 async function authRoute(action, req, res) {
   try {
     const agent = String(req.headers['user-agent'] || '');
+    if (req.method === 'POST' && (action === 'login' || action === 'google') && throttled(`auth:${ipOf(req)}`, 30, 10 * 60_000)) return json(res, 429, { error: 'Thử quá nhiều lần. Đợi 10 phút rồi thử lại.', code: 'server' });
+    if (req.method === 'POST' && action === 'register' && throttled(`reg:${ipOf(req)}`, 10, 60 * 60_000)) return json(res, 429, { error: 'Tạo quá nhiều tài khoản từ địa chỉ này. Thử lại sau 1 giờ.', code: 'server' });
     if (action === 'register' && req.method === 'POST') return json(res, 200, await AUTH.register(await body(req), agent));
     if (action === 'login' && req.method === 'POST') return json(res, 200, await AUTH.login(await body(req), agent));
     if (action === 'me' && req.method === 'GET') {
@@ -303,7 +320,8 @@ async function authRoute(action, req, res) {
       try { const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, { signal: AbortSignal.timeout(8000) }); info = await r.json(); if (!r.ok) throw new Error(info?.error_description || 'token không hợp lệ'); }
       catch (e) { return json(res, 401, { error: `Google không xác nhận được: ${e.message}`, code: 'badpass' }); }
       if (info.aud !== GOOGLE_CLIENT_ID || String(info.email_verified) !== 'true' || !info.email) return json(res, 401, { error: 'Token Google không thuộc app này.', code: 'badpass' });
-      return json(res, 200, await AUTH.loginWithGoogle({ sub: info.sub, email: info.email, name: info.name || info.given_name || info.email.split('@')[0], picture: info.picture || '' }, agent));
+      const linked = AUTH.me(bearer(req)); // signed in already → this Google identity gets linked to that account
+      return json(res, 200, await AUTH.loginWithGoogle({ sub: info.sub, email: info.email, name: info.name || info.given_name || info.email.split('@')[0], picture: info.picture || '' }, agent, linked ? linked.id : ''));
     }
     return json(res, 404, { error: 'không có route auth này' });
   } catch (e) { return json(res, e.status || 500, { error: e.message, code: e.code || 'server' }); }
@@ -336,9 +354,9 @@ async function dbRoute(url, req, res) {
   const m = req.method;
   try {
     if (kind === 'projects') {
-      if (m === 'GET' && !id) return json(res, 200, { projects: DB.projects.list(u.id) });
+      if (m === 'GET' && !id) return json(res, 200, { projects: DB.projects.list(u.id), deleted: DB.projects.tombstones(u.id) });
       if (m === 'GET') { const p = DB.projects.get(u.id, id); return p ? json(res, 200, { project: p }) : json(res, 404, { error: 'không có project này' }); }
-      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); const prev = DB.projects.list(u.id).find((x) => x.id === id); if (!checkQuota(res, u.id, JSON.stringify(p).length - (prev?.size || 0))) return; return json(res, 200, DB.projects.put(u.id, p)); }
+      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); const prev = DB.projects.list(u.id).find((x) => x.id === id); if (!checkQuota(res, u.id, JSON.stringify(p).length - (prev?.size || 0))) return; const r = DB.projects.put(u.id, p); return r.stale ? json(res, 409, { error: 'Bản trên relay mới hơn.', code: 'stale', updatedAt: r.updatedAt }) : json(res, 200, r); }
       if (m === 'DELETE' && id) { DB.projects.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'assets') {
@@ -351,7 +369,7 @@ async function dbRoute(url, req, res) {
         if (!checkQuota(res, u.id, data.length - (DB.assets.meta(u.id, id)?.bytes || 0))) return;
         return json(res, 200, { asset: DB.assets.put(u.id, meta, data) });
       }
-      if (m === 'PATCH' && id) { const p = await body(req); const a = DB.assets.patch(u.id, id, assetTags(p?.meta ? JSON.stringify(p.meta) : ''), p?.name); return a ? json(res, 200, { asset: a }) : json(res, 404, { error: 'không có ảnh này' }); }
+      if (m === 'PATCH' && id) { const p = await body(req); const tags = assetTagsObj(p?.meta); if (p?.meta && !tags) return json(res, 400, { error: 'meta không hợp lệ' }); const a = DB.assets.patch(u.id, id, tags, p?.name); return a ? json(res, 200, { asset: a }) : json(res, 404, { error: 'không có ảnh này' }); }
       if (m === 'DELETE' && id) { DB.assets.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'profiles') {
@@ -376,6 +394,9 @@ async function dbRoute(url, req, res) {
 function assetTags(rawHeader) {
   if (!rawHeader) return null;
   let j; try { j = JSON.parse(decodeURIComponent(String(rawHeader).slice(0, 3000))); } catch { return null; }
+  return assetTagsObj(j);
+}
+function assetTagsObj(j) {
   if (!j || typeof j !== 'object') return null;
   const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : undefined);
   const out = {};

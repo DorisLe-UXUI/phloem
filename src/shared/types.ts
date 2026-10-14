@@ -279,7 +279,7 @@ export function newProfile(provider: Provider, name: string): Profile {
     templateSection: 'body',
     utmTemplate: DEFAULT_UTM,
     footerHtml: '',
-    imageFormat: 'PNG',
+    imageFormat: 'JPG',
     scale: 2,
     jpgQuality: 85,
     permissions: {},

@@ -264,7 +264,7 @@ function ProfileForm({ p, isNew, onBack, onClose, onChange }: { p: Profile; isNe
       <Field label="Mẫu UTM" hint="{provider} {campaign} {frame} {slice} {date} {host}"><TextInput value={p.utmTemplate} mono placeholder={DEFAULT_UTM} onCommit={(v) => mut((x) => { x.utmTemplate = v.trim(); })} /></Field>
       <Field label="Footer HTML riêng" hint="thêm dưới email; để trống nếu template đã có"><TextArea mono value={p.footerHtml} placeholder='<p>Công ty ABC · 123 Lê Lợi · <a href="*|UNSUB|*">Huỷ đăng ký</a></p>' onCommit={(v) => mut((x) => { x.footerHtml = v; })} /></Field>
       <div class="grid3">
-        <Field label="Định dạng ảnh"><Seg block value={p.imageFormat} options={[{ v: 'PNG', label: 'PNG' }, { v: 'JPG', label: 'JPG' }]} onChange={(v) => mut((x) => { x.imageFormat = v; })} /></Field>
+        <Field label="Định dạng ảnh" hint={p.imageFormat === 'JPG' ? 'ảnh → JPG, lát phẳng/chữ vẫn PNG nếu nhỏ hơn' : 'mọi lát PNG (nặng hơn 3–5 lần với ảnh)'}><Seg block value={p.imageFormat} options={[{ v: 'JPG', label: 'JPG thông minh' }, { v: 'PNG', label: 'PNG' }]} onChange={(v) => mut((x) => { x.imageFormat = v; })} /></Field>
         <Field label="Độ phân giải"><Seg block value={p.scale} options={[{ v: 1, label: '1x' }, { v: 2, label: '2x' }]} onChange={(v) => mut((x) => { x.scale = v as 1 | 2; })} /></Field>
         <Field label="JPG quality"><Num value={p.jpgQuality} min={40} max={100} onChange={(v) => mut((x) => { x.jpgQuality = Math.round(v); })} /></Field>
       </div>
@@ -334,7 +334,7 @@ function FigmaModal({ onClose }: { onClose: () => void }) {
     setBusy(true); setLogs([]);
     try {
       const p = await importFromFigma(url, token, (m) => setLogs((l) => [...l, m]));
-      await db.putProject(p);
+      await db.putProject({ ...p, owner: get().user?.id || '' });
       await A.refreshProjects();
       onClose();
       await A.openProject(p.id);

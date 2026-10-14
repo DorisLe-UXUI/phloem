@@ -70,7 +70,7 @@ async function relayCall(opts: AuthOpts, path: string, init: RequestInit & { tok
   let r: Response;
   try { r = await fetch(`${opts.relayUrl}${path}`, { ...init, headers, signal: AbortSignal.timeout(8000) }); } catch { throw fail('network'); }
   let j: any = null; try { j = await r.json(); } catch { /* empty */ }
-  if (!r.ok) { const code = (j?.code as AuthCode) || 'server'; throw fail(code in MSG ? code : 'server', j?.error); }
+  if (!r.ok) { const code = (j?.code as AuthCode) || 'server'; const e = fail(code in MSG ? code : 'server', j?.error); (e as AuthError & { status?: number }).status = r.status; throw e; }
   return j;
 }
 
@@ -145,8 +145,9 @@ export async function restore(opts: AuthOpts = readStudioRelay()): Promise<Sessi
     if (!u) { setSession(null); return null; }
     return s;
   } catch (e) {
-    if ((e as AuthError).code === 'network') return s; // relay unreachable: keep the session, retry later
-    setSession(null); return null; // expired or revoked on the relay: forget it so the UI asks to sign in again
+    const st = (e as AuthError & { status?: number }).status;
+    if (st === 401 || st === 403) { setSession(null); return null; } // expired or revoked on the relay: forget it so the UI asks to sign in again
+    return s; // unreachable, 5xx, cold start: keep the session and retry later
   }
 }
 /** A relay route answered 401: the session is dead. Drop it and explain. */
@@ -160,7 +161,8 @@ export async function relayInfo(opts: AuthOpts = readStudioRelay()): Promise<{ a
 /** Google Sign-In: hand Google's ID token to the relay, which verifies it and opens a relay session. */
 export async function loginWithGoogle(credential: string, opts: AuthOpts = readStudioRelay()): Promise<Session> {
   if (!opts.relayUrl) throw fail('network', 'Cần relay để đăng nhập Google.');
-  const s: Session = { ...(await relayCall(opts, '/auth/google', { method: 'POST', body: JSON.stringify({ credential }) })), mode: 'relay', relayUrl: opts.relayUrl };
+  const cur = getSession(); // signed in already → the relay links this Google identity to that account
+  const s: Session = { ...(await relayCall(opts, '/auth/google', { method: 'POST', body: JSON.stringify({ credential }), token: cur?.mode === 'relay' ? cur.token : undefined })), mode: 'relay', relayUrl: opts.relayUrl };
   setSession(s); return s;
 }
 export const messages = MSG;

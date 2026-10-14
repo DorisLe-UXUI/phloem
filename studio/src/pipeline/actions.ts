@@ -2,9 +2,10 @@
 import type { BlockKind, Check, NNode, SlicePlan, Suggestion, SuggestionAction, TemplateKind } from '../../../src/shared/types';
 import { planSlices } from '../../../src/shared/slicer';
 import { runChecks } from '../../../src/shared/checks';
+import { buildEmailHtml, htmlSizeBytes } from '../../../src/shared/html';
 import { suggest } from '../../../src/shared/suggestions';
 import type { Asset, Brand, Color, Doc, GroupNode, ImageNode, Node, Project, RectNode, TextNode } from '../model/types';
-import { DEFAULT_BRAND, uid } from '../model/types';
+import { DEFAULT_BRAND, resolveColor, uid } from '../model/types';
 import * as ops from '../model/ops';
 import { contrastToken, logoAssetFor, makeBlock, makeTemplate, text as mkText, rect as mkRect, image as mkImage } from '../model/templates';
 import type { DraftRecord } from '../../../src/shared/types';
@@ -87,7 +88,8 @@ export async function saveProject(): Promise<void> {
   if (!s.project) return;
   const p: Project = { ...s.project, updatedAt: new Date().toISOString() };
   let thumb: string | undefined, thumbMobile: string | undefined;
-  try { thumb = thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); } catch { /* fonts/images not ready */ }
+  try { thumb = thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); }
+  catch { try { const old = await db.getProject(p.id); thumb = old?.thumb; thumbMobile = old?.thumbMobile; } catch { /* no previous thumb */ } } // fonts/images not ready: keep the last good thumbnail
   const provider = (Object.values(p.drafts || {})[0] as DraftRecord | undefined)?.provider;
   try {
     const stored = { ...p, thumb, thumbMobile, provider, owner: ownerId() };
@@ -228,7 +230,7 @@ export function addBlock(kind: BlockKind, at?: number) {
   const d = doc();
   const y = at ?? ops.contentHeight(d);
   const g = makeBlock(kind, brand(), y);
-  if (d.width !== 600) { const s = d.width / 600; Object.assign(g, ops.fitTo(g, { x: 0, y: y, w: d.width, h: g.h * s })); }
+  if (d.width !== 600) { const s = d.width / 600; Object.assign(g, ops.fitTo(g, { x: Math.round(g.x * s), y, w: Math.round(g.w * s), h: Math.round(g.h * s) })); } // uniform: a ticker line wider than 600 keeps its proportions
   const next = { ...ops.insertNodes(d, [g]), height: Math.max(d.height, y + g.h) };
   commit(next); set({ selection: [g.id] });
   return g.id;
@@ -739,7 +741,10 @@ export function analyze(): Analysis | null {
   if (cache && cache.doc === d && cache.brand === b && cache.fields === f && cache.mobile === hasMobile) return cache.a;
   const root = docToNNode(d, b);
   const plan = planSlices(root, { maxSliceHeight: s.settings.maxSliceHeight, mergeRows: s.settings.mergeRows, keep: ops.animBlocks(d.nodes) });
-  const checks = runChecks({ root, plan, fields: { ...s.project.fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile });
+  // HTML weight as an ESP would host it (Mailchimp-length image URLs), so the Gmail 102 KB clip warns before export
+  const fake: Record<string, string> = {}; for (const sl of plan.slices) fake[sl.key] = `https://mcusercontent.com/0123456789abcdef0123456789abcdef/images/0123456789abcdef0123456789abcdef-${sl.key}.jpg`;
+  const htmlBytes = htmlSizeBytes(buildEmailHtml({ plan, images: fake, mobile: null, title: s.project.fields.subject || s.project.name, preheader: s.project.fields.preheader, includePreheader: true, fullDocument: true, footerHtml: '', bgColor: resolveColor(d.bg, b), provider: null, utm: null }));
+  const checks = runChecks({ root, plan, fields: { ...s.project.fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile, htmlBytes });
   // Studio-only: image layers still showing the placeholder would export as a hatched box.
   const placeholders = ops.flat(d.nodes).filter((n) => n.type === 'image' && !n.assetId && n.visible);
   if (placeholders.length) checks.unshift({ level: 'warn', code: 'placeholder', message: `${placeholders.length} ảnh placeholder chưa thay (${placeholders.slice(0, 3).map((n) => n.name).join(', ')}${placeholders.length > 3 ? '…' : ''}). Kéo ảnh thật vào trước khi gửi.`, nodeId: placeholders[0].id });

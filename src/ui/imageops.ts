@@ -23,12 +23,12 @@ async function decode(bytes: Uint8Array): Promise<ImageBitmap | HTMLImageElement
   });
 }
 
-export async function toJpeg(bytes: Uint8Array, quality: number): Promise<Uint8Array> {
+export async function toJpeg(bytes: Uint8Array, quality: number, bg = '#ffffff'): Promise<Uint8Array> {
   const img = await decode(bytes);
   const canvas = document.createElement('canvas');
   canvas.width = img.width; canvas.height = img.height;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#ffffff'; // JPG has no alpha
+  ctx.fillStyle = bg; // JPG has no alpha: flatten over the email background
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img as CanvasImageSource, 0, 0);
   const blob: Blob = await new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('toBlob failed'))), 'image/jpeg', Math.min(1, Math.max(0.3, quality / 100))));
@@ -36,13 +36,13 @@ export async function toJpeg(bytes: Uint8Array, quality: number): Promise<Uint8A
 }
 
 /** Apply the profile's image format. Slices come out of Figma as PNG. */
-export async function finalizeSlices(slices: ExportedSlice[], format: ImageFormat, jpgQuality: number): Promise<ExportedSlice[]> {
+export async function finalizeSlices(slices: ExportedSlice[], format: ImageFormat, jpgQuality: number, bg = '#ffffff'): Promise<ExportedSlice[]> {
   if (format === 'PNG') return slices;
   const out: ExportedSlice[] = [];
   for (const s of slices) {
     if (s.format === 'GIF') { out.push(s); continue; } // animated slices stay GIF
     try {
-      const jpg = await toJpeg(s.bytes, jpgQuality);
+      const jpg = await toJpeg(s.bytes, jpgQuality, bg);
       // keep PNG if it is actually smaller (flat colour slices)
       if (jpg.length < s.bytes.length) out.push({ ...s, bytes: jpg, format: 'JPG', hash: fnv1a(jpg) });
       else out.push(s);

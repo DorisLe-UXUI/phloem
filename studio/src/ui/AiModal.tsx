@@ -137,7 +137,8 @@ export function AiModal({ onClose }: { onClose: () => void }) {
     const brand: Brand = brandForVariant(v, baseBrand(), form.webBrand);
     ensureFonts([brand.headingFamily, brand.fontFamily]);
     await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]);
-    const doc = variantToDoc(v, brand);
+    let doc;
+    try { doc = variantToDoc(v, brand); } catch (e) { toast(`Không dựng được phương án "${v.name}": ${(e as Error).message}. Bấm "Dựng lại".`, 'err'); return; }
     if (s.project) {
       if (!(await ask(`Thay toàn bộ nội dung "${s.project.name}" bằng phương án "${v.name}"? Có thể hoàn tác bằng ⌘Z.`, 'Thay', false))) return;
       if (get().variant !== 'desktop') A.setVariant('desktop');
