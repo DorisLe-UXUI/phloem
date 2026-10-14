@@ -80,13 +80,13 @@ export function LogoMark({ size = 22, glow = true }: { size?: number; glow?: boo
   );
 }
 
-/** Wordmark: "Phloem" + green "studio" in Poppins ExtraBold. */
+/** Wordmark: "Phloem" + green "email" in Poppins ExtraBold. */
 export function Logo({ size = 22, onClick, dark = false }: { size?: number; onClick?: () => void; dark?: boolean }) {
   return (
     <div class="logo" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
       <LogoMark size={size} />
       <span class="wordmark" style={{ fontSize: size * 0.95, color: dark ? '#111' : '#fff' }}>Phloem</span>
-      <span class="wordmark studio" style={{ fontSize: size * 0.95 }}>studio</span>
+      <span class="wordmark studio" style={{ fontSize: size * 0.95 }}>email</span>
     </div>
   );
 }

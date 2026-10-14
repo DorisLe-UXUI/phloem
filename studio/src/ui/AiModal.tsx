@@ -242,7 +242,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
           <span>Nhanh hơn, ít tốn hơn: AI chọn và điền các block mẫu có sẵn.</span>
         </button>
       </div>
-      {mode === 'design' && <label class="row small" style={{ gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={review} onChange={(e) => setReview((e.target as HTMLInputElement).checked)} /><span>Creative director soát và làm đẹp thêm một vòng trên bản render <span class="muted">(đẹp hơn, lâu gấp đôi: khoảng 4–6 phút)</span></span></label>}
+      {mode === 'design' && <label class="row small" style={{ gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={review} onChange={(e) => setReview((e.target as HTMLInputElement).checked)} /><span>Creative director soát và làm đẹp thêm một vòng trên bản render <span class="muted">(đẹp hơn: khoảng 8–10 phút cho 3 phương án, tắt thì khoảng 5 phút)</span></span></label>}
       <div class="small muted">Dán link website: AI tự vào xem, lấy logo, màu, font, ảnh thật và giọng văn. Thêm ảnh và nội dung thô nếu có.</div>
       <div class="card glow">
         <div class="row"><Icon name="external" style={{ color: 'var(--neon)' }} /><b class="grow">Website thương hiệu</b>{form.site && <span class="chip on">đã đọc {form.site.siteName || form.site.title}</span>}</div>

@@ -306,7 +306,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       <Toggle checked={st.grid} onChange={(v) => up({ grid: v })} label="Hiện lưới 24px" />
       <Eyebrow>Dữ liệu</Eyebrow>
       <div class="row"><Btn sm icon="download" disabled={!s.project} onClick={() => A.exportProjectJson()}>Tải project (.phloem.json)</Btn><Btn sm kind="ghost" class="danger" onClick={async () => { if (!(await ask('Xoá toàn bộ ảnh trong thư viện không còn dùng? Project giữ nguyên.', 'Dọn'))) return; const used = new Set<string>(); for (const m of get().projects) { const p = await db.getProject(m.id); if (!p) continue; for (const d of [p.desktop, p.mobile]) if (d) JSON.stringify(d).replace(/"assetId":"([^"]+)"/g, (_m, id) => { used.add(id); return ''; }); } let n = 0; for (const a of assets.all()) if (!used.has(a.id)) { await assets.remove(a.id); n++; } toast(`Đã xoá ${n} ảnh không dùng.`, 'ok'); bump((x) => x + 1); }}>Dọn ảnh không dùng</Btn></div>
-      <div class="dim small mono">Phloem Studio · phloem = mạch dẫn của cây: mang đúng thứ lá tạo ra tới nơi cần, không biến đổi.</div>
+      <div class="dim small mono">Phloem Email · phloem = mạch dẫn của cây: mang đúng thứ lá tạo ra tới nơi cần, không biến đổi.</div>
     </Modal>
   );
 }

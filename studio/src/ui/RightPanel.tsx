@@ -355,9 +355,10 @@ function EmailTab() {
       {a && (
         <>
           <Eyebrow>Gợi ý · điểm {a.score}</Eyebrow>
-          <div class="row" style={{ gap: 6 }}>
+          <div class="row" style={{ gap: 6, flexWrap: 'wrap' }}>
             <Btn sm kind="primary" icon="sparkle" onClick={async () => setChanges(await A.autoFix())} title="Tự sửa các gợi ý: chữ nhỏ, hero quá cao, alt, link nút/logo/social, link sản phẩm thật, footer, subject/preheader (AI)">AI tự chỉnh</Btn>
             <Btn sm icon="play" onClick={() => { setChanges(A.animateDoc()); set({ playing: true }); }} title="Cả email hiện ra từ từ: hero chữ gõ/trượt, ảnh hiện, nút nảy; các block khác tiêu đề trượt lên, chữ hiện dần, ảnh mở dần, thẻ nảy lần lượt — xuất thành GIF">Làm động</Btn>
+            {A.docHasAnim() && <Btn sm kind="ghost" icon="close" onClick={() => setChanges(A.clearAnimations())} title="Gỡ mọi hoạt ảnh của bản đang mở (desktop hoặc mobile). ⌘Z để lấy lại.">Bỏ làm động</Btn>}
             <Btn sm kind="ghost" icon="bolt" onClick={() => setChanges(A.make3D())} title="Chữ đùn khối, sản phẩm nghiêng + bóng nổi, vầng sáng, phụ kiện tách nền">3D</Btn>
             <Btn sm kind="ghost" onClick={() => setChanges(A.optimize())} title="Chiều rộng 600, làm tròn toạ độ, khớp chiều cao">Tối ưu</Btn>
           </div>

@@ -11,7 +11,7 @@ import { renderToCanvas } from '../render/renderer';
 import { assets } from '../storage/assets';
 import { colorSvg, iconSvg, iconUrl, vectorAsset } from '../design/vector';
 import { genSvg, svgDataUrl } from '../design/generators';
-import { fluent3dSync, fluent3dUrl } from '../design/library';
+import { fluent3dSync, fluent3dUrl, loadFluent3d } from '../design/library';
 
 export interface ConvertOptions {
   width: number;
@@ -276,6 +276,7 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
   const fams = fontsIn(rawHtml);
   ensureFonts(fams);
   await Promise.race([Promise.all(fams.flatMap((f) => ['400', '700', '800'].map((w) => document.fonts.load(`${w} 32px "${f}"`).catch(() => [])))), new Promise((r) => setTimeout(r, 5000))]);
+  if (/data-sticker=/.test(rawHtml)) await loadFluent3d().catch(() => null); // 3D objects resolve from the index
   const ids = [...rawHtml.matchAll(/data-img="([^"]+)"/g)].map((m) => m[1]).filter((id) => opt.validIds.has(id));
   await assets.ensure(ids);
   opt.onStage?.('Đang dàn trang…');
@@ -555,7 +556,17 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
         const size = px(pcs.fontSize);
         const range = d.createRange();
         const rects: DOMRect[] = [];
+        // rotated (badges, stamps): measure the text in the UNROTATED layout (transforms switched off for a moment, layout
+        // itself is unaffected), then turn its centre with the element below: exact even beside icons and dots
+        const spin: { el: HTMLElement; t: string; deg: number; c: [number, number] }[] = [];
+        if (ctx.rot) {
+          for (let e: Element | null = el; e && e !== root; e = e.parentElement) { const c = win.getComputedStyle(e); if (c.transform && c.transform !== 'none') { const deg = transformOf(c).angle; if (Math.abs(deg) > 0.01) spin.push({ el: e as HTMLElement, t: (e as HTMLElement).style.transform, deg, c: [0, 0] }); } }
+          for (const sp of spin) sp.el.style.transform = 'none';
+          for (const sp of spin) { const rr = sp.el.getBoundingClientRect(); sp.c = [rr.left - ox + rr.width / 2, rr.top - oy + rr.height / 2]; }
+        }
         for (const t of runs) { range.selectNodeContents(t); rects.push(...range.getClientRects()); }
+        const elRect = el.getBoundingClientRect();
+        for (const sp of spin) sp.el.style.transform = sp.t;
         const lines = lineRects(rects, size);
         if (!lines.length) return;
         // innerText = what the browser shows (collapsed spaces, <br> as newlines, text-transform applied)
@@ -563,24 +574,14 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
         const align = alignOf(cs);
         let nLines = lines.length;
         let left = Math.min(...lines.map((l) => l.left)) - ox, right = Math.max(...lines.map((l) => l.right)) - ox;
-        let top = lines[0].top - oy;
-        if (ctx.rot) {
-          // rotated: rects are rotated; place an unrotated box of the element's content size around the same centre
-          const b = boxOf(el, ctx, cs);
-          const pl = px(cs.paddingLeft) * ctx.scale, pr = px(cs.paddingRight) * ctx.scale, pt = px(cs.paddingTop) * ctx.scale, pb = px(cs.paddingBottom) * ctx.scale;
-          left = b.x + pl; right = b.x + b.w - pr;
-          const met = metrics(familyOf(pcs.fontFamily), parseInt(pcs.fontWeight, 10) || 400, size, /italic/.test(pcs.fontStyle));
-          const lhPx = pcs.lineHeight === 'normal' ? met.a + met.d : px(pcs.lineHeight);
-          const inner = b.h - pt - pb; nLines = Math.max(1, Math.round(inner / lhPx));
-          top = b.y + pt + (inner - nLines * lhPx) / 2 + (lhPx - (met.a + met.d)) / 2;
-        }
+        const top = lines[0].top - oy;
         const width = Math.max(4, right - left);
         const slack = 2;
         let w = width + slack;
         let x = align === 'center' ? (left + right) / 2 - w / 2 : align === 'right' ? right - w : left;
-        if (!ctx.rot && !hasBlockKids) {
+        if (!hasBlockKids) {
           // room to edit: grow the box to the paragraph's content box wherever that keeps every line where it is
-          const r0 = el.getBoundingClientRect();
+          const r0 = elRect;
           const cl = r0.left - ox + px(cs.borderLeftWidth) + px(cs.paddingLeft), cr = r0.right - ox - px(cs.borderRightWidth) - px(cs.paddingRight);
           if (cr - cl > w) {
             if (align === 'left' && Math.abs(left - cl) <= 1.5) { x = cl; w = cr - cl; }
@@ -591,13 +592,19 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
         // line top (CSS line box) from the run's content-area top
         const met = metrics(familyOf(pcs.fontFamily), parseInt(pcs.fontWeight, 10) || 400, size, /italic|oblique/.test(pcs.fontStyle));
         const lhPx = pcs.lineHeight === 'normal' ? met.a + met.d : px(pcs.lineHeight);
-        const lineTop = ctx.rot ? top : top - (lhPx - (met.a + met.d)) / 2;
+        const lineTop = top - (lhPx - (met.a + met.d)) / 2;
         const n = mkText(pcs, tt, x, lineTop, w, align, nLines, ctx);
         if (!n) return;
         // our wrap must not add lines the browser did not: widen a little until it matches
         const want = nLines;
         for (let i = 0; i < 12 && layoutText(n, DEFAULT_BRAND).lines.length > want; i++) { const grow = Math.max(2, n.w * 0.01); n.w += grow; if (align === 'center') n.x -= grow / 2; else if (align === 'right') n.x -= grow; }
         n.h = layoutText(n, DEFAULT_BRAND).height;
+        if (spin.length) {
+          // turn the unrotated text box's centre around each rotated ancestor's centre (innermost first)
+          let cx = n.x + n.w / 2, cy = n.y + n.h / 2;
+          for (const sp of spin) { const a = (sp.deg * Math.PI) / 180, dx = cx - sp.c[0], dy = cy - sp.c[1]; cx = sp.c[0] + dx * Math.cos(a) - dy * Math.sin(a); cy = sp.c[1] + dx * Math.sin(a) + dy * Math.cos(a); }
+          n.x = cx - n.w / 2; n.y = cy - n.h / 2;
+        }
         const l = linkOf(runs[0].parentElement, el); if (l) n.link = l;
         push(n, ctx, section);
         return;

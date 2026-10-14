@@ -732,6 +732,16 @@ export function animateDoc(): string[] {
 /** @deprecated use animateDoc */
 export const animateHero = animateDoc;
 
+/** Undo "Làm động": every motion in the open variant removed in one step (⌘Z brings it back); the email exports static. */
+export function clearAnimations(): string[] {
+  let n = 0;
+  const d = ops.mapNodes(doc(), (x) => { if (x.anim) { n++; return { ...x, anim: null }; } return x; });
+  if (!n) return [];
+  commit(d); set({ playing: false });
+  return [`Bỏ hoạt ảnh của ${n} layer: email xuất thành ảnh tĩnh`];
+}
+export function docHasAnim(): boolean { return ops.hasAnimIn(doc().nodes); }
+
 export function optimize(): string[] {
   const d = doc();
   const changes: string[] = [];

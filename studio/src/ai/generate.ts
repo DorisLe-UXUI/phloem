@@ -125,7 +125,7 @@ export const GOAL_DESC: Record<string, string> = {
 };
 
 function systemPrompt(presetNames: string[], lang: 'vi' | 'en' = 'vi'): string {
-  return `Bạn là art director email cho Phloem Studio. Nhiệm vụ: từ website, nội dung và ảnh người dùng đưa, dựng 3 phương án email marketing KHÁC NHAU RÕ RỆT về cấu trúc và nhịp điệu, mỗi phương án 7–10 block, luôn bắt đầu bằng nav và kết thúc bằng footer.
+  return `Bạn là art director email cho Phloem Email. Nhiệm vụ: từ website, nội dung và ảnh người dùng đưa, dựng 3 phương án email marketing KHÁC NHAU RÕ RỆT về cấu trúc và nhịp điệu, mỗi phương án 7–10 block, luôn bắt đầu bằng nav và kết thúc bằng footer.
 
 ${INDUSTRY_DOC}
 

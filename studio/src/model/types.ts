@@ -1,4 +1,4 @@
-// Phloem Studio document model. Coordinates are absolute within the artboard (groups derive bounds from children).
+// Phloem Email document model. Coordinates are absolute within the artboard (groups derive bounds from children).
 export type NodeType = 'rect' | 'text' | 'image' | 'group';
 
 /** A colour is a hex string or a reference to a brand token. */

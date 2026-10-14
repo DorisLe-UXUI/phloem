@@ -219,6 +219,14 @@ export async function convertDesign(html: string, d: Direction, base: Brand, val
   return { doc, mobile, brand: designBrand(d, base), warnings };
 }
 
+/** Every picture of a converted doc decoded, so thumbnails never catch placeholders (3D objects, icons just added). */
+export async function readyDoc(doc: Doc): Promise<void> {
+  const ids: string[] = [];
+  const walk = (list: Doc['nodes']) => { for (const n of list) { if (n.type === 'image' && n.assetId) ids.push(n.assetId); if (n.type === 'group') walk(n.children); } };
+  walk(doc.nodes);
+  await Promise.race([assets.ensure([...new Set(ids)]), new Promise((r) => setTimeout(r, 8000))]);
+}
+
 export function thumbOfDoc(doc: Doc, brand: Brand, width = 480, ratio = 2.2): string {
   const s = width / doc.width;
   const c = renderToCanvas({ ...doc, height: Math.min(doc.height, doc.width * ratio) }, brand, assets, s);
@@ -242,12 +250,14 @@ export async function designEmail(inp: GenInput, base: Brand, cb: { onPlan: (v: 
       let html = await drawDirection(ctx, dir, (h) => { const now = Date.now(); if (now - last > 900) { last = now; cb.onUpdate(i, { html: h }); } }, opts.signal);
       cb.onUpdate(i, { html, stage: 'converting' });
       let conv = await convertDesign(html, dir, base, ctx.validIds);
+      await readyDoc(conv.doc);
       cb.onUpdate(i, { doc: conv.doc, mobile: conv.mobile, brand: conv.brand, warnings: conv.warnings, thumb: thumbOfDoc(conv.doc, conv.brand), stage: opts.review ? 'reviewing' : 'ready' });
       if (!opts.review) return;
       try {
         const better = await reviewDirection(ctx, dir, html, conv.doc, conv.brand, conv.warnings, (h) => { const now = Date.now(); if (now - last > 900) { last = now; cb.onUpdate(i, { html: h }); } }, opts.signal);
         if (better !== html) {
           const c2 = await convertDesign(better, dir, base, ctx.validIds);
+          await readyDoc(c2.doc);
           html = better; conv = c2;
         }
       } catch (e) { if (opts.signal?.aborted) throw e; /* keep the first version */ }

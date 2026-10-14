@@ -61,7 +61,7 @@ export function AiAdminModal({ onClose }: { onClose: () => void }) {
   useEffect(() => { void load(); }, []);
   const make = async (forEmail?: string) => { setErr(''); try { const r = await adminCode(forEmail ? `cho ${forEmail}` : note); setMade({ code: r.code, for: forEmail }); setNote(''); void load(); } catch (e) { setErr((e as Error).message); } };
   const grant = async (userId: string, on: boolean) => { try { await adminGrant(userId, on); void load(); } catch (e) { setErr((e as Error).message); } };
-  const mailCode = (to: string, code: string) => `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent('Mã dùng AI Phloem Studio')}&body=${encodeURIComponent(`Chào bạn,\n\nMã dùng AI của bạn: ${code}\n\nMở Phloem Studio → Mở khoá AI → nhập mã. Mỗi mã dùng một lần.\n`)}`;
+  const mailCode = (to: string, code: string) => `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent('Mã dùng AI Phloem Email')}&body=${encodeURIComponent(`Chào bạn,\n\nMã dùng AI của bạn: ${code}\n\nMở Phloem Email → Mở khoá AI → nhập mã. Mỗi mã dùng một lần.\n`)}`;
   const pending = d?.requests.filter((r) => r.status === 'pending') || [];
   return (
     <Modal title="Quản lý AI" icon="sparkle" onClose={onClose} wide footer={<><span class="grow small muted">Chỉ admin thấy trang này. Mã chỉ hiện một lần; relay lưu bản băm.</span><Btn onClick={onClose}>Đóng</Btn></>}>

@@ -1359,16 +1359,16 @@ export const TEMPLATES: TemplateDef[] = [
     ],
   },
   {
-    kind: 'agency', name: 'Agency · dịch vụ', desc: 'Hero phủ ảnh · tiles kết quả · 4 bước · trích dẫn · CTA tối', preset: 'Neon', tag: 'trend', brand: { vibe: 'bold', headingFamily: 'Space Grotesk', name: 'Phloem Studio' },
+    kind: 'agency', name: 'Agency · dịch vụ', desc: 'Hero phủ ảnh · tiles kết quả · 4 bước · trích dẫn · CTA tối', preset: 'Neon', tag: 'trend', brand: { vibe: 'bold', headingFamily: 'Space Grotesk', name: 'Phloem Email' },
     fields: { campaignName: 'Agency intro', subject: 'Email đẹp. Chiến lược rõ. Chuyển đổi cao.', preheader: 'Case study: +320% doanh thu từ email trong 3 tháng' },
     blocks: [
-      { kind: 'nav', content: { brand: 'Phloem Studio', links: [{ label: 'Dịch vụ', url: `${B}/services` }, { label: 'Dự án', url: `${B}/work` }, { label: 'Giới thiệu', url: `${B}/about` }] } },
-      { kind: 'hero-overlay', content: { eyebrow: 'Chào mừng đến Phloem Studio', headline: 'Thiết kế email giúp thương hiệu lớn lên.', subhead: 'Chúng tôi làm chiến dịch, template và automation chuyển đổi cao cho thương hiệu hiện đại.', button: { label: 'Xem dự án', url: `${B}/work` }, imageAlt: 'Mockup email trên nền lá xanh' } },
+      { kind: 'nav', content: { brand: 'Phloem Email', links: [{ label: 'Dịch vụ', url: `${B}/services` }, { label: 'Dự án', url: `${B}/work` }, { label: 'Giới thiệu', url: `${B}/about` }] } },
+      { kind: 'hero-overlay', content: { eyebrow: 'Chào mừng đến Phloem Email', headline: 'Thiết kế email giúp thương hiệu lớn lên.', subhead: 'Chúng tôi làm chiến dịch, template và automation chuyển đổi cao cho thương hiệu hiện đại.', button: { label: 'Xem dự án', url: `${B}/work` }, imageAlt: 'Mockup email trên nền lá xanh' } },
       { kind: 'steps', content: { eyebrow: 'Cách làm việc', heading: 'Từ audit đến vận hành trong hai tuần', items: [{ name: 'Audit', body: 'Soát dữ liệu, kênh, hệ thống.' }, { name: 'Nhúng', body: 'Operator vào họp hằng ngày của bạn.' }, { name: 'Vận hành', body: 'Chạy chiến dịch, ship tính năng.' }, { name: 'Chịu kết quả', body: 'Báo cáo số, không báo cáo việc.' }] } },
       { kind: 'stat-tiles', content: { stats: [{ value: '+320%', label: 'doanh thu từ email' }, { value: '+45%', label: 'tỉ lệ mở' }, { value: '+62%', label: 'tỉ lệ click' }, { value: '2.8×', label: 'ROI trong 3 tháng' }] } },
-      { kind: 'quote', content: { quote: 'Phloem Studio thay đổi cách chúng tôi làm email. Kết quả tự nói lên tất cả.', author: '— Giám đốc marketing, thương hiệu lifestyle' } },
+      { kind: 'quote', content: { quote: 'Phloem Email thay đổi cách chúng tôi làm email. Kết quả tự nói lên tất cả.', author: '— Giám đốc marketing, thương hiệu lifestyle' } },
       { kind: 'cta', content: { style: 'dark', heading: 'Cùng làm chiến dịch tiếp theo', subhead: 'Gọi 30 phút, nhận bản phác thảo trong 48 giờ.', button: { label: 'Đặt lịch', url: `${B}/book` } } },
-      { kind: 'footer', content: { brand: 'Phloem Studio', address: 'Phloem Studio · email design · hello@phloem.studio', social: [{ label: 'Instagram', url: `${B}/ig` }, { label: 'LinkedIn', url: `${B}/li` }, { label: 'Website', url: `${B}` }] } },
+      { kind: 'footer', content: { brand: 'Phloem Email', address: 'Phloem Email · email design · hello@phloem.studio', social: [{ label: 'Instagram', url: `${B}/ig` }, { label: 'LinkedIn', url: `${B}/li` }, { label: 'Website', url: `${B}` }] } },
     ],
   },
   {

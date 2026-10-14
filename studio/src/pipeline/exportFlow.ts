@@ -271,7 +271,7 @@ async function downloadZip(p: Project, prof: Profile | null) {
   if (ex.mobile) for (const s of ex.mobile.slices) { const n = `images/mobile-${s.key}.${extOf(s.format)}`; mobileImages[s.key] = n; entries.push({ name: n, data: s.bytes }); }
   const html = htmlFor(p, prof, ex, images, mobileImages, 'full'); warnClip(html);
   entries.unshift({ name: 'index.html', data: utf8Bytes(html) });
-  entries.push({ name: 'README.txt', data: utf8Bytes(`Phloem Studio export — ${p.name}\n\nindex.html dùng ảnh tương đối trong images/. Upload images/ lên host rồi thay "images/" bằng URL tuyệt đối, hoặc dùng Tạo draft để Phloem upload tự động.\nKhông bao giờ tự gửi: bạn duyệt và bấm gửi.\n`) });
+  entries.push({ name: 'README.txt', data: utf8Bytes(`Phloem Email export — ${p.name}\n\nindex.html dùng ảnh tương đối trong images/. Upload images/ lên host rồi thay "images/" bằng URL tuyệt đối, hoặc dùng Tạo draft để Phloem upload tự động.\nKhông bao giờ tự gửi: bạn duyệt và bấm gửi.\n`) });
   const zip = makeZip(entries);
   downloadBytes(`${slug(p.fields.campaignName || p.name)}.zip`, zip, 'application/zip');
   log(`Đã tải ${(zip.length / 1024).toFixed(0)} KB (.zip).`, 'ok');

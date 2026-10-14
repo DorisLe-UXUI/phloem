@@ -242,7 +242,7 @@ const newCode = () => { const b = randomBytes(8); let s = ''; for (let i = 0; i 
 const codeHash = (c) => createHash('sha256').update(String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
 async function mailAdmin(subject, text) {
   if (!RESEND_API_KEY || !ADMIN_EMAILS.length) return false;
-  try { const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: process.env.RESEND_FROM || 'Phloem Studio <onboarding@resend.dev>', to: ADMIN_EMAILS, subject, text }), signal: AbortSignal.timeout(8000) }); return r.ok; } catch { return false; }
+  try { const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: process.env.RESEND_FROM || 'Phloem Email <onboarding@resend.dev>', to: ADMIN_EMAILS, subject, text }), signal: AbortSignal.timeout(8000) }); return r.ok; } catch { return false; }
 }
 async function aiAccessRoute(sub, req, res) {
   try {
@@ -256,7 +256,7 @@ async function aiAccessRoute(sub, req, res) {
       const p = await body(req); const note = String(p?.note || '').slice(0, 500);
       DB.aiRequests.put(row.id, note);
       const subject = `Phloem: ${row.name} xin mã dùng AI`;
-      const text = `${row.name} <${row.email}> xin mã dùng AI trong Phloem Studio.${note ? `\n\nLời nhắn: ${note}` : ''}\n\nTạo mã: mở Phloem Studio → Quản lý AI.`;
+      const text = `${row.name} <${row.email}> xin mã dùng AI trong Phloem Email.${note ? `\n\nLời nhắn: ${note}` : ''}\n\nTạo mã: mở Phloem Email → Quản lý AI.`;
       const mailed = await mailAdmin(subject, text);
       return json(res, 200, { ok: true, mailed, mailto: `mailto:${encodeURIComponent(admin)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}` });
     }

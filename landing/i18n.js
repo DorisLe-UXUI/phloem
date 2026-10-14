@@ -106,7 +106,7 @@ window.applyLang = function (lang) {
   document.querySelectorAll('[data-i]').forEach((el) => { const k = el.getAttribute('data-i'); if (dict[k] != null) el.textContent = dict[k]; });
   document.querySelectorAll('[data-ih]').forEach((el) => { const k = el.getAttribute('data-ih'); if (dict[k] != null) el.innerHTML = dict[k]; });
   document.querySelectorAll('[data-lang]').forEach((b) => { const on = b.getAttribute('data-lang') === lang; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  document.title = lang === 'en' ? 'Phloem Studio — design emails, one click, a draft' : 'Phloem Studio — thiết kế email, bấm một nút, có draft';
+  document.title = lang === 'en' ? 'Phloem Email — design emails, one click, a draft' : 'Phloem Email — thiết kế email, bấm một nút, có draft';
   try { localStorage.setItem('phloem.lang', lang); } catch (e) { /* ignore */ }
   if (typeof window.__phloemAuthUi === 'function') window.__phloemAuthUi();
 };
