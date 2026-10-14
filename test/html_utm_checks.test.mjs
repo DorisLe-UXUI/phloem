@@ -111,3 +111,13 @@ test('html: MSO ghost table pins the width in Outlook, hrefs are click-tracking 
   assert.ok(html.includes('bgcolor="#ff8080"'), 'rgba composited over white');
   assert.ok(html.includes('.ph-main-img,.ph-desktop-img,.ph-mobile-img{max-width:100%!important;}'), 'mobile img cap');
 });
+
+test('html: every slice cell is painted with its edge colour (no white seams on zoomed screens)', () => {
+  const plan = planSlices(newsletter());
+  const cellBg = Object.fromEntries(plan.slices.map((s) => [s.key, '#e8ae4f']));
+  const html = buildEmailHtml({ plan, images: {}, title: 't', preheader: '', includePreheader: false, fullDocument: false, cellBg });
+  const tds = html.match(/<td[^>]*line-height:0[^>]*>/g) || [];
+  const imgCells = tds.filter((t) => /valign="top"/.test(t));
+  assert.ok(imgCells.length >= plan.slices.length, 'one cell per slice');
+  assert.ok(imgCells.every((t) => /bgcolor="#e8ae4f"/.test(t) && /background-color:#e8ae4f/.test(t)), 'each slice cell carries the colour');
+});

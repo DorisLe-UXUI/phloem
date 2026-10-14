@@ -94,3 +94,17 @@ test('keep: an animated block comes out as ONE full-width slice (one GIF), with 
   // the header row above is not merged into the GIF
   assert.equal(plan.rows[0].h, 80);
 });
+
+test('slicer: a link beside a taller logo never cuts the logo (no seam through artwork)', () => {
+  const node = (id, x, y, w, h, extra = {}) => ({ id, name: id, type: 'RECTANGLE', x, y, w, h, visible: true, link: null, linkSource: null, alt: null, altSource: null, hasImage: false, isText: false, text: null, fontSize: null, fill: null, children: [], ...extra });
+  const root = node('root', 0, 0, 600, 400, { type: 'FRAME', children: [
+    node('logo', 40, 100, 90, 90, { hasImage: true }),
+    node('fb', 460, 120, 40, 40, { link: 'https://facebook.com/x' }),
+    node('tt', 510, 120, 40, 40, { link: 'https://tiktok.com/@x' }),
+  ] });
+  const plan = planSlices(root);
+  const cutsInsideLogo = plan.rows.map((r) => r.y).filter((y) => y > 101 && y < 189);
+  assert.deepEqual(cutsInsideLogo, [], 'no row starts inside the logo');
+  const fb = plan.slices.find((s) => s.link === 'https://facebook.com/x');
+  assert.ok(fb && fb.y <= 100 && fb.y + fb.h >= 190, 'the icon row spans the logo height');
+});

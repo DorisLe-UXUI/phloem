@@ -175,11 +175,14 @@ async function uploadAll(prof: Profile, p: Project, ex: Exported, prev: DraftRec
   return { images, mobileImages, files, cleanup };
 }
 
+const bgMap = (list: ExportedSlice[]): Record<string, string> => Object.fromEntries(list.filter((s) => s.bg).map((s) => [s.key, s.bg!]));
+
 export function htmlFor(p: Project, prof: Profile | null, ex: Exported, images: Record<string, string>, mobileImages: Record<string, string>, mode: 'fragment' | 'full'): string {
   const today = new Date().toISOString().slice(0, 10);
   return buildEmailHtml({
     plan: ex.plan, images,
-    mobile: ex.mobile ? { plan: ex.mobile.plan, images: mobileImages } : null,
+    mobile: ex.mobile ? { plan: ex.mobile.plan, images: mobileImages, cellBg: bgMap(ex.mobile.slices) } : null,
+    cellBg: bgMap(ex.slices),
     title: p.fields.subject || p.fields.campaignName || p.name,
     preheader: p.fields.preheader,
     includePreheader: mode === 'full', fullDocument: mode === 'full',

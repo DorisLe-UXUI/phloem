@@ -107,19 +107,37 @@ export async function exportDocSlices(doc: Doc, brand: Brand, plan: SlicePlan, s
     done += members.length; onProgress?.(Math.min(done, plan.slices.length), plan.slices.length);
   }
   const out: ExportedSlice[] = [];
+  const fctx = full.getContext('2d', { willReadFrequently: true })!;
   for (let i = 0; i < plan.slices.length; i++) {
     const s = plan.slices[i];
+    const bg = edgeColor(fctx, s, scale);
     const g = gifBytes.get(s.key);
-    if (g) { out.push({ key: s.key, bytes: g, format: 'GIF', hash: fnv1a(g), w: s.w, h: s.h, scale: 1 }); continue; }
+    if (g) { out.push({ key: s.key, bytes: g, format: 'GIF', hash: fnv1a(g), w: s.w, h: s.h, scale: 1, bg }); continue; }
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(s.w * scale)); c.height = Math.max(1, Math.round(s.h * scale));
     c.getContext('2d')!.drawImage(full, Math.round(s.x * scale), Math.round(s.y * scale), c.width, c.height, 0, 0, c.width, c.height);
     const bytes = await canvasToBytes(c);
-    out.push({ key: s.key, bytes, format: 'PNG', hash: fnv1a(bytes), w: s.w, h: s.h, scale });
+    out.push({ key: s.key, bytes, format: 'PNG', hash: fnv1a(bytes), w: s.w, h: s.h, scale, bg });
     done++; onProgress?.(Math.min(done, plan.slices.length), plan.slices.length);
     if (i % 8 === 7) await new Promise((r) => setTimeout(r, 0)); // keep the UI responsive
   }
   return out;
+}
+
+/** Most common colour (5-bit buckets) along a slice's bottom row and right column: the colour a seam would expose. */
+function edgeColor(ctx: CanvasRenderingContext2D, s: { x: number; y: number; w: number; h: number }, scale: number): string | undefined {
+  try {
+    const x0 = Math.round(s.x * scale), y0 = Math.round(s.y * scale), w = Math.max(1, Math.round(s.w * scale)), h = Math.max(1, Math.round(s.h * scale));
+    const bottom = ctx.getImageData(x0, y0 + h - 1, w, 1).data, right = ctx.getImageData(x0 + w - 1, y0, 1, h).data;
+    const counts = new Map<number, { n: number; r: number; g: number; b: number }>();
+    const add = (d: Uint8ClampedArray) => { for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 200) continue; const k = ((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3); const e = counts.get(k) || { n: 0, r: 0, g: 0, b: 0 }; e.n++; e.r += d[i]; e.g += d[i + 1]; e.b += d[i + 2]; counts.set(k, e); } };
+    add(bottom); add(right);
+    let best: { n: number; r: number; g: number; b: number } | null = null;
+    for (const e of counts.values()) if (!best || e.n > best.n) best = e;
+    if (!best) return undefined;
+    const hx = (v: number) => Math.round(v / best!.n).toString(16).padStart(2, '0');
+    return `#${hx(best.r)}${hx(best.g)}${hx(best.b)}`;
+  } catch { return undefined; }
 }
 
 export async function renderDocPng(doc: Doc, brand: Brand, scale = 1): Promise<Uint8Array> {

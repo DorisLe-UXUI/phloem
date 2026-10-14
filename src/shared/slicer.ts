@@ -38,6 +38,29 @@ function linkRegions(root: NNode): Region[] {
   return regs;
 }
 
+/** A link (social icon, small button) beside a taller picture (logo, photo) would cut that picture into a strip that
+ *  sits in a multi-column row; on zoomed screens such strips show seams right through the artwork. The link's band
+ *  grows to the picture's full height instead, so the picture is never cut there (its clickable area grows a little). */
+function widenBesideImages(regs: Region[], root: NNode): void {
+  const pics = flatten(root).map((f) => f.node).filter((n) => n.hasImage && !n.isText && n.w >= 24 && n.h >= 24 && n.h <= 420);
+  if (!pics.length) return;
+  for (const r of regs) {
+    let a = r.y, b = r.y + r.h;
+    for (let pass = 0; pass < 4; pass++) {
+      let grew = false;
+      for (const p of pics) {
+        const beside = p.x >= r.x + r.w || p.x + p.w <= r.x; // no horizontal overlap with the link
+        if (!beside) continue;
+        const overlaps = p.y < b - 1 && p.y + p.h > a + 1;
+        const crosses = p.y < a - 1 || p.y + p.h > b + 1;
+        if (overlaps && crosses) { a = Math.min(a, p.y); b = Math.max(b, p.y + p.h); grew = true; }
+      }
+      if (!grew) break;
+    }
+    if (a < r.y || b > r.y + r.h) { r.y = Math.max(0, a); r.h = Math.min(root.h, b) - r.y; }
+  }
+}
+
 /** Innermost (deepest, then smallest) region containing the point. */
 function pickRegion(regs: Region[], px: number, py: number): Region | null {
   let best: Region | null = null;
@@ -223,6 +246,7 @@ export function planSlices(root: NNode, opts: Partial<SlicerOptions> = {}): Slic
   const o: SlicerOptions = { ...DEFAULT_SLICER_OPTIONS, ...opts };
   const W = Math.round(root.w), H = Math.round(root.h);
   const regs = linkRegions(root);
+  widenBesideImages(regs, root);
   const keeps = (o.keep || []).map((k) => clipToFrame(k, W, H)).filter((k): k is Rect => !!k && k.h >= 1);
   const spans = uniteSpans(keeps.map((k) => [k.y, k.y + k.h] as [number, number]));
 

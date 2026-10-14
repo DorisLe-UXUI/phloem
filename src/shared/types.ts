@@ -167,6 +167,9 @@ export interface ExportedSlice {
   w: number;
   h: number;
   scale: number;
+  /** Colour along the slice's bottom/right edge (#rrggbb): its table cell is painted with it, so a sub-pixel seam
+   *  between slices (zoomed screens, scaled Gmail) shows the same colour instead of a white hairline. */
+  bg?: string;
 }
 
 export interface FrameSummary {

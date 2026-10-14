@@ -7,7 +7,9 @@ export interface HtmlInput {
   plan: SlicePlan;
   /** slice key -> hosted image URL (or relative path for the zip export). */
   images: Record<string, string>;
-  mobile?: { plan: SlicePlan; images: Record<string, string> } | null;
+  mobile?: { plan: SlicePlan; images: Record<string, string>; cellBg?: Record<string, string> } | null;
+  /** slice key -> edge colour; painted on the slice's cell so seams between slices never show the page behind. */
+  cellBg?: Record<string, string>;
   title: string;
   preheader: string;
   /** Include the hidden preheader div. Off when pasting into a brand template that already has one. */
@@ -52,16 +54,19 @@ function imgTag(src: string, w: number, h: number, alt: string, cls: string, flu
   return `<img src="${esc(src)}" width="${w}" height="${h}" alt="${esc(alt)}" class="${cls}" style="${style}" />`;
 }
 
-function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlInput, cls: string): string {
+function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlInput, cls: string, cellBg: Record<string, string> = {}): string {
   const W = plan.width;
   const rows: string[] = [];
+  // a cell painted in its slice's edge colour: sub-pixel seams (125%/150% zoom, scaled clients) stay invisible
+  const paint = (key: string) => { const c = cellBg[key]; return c && /^#[0-9a-f]{6}$/i.test(c) ? { attr: ` bgcolor="${c}"`, css: `background-color:${c};` } : { attr: '', css: '' }; };
   for (const row of plan.rows) {
     if (row.cells.length === 1) {
       const s = row.cells[0];
       const src = images[s.key] ?? '';
       let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
       if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
-      rows.push(`<tr><td align="left" valign="top" style="padding:0;margin:0;line-height:0;font-size:0;">${inner}</td></tr>`);
+      const p = paint(s.key);
+      rows.push(`<tr><td align="left" valign="top"${p.attr} style="padding:0;margin:0;line-height:0;font-size:0;${p.css}">${inner}</td></tr>`);
       continue;
     }
     // multi-column row: nested table, proportional widths so columns stay aligned when fluid
@@ -70,7 +75,8 @@ function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlIn
       const src = images[s.key] ?? '';
       let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
       if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
-      return `<td width="${pct}%" align="left" valign="top" style="padding:0;margin:0;line-height:0;font-size:0;width:${pct}%;">${inner}</td>`;
+      const p = paint(s.key);
+      return `<td width="${pct}%" align="left" valign="top"${p.attr} style="padding:0;margin:0;line-height:0;font-size:0;width:${pct}%;${p.css}">${inner}</td>`;
     });
     rows.push(
       `<tr><td style="padding:0;margin:0;line-height:0;font-size:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;table-layout:fixed;"><tr>${tds.join('')}</tr></table></td></tr>`,
@@ -92,11 +98,11 @@ export function buildEmailHtml(inp: HtmlInput): string {
   }
 
   const hasMobile = !!(inp.mobile && inp.mobile.plan.slices.length);
-  const desktop = renderPlan(plan, inp.images, inp, hasMobile ? 'ph-desktop' : 'ph-main');
+  const desktop = renderPlan(plan, inp.images, inp, hasMobile ? 'ph-desktop' : 'ph-main', inp.cellBg);
   parts.push(desktop);
 
   if (hasMobile && inp.mobile) {
-    const mob = renderPlan(inp.mobile.plan, inp.mobile.images, inp, 'ph-mobile');
+    const mob = renderPlan(inp.mobile.plan, inp.mobile.images, inp, 'ph-mobile', inp.mobile.cellBg);
     parts.push(
       `<!--[if !mso]><!--><div class="ph-mobile-wrap" style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${mob}</div><!--<![endif]-->`,
     );
