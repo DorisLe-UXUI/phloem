@@ -84,6 +84,7 @@ const server = createServer(async (req, res) => {
         db: true,
         site: true,
         google: GOOGLE_CLIENT_ID,
+        commit: String(process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '').slice(0, 7), // which build answers (Render sets RENDER_GIT_COMMIT)
         users: AUTH.count(),
       });
     }
