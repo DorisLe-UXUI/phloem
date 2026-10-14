@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS kv (
 CREATE TABLE IF NOT EXISTS profiles (
   owner TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, enc BLOB NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ai_codes (
+  id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+  used_by TEXT REFERENCES users(id) ON DELETE SET NULL, used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS ai_requests (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, note TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending'
+);
 CREATE TABLE IF NOT EXISTS project_tombstones (
   id TEXT PRIMARY KEY, owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, at TEXT NOT NULL
 );
@@ -63,12 +70,20 @@ export function openDb(file) {
   // Migrations (idempotent): asset meta (source website / project tags) added 2026-10.
   try { db.exec('ALTER TABLE assets ADD COLUMN meta TEXT'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); } catch { /* column exists */ }
+  try { db.exec('ALTER TABLE users ADD COLUMN ai_access INTEGER NOT NULL DEFAULT 0'); } catch { /* column exists */ }
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users(google_sub) WHERE google_sub IS NOT NULL'); } catch { /* exists */ }
   // housekeeping: sessions idle for 30 days and tombstones older than 90 days are gone
   try { db.prepare("DELETE FROM sessions WHERE last_seen < ?").run(new Date(Date.now() - 30 * 86400e3).toISOString()); db.prepare('DELETE FROM project_tombstones WHERE at < ?').run(new Date(Date.now() - 90 * 86400e3).toISOString()); } catch { /* ignore */ }
   const q = (sql) => db.prepare(sql);
   const S = {
     userByEmail: q('SELECT * FROM users WHERE email = ?'), userById: q('SELECT * FROM users WHERE id = ?'), userByGoogle: q('SELECT * FROM users WHERE google_sub = ?'), userLinkGoogle: q('UPDATE users SET google_sub = ? WHERE id = ?'),
+    userSetPassword: q('UPDATE users SET password = ? WHERE id = ?'), userSetAi: q('UPDATE users SET ai_access = ? WHERE id = ?'),
+    userList: q('SELECT id, name, email, created_at, ai_access, google_sub IS NOT NULL AS google FROM users ORDER BY created_at DESC LIMIT 500'),
+    codeAdd: q('INSERT INTO ai_codes (id, hash, note, created_at) VALUES (?, ?, ?, ?)'), codeUse: q('UPDATE ai_codes SET used_by = ?, used_at = ? WHERE hash = ? AND used_by IS NULL'),
+    codeList: q('SELECT c.id, c.note, c.created_at, c.used_at, u.email AS used_by FROM ai_codes c LEFT JOIN users u ON u.id = c.used_by ORDER BY c.created_at DESC LIMIT 200'),
+    reqPut: q("INSERT INTO ai_requests (user_id, note, at, status) VALUES (?, ?, ?, 'pending') ON CONFLICT(user_id) DO UPDATE SET note = excluded.note, at = excluded.at, status = 'pending'"),
+    reqDone: q("UPDATE ai_requests SET status = 'done' WHERE user_id = ?"), reqGet: q('SELECT * FROM ai_requests WHERE user_id = ?'),
+    reqList: q("SELECT r.user_id, r.note, r.at, r.status, u.email, u.name FROM ai_requests r JOIN users u ON u.id = r.user_id ORDER BY r.status = 'pending' DESC, r.at DESC LIMIT 200"),
     userInsert: q('INSERT INTO users (id, name, email, brand, password, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
     userCount: q('SELECT COUNT(*) AS n FROM users'),
     sessAdd: q('INSERT OR REPLACE INTO sessions (token_hash, user_id, agent, created_at, last_seen) VALUES (?, ?, ?, ?, ?)'),
@@ -106,6 +121,9 @@ export function openDb(file) {
       byId: (id) => S.userById.get(id) || null,
       byGoogle: (sub) => (sub ? S.userByGoogle.get(sub) || null : null),
       linkGoogle: (id, sub) => { S.userLinkGoogle.run(sub, id); },
+      setPassword: (id, hash) => { S.userSetPassword.run(hash, id); },
+      setAi: (id, on) => { S.userSetAi.run(on ? 1 : 0, id); },
+      list: () => S.userList.all().map((u) => ({ id: u.id, name: u.name, email: u.email, createdAt: u.created_at, ai: !!u.ai_access, google: !!u.google })),
       insert: (u) => { S.userInsert.run(u.id, u.name, u.email, u.brand || '', u.password, u.createdAt || now()); if (u.googleSub) S.userLinkGoogle.run(u.googleSub, u.id); return u; },
       count: () => Number(S.userCount.get().n),
     },
@@ -148,6 +166,17 @@ export function openDb(file) {
     kv: {
       get: (owner, key) => { const r = S.kvGet.get(owner, key); return r ? { value: JSON.parse(r.json), updatedAt: r.updated_at } : { value: null, updatedAt: null }; },
       put: (owner, key, value, updatedAt) => { const t = updatedAt || now(); S.kvPut.run(owner, String(key).slice(0, 64), JSON.stringify(value ?? null), t); return { updatedAt: t }; },
+    },
+    aiCodes: {
+      add: (id, hash, note) => { S.codeAdd.run(id, hash, String(note || '').slice(0, 200), now()); },
+      redeem: (hash, userId) => Number(S.codeUse.run(userId, now(), hash).changes) > 0,
+      list: () => S.codeList.all().map((c) => ({ id: c.id, note: c.note, createdAt: c.created_at, usedBy: c.used_by || null, usedAt: c.used_at || null })),
+    },
+    aiRequests: {
+      put: (userId, note) => { S.reqPut.run(userId, String(note || '').slice(0, 500), now()); },
+      done: (userId) => { S.reqDone.run(userId); },
+      get: (userId) => S.reqGet.get(userId) || null,
+      list: () => S.reqList.all().map((r) => ({ userId: r.user_id, email: r.email, name: r.name, note: r.note, at: r.at, status: r.status })),
     },
     stats: (owner) => ({ projects: S.projCount.get(owner), assets: S.assetUsage.get(owner), sessions: S.sessList.all(owner).length }),
     usageAll: () => Number(S.usageAll.get().bytes),

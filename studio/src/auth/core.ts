@@ -1,7 +1,7 @@
 // Accounts, shared by the landing page (via studio/dist/auth.js) and Studio.
 // Two modes: 'relay' when the Studio's relay URL answers with auth support, else 'local'
 // (users live in this browser's IndexedDB, passwords hashed with PBKDF2 via WebCrypto).
-export interface User { id: string; name: string; email: string; brand: string; createdAt: string }
+export interface User { id: string; name: string; email: string; brand: string; createdAt: string; /** relay: may use the AI */ ai?: boolean; /** relay: manages AI access codes */ admin?: boolean }
 export interface Session { token: string; user: User; mode: 'local' | 'relay'; relayUrl?: string }
 export interface AuthOpts { relayUrl?: string; relayToken?: string }
 export interface Credentials { name?: string; email: string; password: string; brand?: string }
@@ -153,6 +153,8 @@ export async function restore(opts: AuthOpts = readStudioRelay()): Promise<Sessi
 /** A relay route answered 401: the session is dead. Drop it and explain. */
 export function expired(): Error { setSession(null); return new AuthError('expired' as AuthCode, 'Phiên đăng nhập relay đã hết hạn hoặc chưa đăng nhập. Bấm Đăng nhập để dùng AI.'); }
 export function logout(): void { setSession(null); }
+/** Replace the signed-in user's profile (e.g. after the relay granted AI access) without a new token. */
+export function updateSessionUser(user: User): void { const s = getSession(); if (s) setSession({ ...s, user }); }
 /** Relay info (auth, google client id…) for the configured relay, or null. */
 export async function relayInfo(opts: AuthOpts = readStudioRelay()): Promise<{ auth?: boolean; google?: string; ai?: boolean } | null> {
   if (!opts.relayUrl) return null;

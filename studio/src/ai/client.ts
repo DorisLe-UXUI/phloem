@@ -4,7 +4,7 @@
 //   3. the claude.ai artifact `sample` capability (no key needed inside claude.ai)
 import Anthropic from '@anthropic-ai/sdk';
 import { getSession, expired } from '../auth/core';
-import { get } from '../store';
+import { get, set } from '../store';
 
 export interface AiImage { name: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; base64: string }
 export interface AiTurn { role: 'user' | 'assistant'; text: string; images?: AiImage[] }
@@ -103,6 +103,7 @@ export async function askClaude(req: AiRequest): Promise<string> {
     });
     const j = await r.json().catch(() => ({}));
     if (r.status === 401) throw expired();
+    if (r.status === 403 && j.code === 'ai_locked') { set({ modal: 'aicode' }); throw new Error(j.error || 'AI cần mã truy cập.'); }
     if (!r.ok) throw new Error(j.error || `Relay /ai trả HTTP ${r.status}`);
     return String(j.text || '');
   }

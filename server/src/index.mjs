@@ -28,7 +28,9 @@ const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', 
 // Ephemeral hosts: pull the last database snapshot from the backup bucket before opening it (no-op without BACKUP_S3_*).
 const BACKUP = backupConfig();
 if (BACKUP) { const { mkdirSync } = await import('node:fs'); mkdirSync(DATA_DIR, { recursive: true }); await restoreBackup(BACKUP, DATA_DIR); }
-const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '' });
+const ADMIN_EMAILS = String(process.env.ADMIN_EMAILS || 'vankhanh.le@sentryxp.com').toLowerCase().split(/[\s,;]+/).filter(Boolean);
+const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '', adminEmails: ADMIN_EMAILS, adminNeedsGoogle: process.env.ADMIN_REQUIRE_GOOGLE !== '0' });
+const RESEND_API_KEY = process.env.RESEND_API_KEY || ''; // optional: e-mail the admin when someone asks for AI access
 const DB = AUTH.db;
 const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR);
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
@@ -104,7 +106,8 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/image' && req.method === 'GET') { if (!gate(req, res)) return; return await imageRoute(url.searchParams.get('url') || '', res); }
     if (url.pathname === '/proxy' && req.method === 'POST') { if (!RELAY_TOKEN && !AUTH.me(bearer(req)) && throttled(`proxy:${ipOf(req)}`, 400, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều request qua relay. Đăng nhập tài khoản relay để không bị giới hạn.' }); return await proxy(await body(req), res); }
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
-    if (url.pathname === '/ai' && req.method === 'POST') { if (!gate(req, res)) return; return await ai(await body(req), res); }
+    if (url.pathname === '/ai' && req.method === 'POST') { if (!aiGate(req, res)) return; return await ai(await body(req), res); }
+    if (url.pathname.startsWith('/aiaccess')) return await aiAccessRoute(url.pathname.slice('/aiaccess'.length) || '/', req, res);
     if (url.pathname === '/oauth/start' && req.method === 'POST') return oauthStart(await body(req), res);
     if (url.pathname.startsWith('/oauth/poll/') && req.method === 'GET') return oauthPoll(url.pathname.split('/').pop(), res);
     if (url.pathname === '/oauth/refresh' && req.method === 'POST') return await oauthRefresh(await body(req), res);
@@ -186,6 +189,66 @@ async function ai(p, res) {
     const status = e?.status || 500;
     json(res, status, { error: e?.message || String(e) });
   }
+}
+
+// ---------- AI access codes ----------
+// Everyone can sign in; the AI (which costs the relay owner money) opens only for admins, users an admin granted, and
+// users who redeemed a one-time code an admin created. Requests are logged here and mailed to the admin by the user's
+// own mail app (mailto), or by Resend when RESEND_API_KEY is set.
+function aiGate(req, res) {
+  if (RELAY_TOKEN && req.headers['x-phloem-token'] === RELAY_TOKEN) return true;
+  const row = AUTH.meRow(bearer(req));
+  if (!row) { json(res, 401, { error: 'Cần đăng nhập.', code: 'expired' }); return false; }
+  if (AUTH.pub(row).ai) return true;
+  json(res, 403, { error: `AI cần mã truy cập. Bấm "Xin mã" để gửi yêu cầu tới ${ADMIN_EMAILS[0] || 'quản trị viên'}, rồi nhập mã nhận được.`, code: 'ai_locked' });
+  return false;
+}
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newCode = () => { const b = randomBytes(8); let s = ''; for (let i = 0; i < 8; i++) s += CODE_ALPHABET[b[i] % CODE_ALPHABET.length]; return `PHL-${s.slice(0, 4)}-${s.slice(4)}`; };
+const codeHash = (c) => createHash('sha256').update(String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
+async function mailAdmin(subject, text) {
+  if (!RESEND_API_KEY || !ADMIN_EMAILS.length) return false;
+  try { const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: process.env.RESEND_FROM || 'Phloem Studio <onboarding@resend.dev>', to: ADMIN_EMAILS, subject, text }), signal: AbortSignal.timeout(8000) }); return r.ok; } catch { return false; }
+}
+async function aiAccessRoute(sub, req, res) {
+  try {
+    const row = AUTH.meRow(bearer(req));
+    if (!row) return json(res, 401, { error: 'Cần đăng nhập tài khoản relay.', code: 'expired' });
+    const me = AUTH.pub(row);
+    const admin = ADMIN_EMAILS[0] || '';
+    if (sub === '/' && req.method === 'GET') { const r = DB.aiRequests.get(row.id); return json(res, 200, { access: me.ai, admin: me.admin, requested: r ? r.status : null, adminEmail: admin }); }
+    if (sub === '/request' && req.method === 'POST') {
+      if (throttled(`aireq:${row.id}`, 5, 60 * 60_000)) return json(res, 429, { error: 'Đã gửi yêu cầu, đợi quản trị viên phản hồi.' });
+      const p = await body(req); const note = String(p?.note || '').slice(0, 500);
+      DB.aiRequests.put(row.id, note);
+      const subject = `Phloem: ${row.name} xin mã dùng AI`;
+      const text = `${row.name} <${row.email}> xin mã dùng AI trong Phloem Studio.${note ? `\n\nLời nhắn: ${note}` : ''}\n\nTạo mã: mở Phloem Studio → Quản lý AI.`;
+      const mailed = await mailAdmin(subject, text);
+      return json(res, 200, { ok: true, mailed, mailto: `mailto:${encodeURIComponent(admin)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}` });
+    }
+    if (sub === '/redeem' && req.method === 'POST') {
+      if (throttled(`airedeem:${row.id}`, 10, 10 * 60_000)) return json(res, 429, { error: 'Nhập sai quá nhiều lần. Đợi 10 phút.' });
+      const p = await body(req);
+      if (!DB.aiCodes.redeem(codeHash(p?.code), row.id)) return json(res, 400, { error: 'Mã không đúng hoặc đã được dùng.' });
+      DB.users.setAi(row.id, true); DB.aiRequests.done(row.id);
+      return json(res, 200, { ok: true, user: AUTH.pub(DB.users.byId(row.id)) });
+    }
+    // ---- admin ----
+    if (!me.admin) return json(res, 403, { error: 'Chỉ quản trị viên (đăng nhập bằng Google với email quản trị).' });
+    if (sub === '/admin' && req.method === 'GET') return json(res, 200, { requests: DB.aiRequests.list(), users: DB.users.list(), codes: DB.aiCodes.list() });
+    if (sub === '/admin/code' && req.method === 'POST') {
+      const p = await body(req); const code = newCode();
+      DB.aiCodes.add(`c_${randomBytes(6).toString('hex')}`, codeHash(code), p?.note || '');
+      return json(res, 200, { code }); // shown once; only its hash is stored
+    }
+    if (sub === '/admin/grant' && req.method === 'POST') {
+      const p = await body(req); const u = DB.users.byId(String(p?.userId || ''));
+      if (!u) return json(res, 404, { error: 'không có người dùng này' });
+      DB.users.setAi(u.id, p?.on !== false); if (p?.on !== false) DB.aiRequests.done(u.id);
+      return json(res, 200, { ok: true });
+    }
+    return json(res, 404, { error: 'không có route này' });
+  } catch (e) { return json(res, e.status || 500, { error: e.message }); }
 }
 
 // ---------- asset fetch (Figma renders live on S3 without CORS) ----------

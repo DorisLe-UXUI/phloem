@@ -49,7 +49,7 @@ export function validate(input, { register = false } = {}) {
 
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
 
-export function createAuth({ dataDir, secret = '' }) {
+export function createAuth({ dataDir, secret = '', adminEmails = [], adminNeedsGoogle = true }) {
   mkdirSync(dataDir, { recursive: true });
   if (!secret) {
     const f = join(dataDir, 'auth-secret');
@@ -65,7 +65,10 @@ export function createAuth({ dataDir, secret = '' }) {
       renameSync(legacy, `${legacy}.migrated`);
     } catch (e) { console.error('[auth] users.json migration failed:', e?.message || e); }
   }
-  const pub = (u) => ({ id: u.id, name: u.name, email: u.email, brand: u.brand || '', createdAt: u.created_at || u.createdAt });
+  // Admin = an ADMIN_EMAILS address whose ownership Google has proven (signed in with Google once); the AI is open to
+  // admins and to users an admin granted (or who redeemed an admin's code).
+  const isAdmin = (u) => adminEmails.includes(String(u.email).toLowerCase()) && (!adminNeedsGoogle || !!u.google_sub);
+  const pub = (u) => { const admin = isAdmin(u); return { id: u.id, name: u.name, email: u.email, brand: u.brand || '', createdAt: u.created_at || u.createdAt, ai: admin || !!u.ai_access, admin }; };
   const session = (u, agent) => { const token = signToken(u.id, secret); db.sessions.add(token, u.id, agent); return { token, user: pub(u) }; };
 
   return {
@@ -97,8 +100,11 @@ export function createAuth({ dataDir, secret = '' }) {
       if (!u) {
         u = db.users.byEmail(email);
         if (u && !u.google_sub) {
-          if (linkedUserId !== u.id) throw fail(409, 'exists', 'Email này đã có tài khoản mật khẩu. Đăng nhập bằng mật khẩu trước, rồi bấm Google để liên kết.');
+          // Google proved this email belongs to the person signing in. A password account nobody verified could have been
+          // pre-registered by someone else: unless its owner is the one signed in right now, its password and sessions die.
           db.users.linkGoogle(u.id, sub);
+          if (linkedUserId !== u.id) { db.users.setPassword(u.id, await hashPassword(randomBytes(24).toString('hex'))); db.sessions.removeAll(u.id); }
+          u = db.users.byId(u.id);
         }
         if (!u) u = db.users.insert({ id: `u_${randomBytes(8).toString('hex')}`, name: String(profile.name || email.split('@')[0]).slice(0, 80), email, brand: '', password: await hashPassword(randomBytes(24).toString('hex')), createdAt: new Date().toISOString(), googleSub: sub });
       }
@@ -112,6 +118,10 @@ export function createAuth({ dataDir, secret = '' }) {
       const u = db.users.byId(id);
       return u ? pub(u) : null;
     },
+    /** Full user row by token (for admin / AI checks). */
+    meRow(token) { const id = verifyToken(token, secret); if (!id || db.sessions.check(token) !== id) return null; return db.users.byId(id) || null; },
+    isAdmin,
+    pub,
     logout(token) { db.sessions.remove(token); },
     logoutAll(userId) { db.sessions.removeAll(userId); },
     count() { return db.users.count(); },

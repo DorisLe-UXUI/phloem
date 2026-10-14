@@ -22,6 +22,7 @@ import { AI_MODELS } from '../ai/client';
 import * as auth from '../auth/core';
 import { GoogleButton } from './GoogleButton';
 import { CatalogModal } from './CatalogModal';
+import { AiAdminModal, AiCodeModal } from './AiAccess';
 
 export function Modals() {
   const s = useStore();
@@ -37,6 +38,8 @@ export function Modals() {
     case 'ai': return <AiModal onClose={close} />;
     case 'auth': return <AuthModal onClose={close} />;
     case 'catalog': return <CatalogModal onClose={close} />;
+    case 'aicode': return <AiCodeModal onClose={close} />;
+    case 'aiadmin': return <AiAdminModal onClose={close} />;
     default: return null;
   }
 }

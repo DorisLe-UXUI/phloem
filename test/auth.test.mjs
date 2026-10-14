@@ -102,3 +102,18 @@ test('backup: AWS SigV4 matches the documented S3 GET example', () => {
   assert.equal(r.url.pathname, '/test.txt');
   assert.equal(r.signature, 'f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41');
 });
+
+test('createAuth: admin flag needs an admin e-mail (and Google proof unless disabled); ai flag follows admin or grant', async () => {
+  const { mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'phloem-admin-'));
+  const auth = createAuth({ dataDir: dir, adminEmails: ['boss@test.dev'], adminNeedsGoogle: true });
+  const boss = await auth.register({ name: 'Boss', email: 'boss@test.dev', password: 'password-123' });
+  assert.equal(boss.user.admin, false, 'password-only admin e-mail is not trusted');
+  const g = await auth.loginWithGoogle({ sub: 'g-1', email: 'boss@test.dev', name: 'Boss' });
+  assert.equal(g.user.admin, true); assert.equal(g.user.ai, true);
+  assert.equal(auth.me(boss.token), null, 'the unverified password session was revoked when Google proved the e-mail');
+  const u = await auth.register({ name: 'User', email: 'user@test.dev', password: 'password-123' });
+  assert.equal(u.user.ai, false);
+  auth.db.users.setAi(u.user.id, true);
+  assert.equal(auth.me(u.token).ai, true);
+});

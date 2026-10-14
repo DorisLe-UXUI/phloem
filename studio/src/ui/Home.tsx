@@ -74,6 +74,8 @@ export function Home() {
           <div class="acct" title={s.user.email}>
             <div class="avatar">{(s.user.name || '?').trim().slice(0, 1).toUpperCase()}</div>
             <div class="who"><b>{s.user.name}</b><span>{s.user.brand || s.user.email}</span></div>
+            {s.user.admin ? <Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aiadmin' })} title="Duyệt yêu cầu và tạo mã dùng AI">Quản lý AI</Btn>
+              : !s.user.ai && s.sync.state !== 'off' ? <Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aicode' })} title="AI cần mã từ quản trị viên">Mở khoá AI</Btn> : null}
             <Btn kind="ghost" sm onClick={() => void A.signOut()}>Đăng xuất</Btn>
           </div>
         ) : (
