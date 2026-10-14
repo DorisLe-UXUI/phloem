@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chính sách quyền riêng tư · Phloem Studio</title><meta name="description" content="Phloem Studio thu thập và dùng dữ liệu như thế nào.">
+<style>
+:root{--bg:#060908;--panel:#0c120e;--line:#1b2a1e;--text:#e8f5ec;--muted:#93a99a;--neon:#39ff14}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:40px 16px 80px}a{color:var(--neon)}h1{font-size:30px;line-height:1.2;margin:8px 0 4px}h2{font-size:19px;margin:30px 0 8px}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:22px}.top a{color:var(--text);text-decoration:none;font-weight:800}.dim{color:var(--muted);font-size:14px}
+ul{padding-left:20px}li{margin:4px 0}hr{border:0;border-top:1px solid var(--line);margin:36px 0}.en{color:var(--muted)}
+</style></head><body><main>
+<div class="top"><a href="./">← Phloem Studio</a></div>
+<h1>Chính sách quyền riêng tư</h1>
+<div class="dim">Cập nhật: 14/10/2026 · Phloem Studio (dorisle-uxui.github.io/phloem)</div>
+<h2>Chúng tôi thu thập gì</h2>
+<ul>
+<li><b>Tài khoản</b>: tên, email và mật khẩu đã băm (scrypt). Khi đăng nhập bằng Google, chúng tôi chỉ nhận <b>tên, email và mã định danh Google</b> của bạn (scope openid, email, profile); không đọc Gmail, Drive hay dữ liệu Google nào khác.</li>
+<li><b>Nội dung bạn tạo</b>: project email, ảnh bạn tải lên, kho sản phẩm và hồ sơ client (Mailchimp/Klaviyo). Hồ sơ client được mã hoá AES-256-GCM khi lưu trên relay.</li>
+<li><b>Không dùng tài khoản</b>: mọi thứ chỉ nằm trong trình duyệt của bạn (IndexedDB), không gửi lên máy chủ.</li>
+</ul>
+<h2>Dùng để làm gì</h2>
+<ul>
+<li>Đăng nhập, đồng bộ project giữa các máy, và tạo bản nháp email trong Mailchimp/Klaviyo <b>khi chính bạn bấm</b>. Phloem không bao giờ tự gửi email.</li>
+<li>Tính năng AI: nội dung, ảnh thu nhỏ và hồ sơ website bạn đưa vào được gửi tới Anthropic (Claude) để dựng phương án; không dùng để quảng cáo.</li>
+<li>Không bán, không chia sẻ dữ liệu cho bên thứ ba vì mục đích quảng cáo.</li>
+</ul>
+<h2>Lưu ở đâu</h2>
+<ul>
+<li>Relay chạy trên Render; bản sao lưu cơ sở dữ liệu nằm trong bucket riêng tư Cloudflare R2. Kết nối luôn qua HTTPS.</li>
+<li>Bên xử lý: Render (máy chủ), Cloudflare (lưu trữ sao lưu), Anthropic (AI), Google (đăng nhập), Mailchimp/Klaviyo (chỉ khi bạn kết nối).</li>
+</ul>
+<h2>Quyền của bạn</h2>
+<ul><li>Xem, sửa, xoá project và ảnh ngay trong Studio. Muốn xoá hẳn tài khoản và toàn bộ dữ liệu trên relay, gửi email tới <a href="mailto:vankhanh.le@sentryxp.com">vankhanh.le@sentryxp.com</a>; chúng tôi xử lý trong 30 ngày.</li>
+<li>Thu hồi quyền Google bất cứ lúc nào tại <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li></ul>
+<h2>Liên hệ</h2><p><a href="mailto:vankhanh.le@sentryxp.com">vankhanh.le@sentryxp.com</a></p>
+<hr>
+<div class="en"><h1>Privacy Policy</h1>
+<div class="dim">Updated 14 Oct 2026 · Phloem Studio</div>
+<p><b>What we collect.</b> Account: name, email, a hashed password (scrypt). With Google Sign-In we receive only your name, email and Google account id (openid, email, profile scopes); we never access Gmail, Drive or other Google data. Content you create: email projects, uploaded images, product catalog and ESP client profiles (encrypted with AES-256-GCM on the relay). Without an account everything stays in your browser.</p>
+<p><b>How we use it.</b> To sign you in, sync your projects across devices and create drafts in Mailchimp/Klaviyo only when you click. Phloem never sends email. AI features send the content, thumbnails and website profile you provide to Anthropic (Claude) to compose layouts. We do not sell data or use it for advertising.</p>
+<p><b>Where it is stored.</b> The relay runs on Render; database backups live in a private Cloudflare R2 bucket; all traffic uses HTTPS. Processors: Render, Cloudflare, Anthropic, Google (sign-in), Mailchimp/Klaviyo (only when you connect them).</p>
+<p><b>Your rights.</b> Edit or delete projects and images in Studio. To delete your account and all relay data, email <a href="mailto:vankhanh.le@sentryxp.com">vankhanh.le@sentryxp.com</a> (handled within 30 days). Revoke Google access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p></div>
+</main></body></html>
