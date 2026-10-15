@@ -3368,6 +3368,27 @@ select.in.mk-role {
   font: 600 9px var(--mono);
   font-style: normal;
 }
+.mk-filedrop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.mk-filedrop > span:nth-child(2) {
+  flex: 1;
+  min-width: 220px;
+}
+.mk-filedrop.over {
+  border-color: var(--neon);
+  color: var(--text);
+  box-shadow: var(--glow);
+}
 
 /* studio/styles.css */
 :root {

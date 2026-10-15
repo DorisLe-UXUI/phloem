@@ -74,6 +74,10 @@ export async function importSheet(client: Client, link: string, onStage: (m: str
 }
 
 // ---------- Drive / web → library (the client's past work) ----------
+async function localImage(read: () => Promise<Blob>, name: string, clientId: string): Promise<string | null> {
+  try { const b = await read(); if (!b.type.startsWith('image/') || b.size < 2000) return null; return (await assets.add(b, name, { src: { kind: 'reference' }, client: clientId, project: null })).id; }
+  catch { return null; }
+}
 async function proxyImage(url: string, name: string, clientId: string): Promise<string | null> {
   try {
     const r = await fetch(`${relayBase()}/image?url=${encodeURIComponent(url)}`, { headers: relayAuth(), signal: AbortSignal.timeout(30_000) });
@@ -102,7 +106,7 @@ export async function importDrive(client: Client, link: string, onStage: (m: str
 }
 
 export interface ImportResult { images: number; posts: number; slides: number }
-export interface PostPicture { name: string; path: string; url: string }
+export interface PostPicture { name: string; path: string; url?: string; blob?: () => Promise<Blob> }
 /** Shared by Drive and Figma: the AI pins pictures to the plan's posts by their names, then they are downloaded and attached. */
 async function matchAndPin(client: Client, files: PostPicture[], source: string, onStage: (m: string) => void, spare: number): Promise<ImportResult> {
   const { cachedItems, listItems } = await import('./data');
@@ -134,7 +138,8 @@ async function matchAndPin(client: Client, files: PostPicture[], source: string,
   const worker = async () => {
     for (let k = want.shift(); k !== undefined; k = want.shift()) {
       const f = files[k];
-      const id = await proxyImage(f.url, `${f.path ? `${f.path.replace(/\//g, ' · ')} · ` : ''}${f.name}`, client.id);
+      const label = `${f.path ? `${f.path.replace(/\//g, ' · ')} · ` : ''}${f.name}`;
+      const id = f.blob ? await localImage(f.blob, label, client.id) : await proxyImage(f.url || '', `${f.path ? `${f.path.replace(/\//g, ' · ')} · ` : ''}${f.name}`, client.id);
       if (id) assetOf.set(k, id);
       onStage(`Đang tải ảnh từ ${source} ${++done}/${matched.size + spares.length}…`);
     }
@@ -158,6 +163,29 @@ async function matchAndPin(client: Client, files: PostPicture[], source: string,
   await refreshProjects();
   return { images: assetOf.size, posts, slides };
 }
+/** A local file picked or dropped in the import dialog: its folder path inside the drop (or the ZIP), and how to read it. */
+export interface LocalFile { path: string; name: string; read: () => Promise<Blob> }
+
+/** Pictures from the user's computer (single images, whole folders, ZIP files): ZIPs are opened in the browser, folder
+ *  names are kept so the AI can pin each picture to its post like a Drive folder. */
+export async function importFiles(client: Client, files: LocalFile[], onStage: (m: string) => void, spare = 200): Promise<ImportResult> {
+  const { readZip, imageMime } = await import('../io/unzip');
+  const pics: PostPicture[] = [];
+  for (const f of files) {
+    if (/\.zip$/i.test(f.name)) {
+      onStage(`Đang mở ${f.name}…`);
+      const zipName = f.name.replace(/\.zip$/i, '');
+      for (const e of await readZip(await f.read())) {
+        if (!imageMime(e.path)) continue;
+        const parts = e.path.split('/'); const name = parts.pop() || e.path;
+        pics.push({ name, path: [f.path, zipName, ...parts].filter(Boolean).join('/'), blob: e.read });
+      }
+    } else if (imageMime(f.name)) pics.push({ name: f.name, path: f.path, blob: f.read });
+  }
+  if (!pics.length) throw new Error('Không có ảnh nào trong các file đã chọn (nhận JPG, PNG, WebP, GIF, và ZIP chứa các ảnh đó).');
+  return matchAndPin(client, pics, 'file của bạn', onStage, spare);
+}
+
 /** Every frame of a Figma file (or of the page / section / frame the link points at) rendered to a picture, then pinned to posts
  *  like Drive pictures. Needs the user's Figma token (the same one Phloem Email's "Import từ Figma" uses). */
 export async function importFigma(client: Client, link: string, onStage: (m: string) => void, spare = 40): Promise<ImportResult> {
