@@ -178,7 +178,8 @@ function parseGradient(fn: string, w: number, h: number): Grad | null {
   const m = /^(repeating-)?(linear|radial|conic)-gradient\(([\s\S]*)\)$/i.exec(fn.trim()); if (!m) return null;
   const kind = m[2].toLowerCase();
   let args = splitTop(m[3]);
-  let angle = 90, cx: number | undefined, cy: number | undefined, r: number | undefined, lenPx = 0;
+  // CSS default direction is "to bottom" (180deg): a gradient written without a direction fades top → bottom
+  let angle = 180, cx: number | undefined, cy: number | undefined, r: number | undefined, lenPx = 0;
   const first = args[0] || '';
   if (!isColorTok(splitSpace(first)[0] || '')) {
     args = args.slice(1);
@@ -227,6 +228,21 @@ function parseGradient(fn: string, w: number, h: number): Grad | null {
     for (let k = i; k < j; k++) raw[k].at = a0 + ((a1 - a0) * (k - i + 1)) / (j - i + 1);
   }
   const stops = raw.map((s) => ({ color: s.color, at: Math.max(0, Math.min(1, s.at!)) }));
+  // "transparent" is transparent BLACK: fading to it greys the edge (canvas blends un-premultiplied).
+  // Give each fully transparent stop the colour of its nearest visible neighbour, at alpha 0.
+  const rgbOf = (c: string): [number, number, number, number] | null => {
+    const m = /^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+%?))?\s*\)$/i.exec(c.trim());
+    if (m) return [+m[1], +m[2], +m[3], m[4] == null ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4]];
+    const h = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(c.trim());
+    return h ? [parseInt(h[1].slice(0, 2), 16), parseInt(h[1].slice(2, 4), 16), parseInt(h[1].slice(4, 6), 16), h[2] ? parseInt(h[2], 16) / 255 : 1] : null;
+  };
+  stops.forEach((st, i) => {
+    const v = rgbOf(st.color); if (!v || v[3] > 0) return;
+    for (let d = 1; d < stops.length; d++) for (const j of [i - d, i + d]) {
+      const n = stops[j] && rgbOf(stops[j].color);
+      if (n && n[3] > 0) { st.color = `rgba(${n[0]},${n[1]},${n[2]},0)`; return; }
+    }
+  });
   if (kind === 'conic') return { kind: 'linear', angle: 0, stops: [stops[0], stops[stops.length - 1]] }; // nearest we can paint
   return { kind: kind === 'radial' ? 'radial' : 'linear', angle: angle - 90, stops, cx, cy, r };
 }
