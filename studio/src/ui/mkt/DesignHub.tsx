@@ -81,10 +81,10 @@ export function DesignHub({ client }: { client: Client }) {
       {layout === 'table' && visibleDates.length > 0 && (
         <div class="mk-sheet mk-dsheet" role="grid">
           <table>
-            <thead><tr><th class="sticky-c">#</th><th>Ngày</th><th>Giờ</th><th>Kênh</th><th>Ảnh</th><th>Chủ đề</th><th>Hook</th><th>Caption</th><th>CTA</th><th>Trạng thái</th>{write && <th>Thao tác</th>}</tr></thead>
+            <thead><tr><th class="sticky-c">#</th><th>Ngày</th><th>Giờ</th><th>Kênh</th><th>Ảnh</th><th>Chủ đề</th><th>Hook</th><th>Caption</th><th>CTA</th><th>Trạng thái</th></tr></thead>
             <tbody>
               {visibleDates.map((d) => [
-                <tr key={'g' + d} class="grp"><td class="sticky-c"><Icon name="chevron" size={11} /></td><td colSpan={write ? 10 : 9}><b style={{ textTransform: 'capitalize' }}>{new Date(`${d}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}</b>{d === today ? <span class="chip on" style={{ marginLeft: 8 }}>Hôm nay</span> : null}</td></tr>,
+                <tr key={'g' + d} class="grp"><td class="sticky-c"><Icon name="chevron" size={11} /></td><td colSpan={9}><b style={{ textTransform: 'capitalize' }}>{new Date(`${d}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}</b>{d === today ? <span class="chip on" style={{ marginLeft: 8 }}>Hôm nay</span> : null}</td></tr>,
                 ...shown.filter((r) => r.date === d).map((r, i) => {
                   const des = designOf(r);
                   const c = channelOf(r.channel);
@@ -98,23 +98,19 @@ export function DesignHub({ client }: { client: Client }) {
                         <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sizeForRow(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
                           {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>Chưa có ảnh</em></span>}
                         </button>
+                        {write && <div class="mk-imgacts">
+                          {des
+                            ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sizeForRow(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>
+                            : <button class="ai" onClick={() => void make(sizeForRow(r), r, true)} title="AI vẽ ảnh và dựng bố cục theo nội dung bài"><Icon name="sparkle" size={12} />AI thiết kế</button>}
+                          <button onClick={() => (des ? void A.openProject(des.id) : void make(sizeForRow(r), r, false))} title={des ? 'Mở trang chỉnh sửa (layer, chữ, đồ hoạ)' : 'Dựng bố cục trống theo thương hiệu rồi tự chỉnh'}><Icon name="text" size={12} />Tự thiết kế</button>
+                          <button onClick={() => setOwn(r)} title="Dùng ảnh có sẵn: tải lên, dán, hoặc chọn từ kho"><Icon name="upload" size={12} />{des ? 'Đổi ảnh' : 'Ảnh của bạn'}</button>
+                        </div>}
                       </td>
                       <td class="c-topic"><div class="cv">{r.topic}</div></td>
                       <td><div class="cv">{r.hook}</div></td>
                       <td class="c-cap"><div class="cv">{r.caption}</div></td>
                       <td><div class="cv">{r.cta}</div></td>
                       <td><div class="cv"><StatusChip s={r.status} /></div></td>
-                      {write && <td><div class="cv col" style={{ gap: 4, alignItems: 'flex-start' }}>
-                        {des ? <>
-                          <Btn xs icon="text" onClick={() => void A.openProject(des.id)}>Chỉnh sửa</Btn>
-                          <Btn xs kind="ghost" icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Làm lại', false)) void make(sizeForRow(r), r, true); }}>Làm lại</Btn>
-                          <Btn xs kind="ghost" icon="upload" onClick={() => setOwn(r)}>Đổi ảnh</Btn>
-                        </> : <>
-                          <Btn xs icon="sparkle" onClick={() => void make(sizeForRow(r), r, true)}>AI thiết kế</Btn>
-                          <Btn xs kind="ghost" icon="rect" onClick={() => void make(sizeForRow(r), r, false)}>Tự thiết kế</Btn>
-                          <Btn xs kind="ghost" icon="upload" onClick={() => setOwn(r)}>Ảnh của bạn</Btn>
-                        </>}
-                      </div></td>}
                     </tr>
                   );
                 }),
@@ -143,7 +139,7 @@ export function DesignHub({ client }: { client: Client }) {
                   {write && <div class="row wrap">
                     {des ? <>
                       <Btn xs icon="text" onClick={() => void A.openProject(des.id)}>Chỉnh sửa</Btn>
-                      <Btn xs icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Làm lại', false)) void make(sizeForRow(r), r, true); }}>Làm lại</Btn>
+                      <Btn xs icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sizeForRow(r), r, true); }}>AI gen lại</Btn>
                     </> : <>
                       <Btn xs icon="sparkle" onClick={() => void make(sizeForRow(r), r, true)}>AI thiết kế</Btn>
                       <Btn xs icon="rect" onClick={() => void make(sizeForRow(r), r, false)}>Tự thiết kế</Btn>

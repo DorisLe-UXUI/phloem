@@ -2140,13 +2140,46 @@ select.in.mk-role {
 }
 .mk-dsheet td.c-img {
   padding: 6px;
+  width: 124px;
+}
+.mk-imgacts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   width: 112px;
+  margin-top: 6px;
+}
+.mk-imgacts button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font: 500 11.5px var(--font, inherit);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mk-imgacts button:hover {
+  color: var(--text);
+  border-color: var(--line-3, var(--muted));
+}
+.mk-imgacts button.ai {
+  color: var(--neon);
+  border-color: color-mix(in srgb, var(--neon) 40%, transparent);
+  background: color-mix(in srgb, var(--neon) 8%, transparent);
+}
+.mk-imgacts button.ai:hover {
+  background: color-mix(in srgb, var(--neon) 16%, transparent);
 }
 .mk-thumb {
   display: grid;
   place-items: center;
-  width: 100px;
-  height: 100px;
+  width: 112px;
+  height: 112px;
   padding: 0;
   border: 1px solid var(--line-2);
   border-radius: 8px;
