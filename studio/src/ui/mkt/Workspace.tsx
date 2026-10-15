@@ -236,7 +236,7 @@ function Settings({ client }: { client: Client }) {
   );
 }
 
-function DeleteClient({ client, onClose }: { client: Client; onClose: () => void }) {
+export function DeleteClient({ client, onClose }: { client: Client; onClose: () => void }) {
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const ok = typed.trim().toLowerCase() === client.name.trim().toLowerCase();

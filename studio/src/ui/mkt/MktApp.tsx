@@ -11,12 +11,13 @@ import { CLIENT_TABS, LANGUAGES, MARKETS, channelOf, type Client } from '../../m
 import { Btn, Field, Modal } from '../components';
 import { Icon, Logo } from '../icons';
 import { ClientAvatar, Empty, PageHead, fmtDate } from './bits';
-import { Workspace } from './Workspace';
+import { DeleteClient, Workspace } from './Workspace';
 import { ReviewPage } from './Review';
 
 export function MktApp() {
   const s = useStore();
   const [creating, setCreating] = useState(false);
+  const [removing, setRemoving] = useState<Client | null>(null);
   const [switcher, setSwitcher] = useState(false);
   const [nav, setNav] = useState(false);
   const [loadErr, setLoadErr] = useState('');
@@ -88,9 +89,12 @@ export function MktApp() {
           <NavItem icon="layers" label="Khách hàng" on={v.view === 'clients'} count={active.length} onClick={() => go({ view: 'clients' })} />
           <div class="mk-nav-clients">
             {active.slice(0, 12).map((c) => (
-              <button key={c.id} class={`mk-nav-c ${current?.id === c.id ? 'on' : ''}`} onClick={() => go({ view: 'client', id: c.id, tab: v.view === 'client' ? v.tab : 'overview' })}>
-                <ClientAvatar c={c} size={18} /><span>{c.name}</span>
-              </button>
+              <div key={c.id} class="mk-nav-row">
+                <button class={`mk-nav-c ${current?.id === c.id ? 'on' : ''}`} onClick={() => go({ view: 'client', id: c.id, tab: v.view === 'client' ? v.tab : 'overview' })}>
+                  <ClientAvatar c={c} size={18} /><span>{c.name}</span>
+                </button>
+                {c.role === 'owner' && <button class="mk-nav-del" title={`Xoá khách hàng ${c.name}`} aria-label={`Xoá khách hàng ${c.name}`} onClick={() => setRemoving(c)}><Icon name="trash" size={13} /></button>}
+              </div>
             ))}
             <button class="mk-nav-c add" onClick={() => setCreating(true)}><Icon name="plus" size={14} /><span>Tạo khách hàng</span></button>
           </div>
@@ -110,6 +114,7 @@ export function MktApp() {
         </main>
       </div>
       {creating && <CreateClient onClose={() => setCreating(false)} />}
+      {removing && <DeleteClient client={removing} onClose={() => setRemoving(null)} />}
       {switcher && <Switcher onClose={() => setSwitcher(false)} onCreate={() => { setSwitcher(false); setCreating(true); }} />}
     </div>
   );

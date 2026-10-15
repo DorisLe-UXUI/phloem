@@ -3299,6 +3299,44 @@ select.in.mk-role {
   height: 100%;
   object-fit: cover;
 }
+.mk-nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.mk-nav-row .mk-nav-c {
+  flex: 1;
+  min-width: 0;
+  padding-right: 28px;
+}
+.mk-nav-del {
+  position: absolute;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  opacity: 0;
+}
+.mk-nav-row:hover .mk-nav-del,
+.mk-nav-del:focus-visible {
+  opacity: 1;
+}
+.mk-nav-del:hover {
+  color: var(--err, #ff5c5c);
+  background: var(--panel-3);
+}
+@media (hover: none) {
+  .mk-nav-del {
+    opacity: .7;
+  }
+}
 
 /* studio/styles.css */
 :root {
