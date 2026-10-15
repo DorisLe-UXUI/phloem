@@ -14,6 +14,7 @@ import { createAssetStore, createBlobStore } from './blobs.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
 import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
 import { createMail } from './mail.mjs';
+import { createAudience } from './audience.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -49,7 +50,11 @@ if (!BACKUPS.paused) setTimeout(() => { void ASSETS.migrate(() => { try { DB.raw
 const backupInfo = () => BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), bytes: BACKUPS.bytes, ms: BACKUPS.ms, pending: BACKUPS.dirty, restore: RESTORED, error: BACKUPS.error, assetsInDb: ASSETS.migration.pending } : null;
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 // Unsubscribe + suppression list, open/click tracking, hosted email images, sending accounts and the server-side queue.
-const MAIL = createMail({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_URL, json, body, rawBody: raw, requireUser, throttled });
+const MAIL_HOOKS = {};
+const MAIL = createMail({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_URL, json, body, rawBody: raw, requireUser, throttled, hooks: MAIL_HOOKS });
+// Audience (lists, contacts, forms, automations): personal or per client workspace, access checked like the MKT routes
+const AUD = createAudience({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_URL, json, body, rawBody: raw, requireUser, throttled, ipOf: (r) => ipOf(r), access: (userId, clientId) => DB.access(userId, clientId), can: (acc, what) => can(acc, what), mail: MAIL });
+Object.assign(MAIL_HOOKS, AUD.mailHooks);
 
 const OAUTH = {
   mailchimp: {
@@ -111,16 +116,19 @@ const server = createServer(async (req, res) => {
         backup: backupInfo(),
         commit: String(process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '').slice(0, 7), // which build answers (Render sets RENDER_GIT_COMMIT)
         users: AUTH.count(),
-        mail: MAIL.health(),
+        mail: { ...MAIL.health(), ...AUD.health() },
       });
     }
     if (url.pathname.startsWith('/oauth/callback/')) return await oauthCallback(url, res);
     // client review links: no account, no relay token, only the token in the link (it opens one item of one client)
     if (url.pathname.startsWith('/share/')) return await shareRoute(url, req, res);
     // Links inside sent emails (unsubscribe, open pixel, click): opened by recipients, so no relay token
-    if (/^\/[uoc]\//.test(url.pathname) && await MAIL.handle(url, req, res)) return;
+    if (/^\/([uoc]|hooks)\//.test(url.pathname) && await MAIL.handle(url, req, res)) return;
+    // signup forms (public pages + submit + confirm link)
+    if (url.pathname.startsWith('/f/') && await AUD.handle(url, req, res)) return;
     if (RELAY_TOKEN && req.headers['x-phloem-token'] !== RELAY_TOKEN) return json(res, 401, { error: 'relay token sai hoặc thiếu' });
     if (await MAIL.handle(url, req, res)) return;
+    if (await AUD.handle(url, req, res)) return;
 
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
     if (url.pathname.startsWith('/db/')) return await dbRoute(url, req, res);
@@ -144,6 +152,7 @@ const server = createServer(async (req, res) => {
 });
 
 MAIL.start();
+AUD.start();
 server.listen(PORT, () => {
   console.log(`phloem-relay listening on ${PUBLIC_URL}  (token ${RELAY_TOKEN ? 'required' : 'off'}; oauth mailchimp=${!!OAUTH.mailchimp.clientId} klaviyo=${!!OAUTH.klaviyo.clientId})`);
 });

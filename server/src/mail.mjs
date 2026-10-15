@@ -53,10 +53,21 @@ export function readToken(secret, token) {
 }
 function timingSafe(a, b) { let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
 
-/** Per-recipient HTML: the campaign HTML carries placeholders (set by the studio), filled with this recipient's links. */
-export function personalize(html, base, token, nameHint = '') {
+/** Merge fields: {{first_name}}, {{last_name}}, {{email}}, {{any_custom_field}}, with a fallback after a bar:
+ *  {{first_name|bạn}}. Unknown fields without a fallback become empty (never a raw {{tag}} in an inbox). */
+export function mergeFields(text, fields = {}, html = true) {
+  const f = Object.fromEntries(Object.entries(fields || {}).map(([k, v]) => [k.toLowerCase(), v == null ? '' : String(v)]));
+  if (f.first_name === undefined && f.firstname !== undefined) f.first_name = f.firstname;
+  f.ten ??= f.first_name; f.name ??= [f.first_name, f.last_name].filter(Boolean).join(' ');
+  return String(text).replace(/\{\{\s*([a-z0-9_]+)\s*(?:\|\s*([^}]*?)\s*)?\}\}/gi, (_, k, dflt) => { const v = f[k.toLowerCase()] || dflt || ''; return html ? esc(v) : v; });
+}
+
+/** Per-recipient HTML: the campaign HTML carries placeholders (set by the studio), filled with this recipient's links
+ *  and merge fields (`fields` may also be a plain first-name string, as before). */
+export function personalize(html, base, token, fields = '') {
   const unsub = `${base}/u/${token}`;
-  let out = String(html).replace(/__PHLOEM_UNSUB__/g, unsub).replace(/__PHLOEM_CLICK_(\d+)__/g, (_, i) => `${base}/c/${token}/${i}`).replace(/\{\{\s*(first_?name|ten|name)\s*\}\}/gi, esc(nameHint));
+  const fl = typeof fields === 'string' ? { first_name: fields } : fields || {};
+  let out = mergeFields(String(html).replace(/__PHLOEM_UNSUB__/g, unsub).replace(/__PHLOEM_CLICK_(\d+)__/g, (_, i) => `${base}/c/${token}/${i}`), fl);
   const pixel = `<img src="${base}/o/${token}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0" />`;
   out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, `${pixel}</body>`) : out + pixel;
   return { html: out, unsub };
@@ -71,25 +82,100 @@ async function sendBrevo(s, m) {
   const r = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': s.apiKey, 'Content-Type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ sender: { name: s.fromName || undefined, email: s.fromEmail }, to: [{ email: m.to }], subject: m.subject, htmlContent: m.html, textContent: m.text || undefined, replyTo: s.replyTo ? { email: s.replyTo } : undefined, headers: m.headers }), signal: AbortSignal.timeout(20_000) });
   if (!r.ok) throw new Error(`Brevo ${r.status}: ${(await r.text()).slice(0, 200)}`);
 }
-/** Amazon SES v2 (SigV4 by hand, service "ses"). */
-async function sendSes(s, m) {
+/** Amazon SES v2 call, SigV4 by hand (service "ses"). */
+async function sesCall(s, method, path, body) {
   const region = s.region || 'ap-southeast-1';
-  const host = `email.${region}.amazonaws.com`, path = '/v2/email/outbound-emails';
-  const payload = JSON.stringify({ FromEmailAddress: s.fromName ? `${s.fromName} <${s.fromEmail}>` : s.fromEmail, Destination: { ToAddresses: [m.to] }, ReplyToAddresses: s.replyTo ? [s.replyTo] : undefined, Content: { Simple: { Subject: { Data: m.subject, Charset: 'UTF-8' }, Body: { Html: { Data: m.html, Charset: 'UTF-8' }, ...(m.text ? { Text: { Data: m.text, Charset: 'UTF-8' } } : {}) }, Headers: Object.entries(m.headers || {}).map(([Name, Value]) => ({ Name, Value })) } } });
+  const host = `email.${region}.amazonaws.com`;
+  const payload = body === undefined ? '' : JSON.stringify(body);
   const amzDate = now().replace(/[:-]|\.\d{3}/g, ''), date = amzDate.slice(0, 8);
-  const ph = sha(payload);
-  const canon = ['POST', path, '', `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`, 'content-type;host;x-amz-date', ph].join('\n');
+  const canon = [method, path.split('?')[0], '', `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`, 'content-type;host;x-amz-date', sha(payload)].join('\n');
   const scope = `${date}/${region}/ses/aws4_request`;
   const h = (k, v) => createHmac('sha256', k).update(v).digest();
   const sig = createHmac('sha256', h(h(h(h('AWS4' + s.secret, date), region), 'ses'), 'aws4_request')).update(['AWS4-HMAC-SHA256', amzDate, scope, sha(canon)].join('\n')).digest('hex');
-  const r = await fetch(`https://${host}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Amz-Date': amzDate, Authorization: `AWS4-HMAC-SHA256 Credential=${s.accessKeyId}/${scope}, SignedHeaders=content-type;host;x-amz-date, Signature=${sig}` }, body: payload, signal: AbortSignal.timeout(20_000) });
-  if (!r.ok) throw new Error(`SES ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const r = await fetch(`https://${host}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-Amz-Date': amzDate, Authorization: `AWS4-HMAC-SHA256 Credential=${s.accessKeyId}/${scope}, SignedHeaders=content-type;host;x-amz-date, Signature=${sig}` }, body: payload || undefined, signal: AbortSignal.timeout(20_000) });
+  const text = await r.text();
+  if (!r.ok) throw Object.assign(new Error(`SES ${r.status}: ${text.slice(0, 200)}`), { status: r.status });
+  return text ? JSON.parse(text) : {};
+}
+async function sendSes(s, m) {
+  await sesCall(s, 'POST', '/v2/email/outbound-emails', { FromEmailAddress: s.fromName ? `${s.fromName} <${s.fromEmail}>` : s.fromEmail, Destination: { ToAddresses: [m.to] }, ReplyToAddresses: s.replyTo ? [s.replyTo] : undefined, Content: { Simple: { Subject: { Data: m.subject, Charset: 'UTF-8' }, Body: { Html: { Data: m.html, Charset: 'UTF-8' }, ...(m.text ? { Text: { Data: m.text, Charset: 'UTF-8' } } : {}) }, Headers: Object.entries(m.headers || {}).map(([Name, Value]) => ({ Name, Value })) } } });
+}
+
+// ---------- sending domains: ask the provider for the DNS records, then check them ----------
+const dmarcHint = (domain) => ({ type: 'TXT', name: `_dmarc.${domain}`, value: 'v=DMARC1; p=none;', status: 'recommended', note: 'Khuyên dùng: báo cáo DMARC; đổi p=quarantine khi đã gửi ổn định' });
+async function jsonFetch(url, init) { const r = await fetch(url, { ...init, signal: AbortSignal.timeout(20_000) }); const text = await r.text(); let j = {}; try { j = text ? JSON.parse(text) : {}; } catch { j = { message: text.slice(0, 200) }; } if (!r.ok) throw Object.assign(new Error(j.message || j.error || `HTTP ${r.status}`), { status: r.status }); return j; }
+const DOMAINS = {
+  resend: {
+    async add(s, domain) {
+      const H = { Authorization: `Bearer ${s.apiKey}`, 'Content-Type': 'application/json' };
+      let d;
+      try { d = await jsonFetch('https://api.resend.com/domains', { method: 'POST', headers: H, body: JSON.stringify({ name: domain }) }); }
+      catch (e) { const list = await jsonFetch('https://api.resend.com/domains', { headers: H }); const hit = (list.data || []).find((x) => x.name === domain); if (!hit) throw e; d = await jsonFetch(`https://api.resend.com/domains/${hit.id}`, { headers: H }); }
+      return { id: d.id, ...await DOMAINS.resend.status(s, domain, d.id) };
+    },
+    async status(s, domain, id) {
+      const H = { Authorization: `Bearer ${s.apiKey}` };
+      try { await jsonFetch(`https://api.resend.com/domains/${id}/verify`, { method: 'POST', headers: H }); } catch { /* verify is best effort */ }
+      const d = await jsonFetch(`https://api.resend.com/domains/${id}`, { headers: H });
+      return { verified: d.status === 'verified', status: d.status, records: [...(d.records || []).map((r) => ({ type: r.type, name: r.name.endsWith(domain) ? r.name : `${r.name}.${domain}`, value: r.value, priority: r.priority, status: r.status })), dmarcHint(domain)] };
+    },
+  },
+  brevo: {
+    async add(s, domain) {
+      const H = { 'api-key': s.apiKey, 'Content-Type': 'application/json', accept: 'application/json' };
+      try { await jsonFetch('https://api.brevo.com/v3/senders/domains', { method: 'POST', headers: H, body: JSON.stringify({ name: domain }) }); } catch (e) { if (!/exist/i.test(e.message)) throw e; }
+      return { id: domain, ...await DOMAINS.brevo.status(s, domain) };
+    },
+    async status(s, domain) {
+      const H = { 'api-key': s.apiKey, accept: 'application/json' };
+      try { await jsonFetch(`https://api.brevo.com/v3/senders/domains/${encodeURIComponent(domain)}/authenticate`, { method: 'PUT', headers: H }); } catch { /* not ready yet */ }
+      const d = await jsonFetch(`https://api.brevo.com/v3/senders/domains/${encodeURIComponent(domain)}`, { headers: H });
+      const recs = Object.values(d.dns_records || {}).map((r) => ({ type: r.type, name: r.host_name ? (r.host_name.endsWith(domain) ? r.host_name : `${r.host_name}.${domain}`) : domain, value: r.value, status: r.status ? 'verified' : 'pending' }));
+      return { verified: !!(d.verified && d.authenticated), status: d.authenticated ? 'verified' : 'pending', records: [...recs, dmarcHint(domain)] };
+    },
+  },
+  ses: {
+    async add(s, domain) {
+      try { await sesCall(s, 'POST', '/v2/email/identities', { EmailIdentity: domain }); } catch (e) { if (e.status !== 409 && !/AlreadyExists/i.test(e.message)) throw e; }
+      return { id: domain, ...await DOMAINS.ses.status(s, domain) };
+    },
+    async status(s, domain) {
+      const d = await sesCall(s, 'GET', `/v2/email/identities/${encodeURIComponent(domain)}`);
+      const tokens = d.DkimAttributes?.Tokens || [];
+      const ok = d.VerifiedForSendingStatus === true || d.DkimAttributes?.Status === 'SUCCESS';
+      return { verified: ok, status: d.DkimAttributes?.Status || 'PENDING', records: [...tokens.map((t) => ({ type: 'CNAME', name: `${t}._domainkey.${domain}`, value: `${t}.dkim.amazonses.com`, status: ok ? 'verified' : 'pending' })), { type: 'TXT', name: domain, value: 'v=spf1 include:amazonses.com ~all', status: 'recommended', note: 'Gộp vào bản ghi SPF sẵn có nếu có' }, dmarcHint(domain)] };
+    },
+  },
+};
+
+/** Bounce / complaint notifications from the providers' webhooks → [{ email, kind: 'bounce'|'complaint' }]. */
+export function parseProviderEvents(provider, payload) {
+  const out = [];
+  const add = (email, kind) => { const e = String(email || '').toLowerCase().trim(); if (EMAIL_RE.test(e)) out.push({ email: e, kind }); };
+  const list = Array.isArray(payload) ? payload : [payload];
+  for (const p of list) {
+    if (!p || typeof p !== 'object') continue;
+    if (provider === 'resend') {
+      const kind = p.type === 'email.bounced' ? 'bounce' : p.type === 'email.complained' ? 'complaint' : null;
+      if (kind) for (const e of [].concat(p.data?.to || [])) add(e, kind);
+    } else if (provider === 'brevo') {
+      const kind = ['hard_bounce', 'invalid_email', 'blocked'].includes(p.event) ? 'bounce' : ['spam', 'complaint'].includes(p.event) ? 'complaint' : null;
+      if (kind) add(p.email, kind);
+    } else if (provider === 'ses') {
+      let m = p.Message ?? p; if (typeof m === 'string') { try { m = JSON.parse(m); } catch { continue; } }
+      const t = m.notificationType || m.eventType;
+      if (t === 'Bounce' && (m.bounce?.bounceType || 'Permanent') === 'Permanent') for (const r of m.bounce?.bouncedRecipients || []) add(r.emailAddress, 'bounce');
+      if (t === 'Complaint') for (const r of m.complaint?.complainedRecipients || []) add(r.emailAddress, 'complaint');
+    }
+  }
+  return out;
 }
 const PROVIDERS = { resend: { send: sendResend, perDay: 100, label: 'Resend' }, brevo: { send: sendBrevo, perDay: 300, label: 'Brevo' }, ses: { send: sendSes, perDay: 50000, label: 'Amazon SES' } };
 
 /** Mount the mail routes on the relay. Returns { handle(url, req, res) → true when handled, health(), start() }. */
-export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, requireUser, throttled, env = process.env, log = console.log, providers = PROVIDERS, pace = 150 }) {
+export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, requireUser, throttled, env = process.env, log = console.log, providers = PROVIDERS, pace = 150, hooks = {}, domains = DOMAINS }) {
   db.exec(SCHEMA);
+  try { db.exec('ALTER TABLE mail_queue ADD COLUMN data TEXT'); } catch { /* column exists */ }
   const PROV = providers;
   const img = imageConfig(env);
   const q = (sql) => db.prepare(sql);
@@ -110,8 +196,8 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     senderList: q('SELECT id, enc, updated_at FROM mail_senders WHERE owner = ?'),
     senderGet: q('SELECT enc FROM mail_senders WHERE owner = ? AND id = ?'),
     senderDel: q('DELETE FROM mail_senders WHERE owner = ? AND id = ?'),
-    qAdd: q("INSERT INTO mail_queue (owner, campaign, email, variant, status) VALUES (?, ?, ?, ?, 'queued') ON CONFLICT(owner, campaign, email) DO NOTHING"),
-    qNext: q("SELECT email, variant FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'queued' AND variant IN (?, ?) LIMIT ?"),
+    qAdd: q("INSERT INTO mail_queue (owner, campaign, email, variant, status, data) VALUES (?, ?, ?, ?, 'queued', ?) ON CONFLICT(owner, campaign, email) DO NOTHING"),
+    qNext: q("SELECT email, variant, data FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'queued' AND variant IN (?, ?) LIMIT ?"),
     qMark: q('UPDATE mail_queue SET status = ?, error = ?, sent_at = ?, variant = COALESCE(NULLIF(?, \'\'), variant) WHERE owner = ? AND campaign = ? AND email = ?'),
     qCounts: q('SELECT status, variant, COUNT(*) AS n FROM mail_queue WHERE owner = ? AND campaign = ? GROUP BY status, variant'),
     qSentToday: q("SELECT COUNT(*) AS n FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'sent' AND sent_at >= ?"),
@@ -126,9 +212,11 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     // Gmail/Apple prefetch can hit the pixel several times: count a person once per hour per kind+link
     if (S.evRecent.get(t.owner, t.campaign, eh, kind, link ?? -1, new Date(Date.now() - 3600e3).toISOString())) return;
     S.evAdd.run(t.owner, t.campaign, eh, kind, link, t.variant || '', now());
+    try { hooks.onEvent?.(t, kind, camp(t.owner, t.campaign)); } catch (e) { log('[mail] hook:', e?.message || e); }
   };
   const senders = (owner) => S.senderList.all(owner).map((r) => { try { const s = JSON.parse(decrypt(secret, r.enc)); return { ...s, id: r.id, updatedAt: r.updated_at }; } catch { return null; } }).filter(Boolean);
-  const publicSender = (s) => ({ id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret) });
+  const hookToken = (owner, sid) => b64u(createHmac('sha256', secret).update(`hook:${owner}:${sid}`).digest()).slice(0, 24);
+  const publicSender = (s, owner) => ({ webhook: owner ? `${publicUrl}/hooks/${s.provider}/${owner}/${s.id}/${hookToken(owner, s.id)}` : undefined, domain: s.domain || null, id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret) });
 
   const page = (title, msg, extra = '') => `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f3;font:16px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#141714}main{max-width:440px;margin:24px;padding:32px;background:#fff;border-radius:16px;box-shadow:0 18px 40px -20px rgba(0,0,0,.25);text-align:center}h1{font-size:22px;margin:0 0 8px}p{color:#555;margin:0 0 18px}button{font:inherit;font-weight:700;padding:12px 22px;border:0;border-radius:999px;background:#111;color:#fff;cursor:pointer}small{display:block;margin-top:18px;color:#999}</style></head><body><main><h1>${esc(title)}</h1><p>${msg}</p>${extra}<small>Gửi bằng Phloem Email</small></main></body></html>`;
   const html = (res, code, s) => { res.statusCode = code; res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(s); };
@@ -142,6 +230,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
       const c = camp(t.owner, t.campaign); const from = c?.fromName || c?.from || 'người gửi';
       if (m === 'POST') { // the button on our page, or a mail client's one-click (List-Unsubscribe-Post)
         S.supAdd.run(t.owner, t.email, now(), 'unsubscribe', t.campaign); event(t, 'unsub');
+        try { hooks.onUnsubscribe?.(t, c); } catch (e) { log('[mail] hook:', e?.message || e); }
         html(res, 200, page('Đã huỷ đăng ký', `${esc(t.email)} sẽ không nhận email từ ${esc(from)} nữa.`)); return true;
       }
       // GET shows a confirm button: link scanners that prefetch URLs never unsubscribe anyone by themselves
@@ -158,6 +247,20 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
       if (!dest || !/^https?:\/\//i.test(dest)) { html(res, 404, page('Link không còn', 'Link này không tồn tại hoặc chiến dịch đã bị xoá.')); return true; }
       try { event(t, 'click', i); } catch { /* still redirect */ }
       res.statusCode = 302; res.setHeader('Location', dest); res.setHeader('Cache-Control', 'no-store'); res.end(); return true;
+    }
+    const hk = /^\/hooks\/(resend|brevo|ses)\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(p);
+    if (hk && m === 'POST') {
+      const [, prov, owner, sid, tok] = hk;
+      if (tok !== hookToken(owner, sid)) { json(res, 404, { error: 'not found' }); return true; }
+      let payload; try { payload = JSON.parse((await rawBody(req, 2 * 1024 * 1024)).toString('utf8') || '{}'); } catch { json(res, 400, { error: 'JSON không hợp lệ' }); return true; }
+      // Amazon SNS asks once to confirm the subscription: only ever follow an amazonaws.com URL
+      if (prov === 'ses' && payload?.Type === 'SubscriptionConfirmation' && payload.SubscribeURL) {
+        try { const u2 = new URL(payload.SubscribeURL); if (u2.protocol === 'https:' && /(^|\.)amazonaws\.com$/.test(u2.hostname)) await fetch(u2, { signal: AbortSignal.timeout(10_000) }); } catch { /* ignore */ }
+        json(res, 200, { ok: true }); return true;
+      }
+      const evs = parseProviderEvents(prov, payload);
+      for (const e of evs) { S.supAdd.run(owner, e.email, now(), e.kind, ''); try { hooks.onBounce?.(owner, e.email, e.kind); } catch (er) { log('[mail] hook:', er?.message || er); } }
+      json(res, 200, { ok: true, handled: evs.length }); return true;
     }
     if (p === '/img' || p.startsWith('/mail/')) {
       const u = requireUser(req, res); if (!u) return true;
@@ -204,7 +307,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
         if (sd && m === 'DELETE') { S.supDel.run(u.id, decodeURIComponent(sd[1]).toLowerCase()); json(res, 200, { ok: true }); return true; }
         // ---------- sending accounts ----------
         if (p === '/mail/senders') {
-          if (m === 'GET') { json(res, 200, { senders: senders(u.id).map(publicSender), providers: Object.entries(PROV).map(([k, v]) => ({ id: k, label: v.label, perDay: v.perDay })) }); return true; }
+          if (m === 'GET') { json(res, 200, { senders: senders(u.id).map((x) => publicSender(x, u.id)), providers: Object.entries(PROV).map(([k, v]) => ({ id: k, label: v.label, perDay: v.perDay })) }); return true; }
           if (m === 'POST') {
             const b = await body(req); const prov = String(b?.provider || ''); if (!PROV[prov]) { json(res, 400, { error: 'nhà cung cấp không hỗ trợ' }); return true; }
             if (!EMAIL_RE.test(String(b?.fromEmail || ''))) { json(res, 400, { error: 'Email người gửi không hợp lệ' }); return true; }
@@ -212,8 +315,9 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
             const prev = senders(u.id).find((s) => s.id === id) || {};
             const s = { provider: prov, label: String(b.label || '').slice(0, 60), fromEmail: String(b.fromEmail).trim(), fromName: String(b.fromName || '').slice(0, 120), replyTo: String(b.replyTo || '').slice(0, 200), region: String(b.region || '').slice(0, 30), perDay: Math.max(1, Math.min(100000, Number(b.perDay) || PROV[prov].perDay)), apiKey: b.apiKey ? String(b.apiKey).trim() : prev.apiKey, accessKeyId: b.accessKeyId ? String(b.accessKeyId).trim() : prev.accessKeyId, secret: b.secret ? String(b.secret).trim() : prev.secret };
             if (prov === 'ses' ? !(s.accessKeyId && s.secret) : !s.apiKey) { json(res, 400, { error: 'Thiếu khoá API' }); return true; }
+            if (prev.domain) s.domain = prev.domain;
             S.senderPut.run(u.id, id, encrypt(secret, JSON.stringify(s)), now());
-            json(res, 200, { sender: publicSender({ ...s, id, updatedAt: now() }) }); return true;
+            json(res, 200, { sender: publicSender({ ...s, id, updatedAt: now() }, u.id) }); return true;
           }
         }
         const sdel = /^\/mail\/senders\/([^/]+)$/.exec(p);
@@ -225,6 +329,25 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           await PROV[s.provider].send(s, { to, subject: 'Phloem Email: kiểm tra kênh gửi', html: '<p>Kênh gửi hoạt động. Email này được gửi từ Phloem Email.</p>', text: 'Kênh gửi hoạt động.', headers: {} });
           json(res, 200, { ok: true, to }); return true;
         }
+        const sdom = /^\/mail\/senders\/([^/]+)\/domain$/.exec(p);
+        if (sdom) {
+          const sid = decodeURIComponent(sdom[1]); const s = senders(u.id).find((x) => x.id === sid); if (!s) { json(res, 404, { error: 'không có kênh gửi này' }); return true; }
+          const D = domains[s.provider]; if (!D) { json(res, 400, { error: 'nhà cung cấp chưa hỗ trợ' }); return true; }
+          const save = (domain) => { const { id: _i, updatedAt: _u, ...rest } = s; S.senderPut.run(u.id, sid, encrypt(secret, JSON.stringify({ ...rest, domain })), now()); };
+          try {
+            if (m === 'POST') {
+              const b = await body(req); const name = String(b?.domain || s.fromEmail.split('@')[1] || '').toLowerCase().trim();
+              if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(name)) { json(res, 400, { error: 'Tên miền không hợp lệ' }); return true; }
+              const r = await D.add(s, name); save({ name, id: r.id, verified: r.verified, checkedAt: now() });
+              json(res, 200, { domain: { name, ...r } }); return true;
+            }
+            if (m === 'GET') {
+              if (!s.domain) { json(res, 200, { domain: null }); return true; }
+              const r = await D.status(s, s.domain.name, s.domain.id); save({ ...s.domain, verified: r.verified, checkedAt: now() });
+              json(res, 200, { domain: { name: s.domain.name, ...r } }); return true;
+            }
+          } catch (e) { json(res, 502, { error: `${PROV[s.provider]?.label || s.provider}: ${e.message}${e.status === 401 || e.status === 403 ? ' (khoá API cần quyền quản lý tên miền)' : ''}` }); return true; }
+        }
         // ---------- server-side queue ----------
         if (p === '/mail/send' && m === 'POST') {
           const b = await body(req); const id = String(b?.campaign || '').slice(0, 80);
@@ -232,13 +355,17 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const s = senders(u.id).find((x) => x.id === String(b?.sender || '')); if (!s) { json(res, 400, { error: 'Chọn kênh gửi (Resend / Brevo / Amazon SES).' }); return true; }
           const htmlBody = String(b?.html || ''); if (!htmlBody || htmlBody.length > 600_000) { json(res, 400, { error: 'HTML trống hoặc quá lớn (ảnh phải lưu trên host).' }); return true; }
           if (/cid:/i.test(htmlBody)) { json(res, 400, { error: 'HTML còn ảnh đính kèm (cid:): bật lưu ảnh trên host trước.' }); return true; }
-          const list = [...new Set((Array.isArray(b?.recipients) ? b.recipients : []).map((e) => String(e).toLowerCase().trim()).filter((e) => EMAIL_RE.test(e)))].slice(0, 50000);
-          if (!list.length) { json(res, 400, { error: 'Chưa có người nhận hợp lệ.' }); return true; }
+          // recipients: a pasted list, or a list/segment of the audience (resolved here, subscribed contacts only)
+          let rows = null;
+          if (b?.audience && hooks.resolveRecipients) { const r = await hooks.resolveRecipients(u, b.audience); if (r.error) { json(res, r.status || 400, { error: r.error }); return true; } rows = r.rows; c.audience = { ...r.info }; }
+          const fieldsOf = new Map((rows || []).map((x) => [x.email, x.fields || null]));
+          const list = [...new Set((rows ? rows.map((x) => x.email) : Array.isArray(b?.recipients) ? b.recipients : []).map((e) => String(e).toLowerCase().trim()).filter((e) => EMAIL_RE.test(e)))].slice(0, 50000);
+          if (!list.length) { json(res, 400, { error: rows ? 'Danh sách/phân nhóm này chưa có ai đang đăng ký.' : 'Chưa có người nhận hợp lệ.' }); return true; }
           const ab = b?.ab && b.ab.subjectB ? { subjectB: String(b.ab.subjectB).slice(0, 300), split: Math.max(0.05, Math.min(0.5, Number(b.ab.split) || 0.2)), metric: b.ab.metric === 'clicks' ? 'clicks' : 'opens', waitHours: Math.max(1, Math.min(72, Number(b.ab.waitHours) || 4)), phase: 'test', winner: null } : null;
           // A/B: the first split×N recipients get A/B halves, the rest wait for the winner
           const nTest = ab ? Math.max(2, Math.round(list.length * ab.split)) : 0;
-          list.forEach((e, i) => S.qAdd.run(u.id, id, e, ab ? (i < nTest ? (i % 2 ? 'B' : 'A') : 'rest') : 'A'));
-          c.send = { sender: s.id, subject: String(b.subject || c.subject || ''), html: htmlBody, text: String(b.text || '').slice(0, 100000), sendAt: b.sendAt && !Number.isNaN(Date.parse(b.sendAt)) ? new Date(b.sendAt).toISOString() : now(), status: 'scheduled', perDay: Math.max(1, Math.min(s.perDay, Number(b.perDay) || s.perDay)), ab, createdAt: now(), testSentAt: null, lastError: '' };
+          list.forEach((e, i) => { const f = fieldsOf.get(e); S.qAdd.run(u.id, id, e, ab ? (i < nTest ? (i % 2 ? 'B' : 'A') : 'rest') : 'A', f ? JSON.stringify(f) : null); });
+          c.send = { sender: s.id, subject: String(b.subject || c.subject || ''), html: c.audience?.footerHtml ? (/<\/body>/i.test(htmlBody) ? htmlBody.replace(/<\/body>/i, `${c.audience.footerHtml}</body>`) : htmlBody + c.audience.footerHtml) : htmlBody, text: String(b.text || '').slice(0, 100000), sendAt: b.sendAt && !Number.isNaN(Date.parse(b.sendAt)) ? new Date(b.sendAt).toISOString() : now(), status: 'scheduled', perDay: Math.max(1, Math.min(s.perDay, Number(b.perDay) || s.perDay)), ab, createdAt: now(), testSentAt: null, lastError: '' };
           saveCamp(u.id, id, c);
           json(res, 200, { ok: true, recipients: list.length, test: nTest, sendAt: c.send.sendAt }); return true;
         }
@@ -294,11 +421,13 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
         for (const r of batch) {
           if (S.supHas.get(owner, r.email)) { S.qMark.run('skipped', 'đã huỷ đăng ký', now(), '', owner, id, r.email); continue; }
           const token = makeToken(secret, owner, id, r.email, r.variant);
-          const per = personalize(s0.html, publicUrl, token);
-          const subject = r.variant === 'B' && s0.ab ? s0.ab.subjectB : s0.subject;
+          let fields = { email: r.email }; try { if (r.data) fields = { ...JSON.parse(r.data), email: r.email }; } catch { /* plain row */ }
+          const per = personalize(s0.html, publicUrl, token, fields);
+          const subject = mergeFields(r.variant === 'B' && s0.ab ? s0.ab.subjectB : s0.subject, fields, false);
           try {
-            await PROV[sender.provider].send(sender, { to: r.email, subject, html: per.html, text: s0.text ? `${s0.text}\n\nHuỷ đăng ký: ${per.unsub}` : '', headers: { 'List-Unsubscribe': `<${per.unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
+            await PROV[sender.provider].send(sender, { to: r.email, subject, html: per.html, text: s0.text ? `${mergeFields(s0.text, fields, false)}\n\nHuỷ đăng ký: ${per.unsub}` : '', headers: { 'List-Unsubscribe': `<${per.unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
             S.qMark.run('sent', '', now(), '', owner, id, r.email);
+            try { hooks.onSent?.(owner, c, r.email); } catch { /* stats only */ }
           } catch (e) {
             const msg = String(e.message || e).slice(0, 300); S.qMark.run('failed', msg, now(), '', owner, id, r.email); s0.lastError = msg;
             if (/401|403|invalid|unauthor/i.test(msg)) { s0.status = 'error'; break; } // bad key: stop instead of failing every address
@@ -311,8 +440,24 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     } catch (e) { log('[mail] worker:', e?.message || e); }
     finally { busy = false; }
   }
+  /** One message through a stored sending account, with signed links (automations, confirmations). */
+  async function sendOne(owner, senderId, { campaign, to, subject, html, text = '', fields = {}, variant = '', tracked = true }) {
+    const sender = senders(owner).find((x) => x.id === senderId); if (!sender) throw new Error('Kênh gửi không còn');
+    const f = { ...fields, email: to };
+    let h = mergeFields(html, f), unsub = '';
+    if (tracked) { const per = personalize(html, publicUrl, makeToken(secret, owner, campaign, to, variant), f); h = per.html; unsub = per.unsub; }
+    await PROV[sender.provider].send(sender, { to, subject: mergeFields(subject, f, false), html: h, text: text ? mergeFields(text, f, false) + (unsub ? `\n\nHuỷ đăng ký: ${unsub}` : '') : '', headers: unsub ? { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : {} });
+  }
   return {
     handle,
+    sendOne,
+    campaign: camp,
+    saveCampaign: saveCamp,
+    suppressed: (owner, email) => !!S.supHas.get(owner, String(email).toLowerCase()),
+    suppress: (owner, email, source, campaign = '') => S.supAdd.run(owner, String(email).toLowerCase(), now(), source, campaign),
+    senderIds: (owner) => senders(owner).map((x) => ({ id: x.id, label: x.label || PROV[x.provider]?.label, fromEmail: x.fromEmail, fromName: x.fromName })),
+    stats: (owner, id) => { const tot = Object.fromEntries(S.evTotals.all(owner, id).map((r) => [r.kind, r.u])); const qc = {}; for (const r of S.qCounts.all(owner, id)) qc[r.status] = (qc[r.status] || 0) + r.n; return { opens: tot.open || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, queue: qc }; },
+    campaigns: (owner) => S.campDue.all().filter((r) => r.owner === owner).map((r) => ({ id: r.id, ...JSON.parse(r.json) })),
     health: () => ({ img: !!img, tracking: true, queue: true }),
     start: () => { const t = setInterval(() => { void tick(); }, 20_000); t.unref?.(); },
     tick,
