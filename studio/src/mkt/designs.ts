@@ -251,7 +251,7 @@ const CRITIC = `You are the creative director reviewing a social post before it 
 3. Keep the copy facts, language, brand colours, fonts and image ids.
 Return the COMPLETE revised HTML document in one \`\`\`html block. No commentary.`;
 
-/** Which image model the relay offers ('google' | 'openai'), or null. Checked once per page load. */
+/** Which image provider the relay offers ('cloudflare' | 'google' | 'openai'), or null. Checked once per page load. */
 let imageAiCache: string | null | undefined;
 export async function imageProvider(): Promise<string | null> {
   if (imageAiCache !== undefined) return imageAiCache ?? null;

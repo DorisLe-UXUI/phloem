@@ -12,6 +12,7 @@ import { createAuth } from './auth.mjs';
 import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
 import { createAssetStore, createBlobStore } from './blobs.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
+import { cfAccountId, fluxSize, pickLiteImageModel, sniffMime, nextUtcMidnight } from './imagegen.mjs';
 import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
 import { listDrive } from './drive.mjs';
 import { createMail } from './mail.mjs';
@@ -29,10 +30,16 @@ const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-// Image generation (Phloem Design): Google Imagen through the Gemini API, or OpenAI images. Keys stay on the relay.
+// Image generation (Phloem Design), cheapest first: Cloudflare Workers AI FLUX (free daily allowance), then Google's
+// Nano Banana 2 Lite, or OpenAI images when that is the only key. Keys stay on the relay.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const CF_AI_TOKEN = process.env.CF_AI_TOKEN || '';
+const CF_ACCOUNT = CF_AI_TOKEN ? cfAccountId() : '';
+const CF_IMAGE_MODEL = process.env.CF_IMAGE_MODEL || '@cf/black-forest-labs/flux-2-klein-4b';
 const IMAGE_PROVIDER = (process.env.IMAGE_PROVIDER || (GEMINI_API_KEY ? 'google' : OPENAI_API_KEY ? 'openai' : '')).toLowerCase();
+const IMAGE_AI = CF_ACCOUNT ? 'cloudflare' : IMAGE_PROVIDER; // what the app is told: anything truthy means "can paint"
+let cfResting = 0; // until this time the free Workers AI allowance is used up; skip straight to Google
 const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', import.meta.url).pathname);
 // Ephemeral hosts: pull the last database snapshot from the backup bucket before opening it (no-op without BACKUP_S3_*).
 const BACKUP = backupConfig();
@@ -109,8 +116,8 @@ const server = createServer(async (req, res) => {
         tokenRequired: !!RELAY_TOKEN,
         klaviyoRevision: KLAVIYO_REVISION,
         ai: !!anthropic,
-        imageAi: IMAGE_PROVIDER || null,
-        imageModel: IMAGE_PROVIDER === 'google' ? (googleModel ? googleModel.name.replace('models/', '') : googleModel === null ? 'none' : 'auto') : IMAGE_PROVIDER === 'openai' ? (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1') : null,
+        imageAi: IMAGE_AI || null,
+        imageModel: [CF_ACCOUNT ? `${CF_IMAGE_MODEL.split('/').pop()}${cfResting > Date.now() ? ' (hết lượt free hôm nay)' : ''}` : '', IMAGE_PROVIDER === 'google' ? (googleModel ? googleModel.name.replace('models/', '') : googleModel === null ? 'none' : 'auto') : IMAGE_PROVIDER === 'openai' ? (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1') : ''].filter(Boolean).join(' → ') || null,
         auth: true,
         db: true,
         site: true,
@@ -265,8 +272,8 @@ async function aiStream(p, req, res) {
 // {prompt, aspect: '1:1'|'3:4'|'4:3'|'9:16'|'16:9'} → {b64, mime, provider}. Google Imagen (Gemini API, model IMAGEN_MODEL)
 // or OpenAI (OPENAI_IMAGE_MODEL). The browser never sees a key; the same AI access gate as /ai applies.
 const ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
-/** The image model this Google key may use, found once via ListModels: IMAGEN_MODEL when set, else the newest Imagen
- *  that supports predict, else a Gemini image model (generateContent with IMAGE output). Cached; cleared on a 404. */
+/** The image model this Google key may use, found once via ListModels: IMAGEN_MODEL when set, else Nano Banana 2 Lite
+ *  (Gemini Flash-Lite Image) only: the costlier Imagen / Flash Image models are never picked on their own. Cached; cleared on a 404. */
 let googleModel; // undefined = not looked up yet, null = none
 async function googleImageModel() {
   if (googleModel !== undefined) return googleModel;
@@ -282,23 +289,41 @@ async function googleImageModel() {
       if (!j.nextPageToken) break; page = j.nextPageToken;
     }
   } catch (e) { console.log('[image] ListModels error:', e?.message || e); return null; } // network: try again next time
-  const has = (m, x) => (m.supportedGenerationMethods || []).includes(x);
-  const ver = (n) => Number((/(\d+(?:\.\d+)?)/.exec(n) || [0, 0])[1]);
-  const imagen = all.filter((m) => /imagen/i.test(m.name) && has(m, 'predict')).sort((a, b) => ver(b.name) - ver(a.name) || (/fast/.test(a.name) ? 1 : 0) - (/fast/.test(b.name) ? 1 : 0));
-  const gem = all.filter((m) => /gemini.*image/i.test(m.name) && has(m, 'generateContent')).sort((a, b) => ver(b.name) - ver(a.name));
-  googleModel = imagen[0] ? { name: imagen[0].name, method: 'predict' } : gem[0] ? { name: gem[0].name, method: 'generateContent' } : null;
-  console.log(`[image] google model: ${googleModel ? googleModel.name : 'none'} (${all.length} models listed)`);
+  const lite = pickLiteImageModel(all);
+  googleModel = lite ? { name: lite.name, method: 'generateContent' } : null;
+  console.log(`[image] google model: ${googleModel ? googleModel.name : 'none (no Flash-Lite Image model on this key)'} (${all.length} models listed; image models: ${all.filter((m) => /image/i.test(m.name)).map((m) => m.name.replace('models/', '')).join(', ') || 'none'})`);
   return googleModel;
+}
+/** FLUX on Cloudflare Workers AI → { b64, mime } or { error, status }. A used-up daily allowance rests it until 00:00 UTC. */
+async function cloudflareImage(prompt, aspect) {
+  const [width, height] = fluxSize(aspect);
+  const form = new FormData();
+  form.set('prompt', prompt); form.set('width', String(width)); form.set('height', String(height));
+  const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/ai/run/${CF_IMAGE_MODEL}`, { method: 'POST', headers: { Authorization: `Bearer ${CF_AI_TOKEN}` }, body: form, signal: AbortSignal.timeout(90_000) });
+  const j = await r.json().catch(() => ({}));
+  const b64 = j?.result?.image;
+  if (r.ok && b64) return { b64, mime: sniffMime(b64) };
+  const msg = String(j?.errors?.[0]?.message || `HTTP ${r.status}`);
+  if (r.status === 429 || /neuron|allocation|quota|limit/i.test(msg)) { cfResting = nextUtcMidnight(); console.log('[image] cloudflare free allowance used up until 00:00 UTC:', msg.slice(0, 160)); return { error: 'Hết lượt tạo ảnh miễn phí hôm nay (Cloudflare)', status: 429 }; }
+  console.log('[image] cloudflare error:', r.status, msg.slice(0, 200));
+  return { error: `Cloudflare: ${msg.slice(0, 200)}`, status: r.status === 400 ? 422 : 502 };
 }
 async function aiImage(p, res) {
   const prompt = String(p?.prompt || '').trim().slice(0, 2000);
   const aspect = ASPECTS.has(p?.aspect) ? p.aspect : '1:1';
   if (!prompt) return json(res, 400, { error: 'Thiếu mô tả ảnh.' });
-  if (!IMAGE_PROVIDER) return json(res, 503, { error: 'Relay chưa có key tạo ảnh. Thêm GEMINI_API_KEY (Google Imagen) hoặc OPENAI_API_KEY trong Render → Environment.', code: 'no_image_key' });
+  if (!IMAGE_AI) return json(res, 503, { error: 'Relay chưa có key tạo ảnh. Thêm CF_AI_TOKEN (Cloudflare, miễn phí theo ngày) hoặc GEMINI_API_KEY trong Render → Environment.', code: 'no_image_key' });
+  let cfError = '';
+  if (CF_ACCOUNT && cfResting <= Date.now()) {
+    const out = await cloudflareImage(prompt, aspect).catch((e) => ({ error: String(e?.message || e) }));
+    if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_IMAGE_MODEL.split('/').pop() });
+    cfError = out.error;
+    if (!IMAGE_PROVIDER) return json(res, out.status || 502, { error: out.error });
+  }
   try {
     if (IMAGE_PROVIDER === 'google') {
       const pick = await googleImageModel();
-      if (!pick) return json(res, 502, { error: 'Key Google này không có model tạo ảnh nào (Imagen hoặc Gemini image). Bật Gemini API / Imagen cho project của key trong Google AI Studio, hoặc dùng OPENAI_API_KEY.' });
+      if (!pick) return json(res, 502, { error: `${cfError ? `Cloudflare: ${cfError}. ` : ''}Key Google này chưa có Nano Banana 2 Lite (gemini-3.1-flash-lite-image). Bật model này cho project của key trong Google AI Studio, hoặc đặt IMAGEN_MODEL trong Render.` });
       const base = `https://generativelanguage.googleapis.com/v1beta/${pick.name}`;
       const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY };
       const r = pick.method === 'predict'

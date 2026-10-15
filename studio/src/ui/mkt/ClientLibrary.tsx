@@ -7,7 +7,7 @@ import { Btn } from '../components';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
 
-let imageAi: string | null | undefined; // provider the relay offers ('google' | 'openai'), checked once
+let imageAi: string | null | undefined; // provider the relay offers ('cloudflare' | 'google' | 'openai'), checked once
 async function relayImageAi(): Promise<string | null> {
   if (imageAi !== undefined) return imageAi ?? null;
   try { const r = await fetch(`${get().settings.relayUrl.replace(/\/$/, '')}/`, { signal: AbortSignal.timeout(60_000) }); const j = await r.json(); imageAi = j.imageAi || null; } catch { imageAi = null; }
@@ -44,7 +44,7 @@ export function ClientLibrary({ clientId, onUse, big }: { clientId: string; onUs
       </div>
       <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) void upload(f); (e.target as HTMLInputElement).value = ''; }} />
       <div class="mk-gen">
-        <div class="row" style={{ gap: 6 }}><Icon name="sparkle" size={14} /><b class="small">Tạo ảnh bằng AI</b><span class="grow" />{provider === undefined ? null : provider ? <span class="chip on">{provider === 'google' ? 'Google Imagen' : 'OpenAI'}</span> : <span class="chip warn" title="Thêm GEMINI_API_KEY hoặc OPENAI_API_KEY vào relay (Render → Environment)">chưa có key</span>}</div>
+        <div class="row" style={{ gap: 6 }}><Icon name="sparkle" size={14} /><b class="small">Tạo ảnh bằng AI</b><span class="grow" />{provider === undefined ? null : provider ? <span class="chip on">{provider === 'cloudflare' ? 'FLUX free → Nano Banana Lite' : provider === 'google' ? 'Nano Banana 2 Lite' : 'OpenAI'}</span> : <span class="chip warn" title="Thêm CF_AI_TOKEN hoặc GEMINI_API_KEY vào relay (Render → Environment)">chưa có key</span>}</div>
         <textarea class="in" rows={2} value={prompt} placeholder="VD: ly cà phê sữa đá trên bàn gỗ, nắng sớm, phong cách ảnh quảng cáo, không chữ" onInput={(e) => setPrompt((e.target as HTMLTextAreaElement).value)} onKeyDown={(e) => e.stopPropagation()} aria-label="Mô tả ảnh cần tạo" />
         <div class="row" style={{ gap: 6 }}>
           <div class="seg">{(['1:1', '3:4', '9:16', '16:9'] as const).map((a) => <button key={a} class={aspect === a ? 'on' : ''} onClick={() => setAspect(a)}>{a}</button>)}</div>
