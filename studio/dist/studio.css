@@ -2134,6 +2134,72 @@ select.in.mk-role {
 .mk .seg button {
   white-space: nowrap;
 }
+.mk-dsheet {
+  max-height: calc(100vh - 260px);
+  margin-bottom: 14px;
+}
+.mk-dsheet td.c-img {
+  padding: 6px;
+  width: 112px;
+}
+.mk-thumb {
+  display: grid;
+  place-items: center;
+  width: 100px;
+  height: 100px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--panel-3);
+  cursor: pointer;
+  overflow: hidden;
+  color: var(--dim);
+}
+.mk-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.mk-thumb:hover {
+  border-color: var(--neon);
+  box-shadow: var(--glow);
+}
+.mk-thumb.empty {
+  border-style: dashed;
+  background: var(--bg-2);
+}
+.mk-thumb.empty span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+}
+.mk-thumb.empty em {
+  font-style: normal;
+}
+.mk-thumb.empty:hover {
+  color: var(--neon);
+}
+.mk-dsheet td .cv {
+  -webkit-line-clamp: 4;
+  max-width: 260px;
+}
+.mk-dsheet td.c-cap .cv {
+  min-width: 240px;
+}
+.mk-dsheet td.c-topic .cv {
+  font-weight: 600;
+  min-width: 180px;
+}
+.mk-thumb.sm {
+  width: 56px;
+  height: 56px;
+}
+.mk-sheet td.c-img.sm {
+  padding: 4px;
+  width: 64px;
+}
 
 /* studio/styles.css */
 :root {

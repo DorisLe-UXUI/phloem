@@ -21,6 +21,8 @@ export function DesignHub({ client }: { client: Client }) {
   const [busy, setBusy] = useState<{ label: string; done?: number; total?: number } | null>(null);
   const [scope, setScope] = useState<'approved' | 'all'>('approved');
   const [days, setDays] = useState(14);
+  const [layout, setLayout] = useState<'table' | 'cards'>(() => { try { return (localStorage.getItem('phloem.mkt.designView') as 'table' | 'cards') || 'table'; } catch { return 'table'; } });
+  useEffect(() => { try { localStorage.setItem('phloem.mkt.designView', layout); } catch { /* private mode */ } }, [layout]);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => { void A.refreshProjects(); }, []);
   const designs = s.projects.filter((p) => p.clientId === client.id && p.kind === 'design');
@@ -33,6 +35,7 @@ export function DesignHub({ client }: { client: Client }) {
   const visibleDates = dates.slice(0, days);
   const hasDesign = (r: Row) => (r.designId && byId.has(r.designId)) || designs.some((d) => d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id);
   const week = shown.filter((r) => r.date < new Date(Date.now() + 7 * 86400e3).toISOString().slice(0, 10) && !hasDesign(r));
+  const designOf = (r: Row) => (r.designId ? byId.get(r.designId) : undefined) || designs.find((d) => d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id);
   const loose = designs.filter((d) => !all.some((r) => r.designId === d.id || (d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id)));
 
   const make = async (size: DesignSize, row: Row | null, ai: boolean) => {
@@ -66,17 +69,61 @@ export function DesignHub({ client }: { client: Client }) {
         actions={write ? <>{week.length > 0 && <Btn icon="sparkle" onClick={() => void batch()}>AI thiết kế cả tuần · {week.length}</Btn>}<Btn kind="primary" icon="plus" onClick={() => setPicker('new')}>Thiết kế mới</Btn></> : undefined} />
 
       <div class="row wrap" style={{ marginBottom: 12 }}>
+        <div class="seg"><button class={layout === 'table' ? 'on' : ''} onClick={() => setLayout('table')}><Icon name="grid" size={13} /> Bảng</button><button class={layout === 'cards' ? 'on' : ''} onClick={() => setLayout('cards')}><Icon name="blocks" size={13} /> Thẻ</button></div>
         <div class="seg"><button class={scope === 'approved' ? 'on' : ''} onClick={() => setScope('approved')}>Bài đã duyệt</button><button class={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>Tất cả bài</button></div>
         <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter(hasDesign).length} đã có ảnh</span>
       </div>
 
-      {visibleDates.length ? visibleDates.map((d) => (
+      {layout === 'table' && visibleDates.length > 0 && (
+        <div class="mk-sheet mk-dsheet" role="grid">
+          <table>
+            <thead><tr><th class="sticky-c">#</th><th>Ngày</th><th>Giờ</th><th>Kênh</th><th>Ảnh</th><th>Chủ đề</th><th>Hook</th><th>Caption</th><th>CTA</th><th>Trạng thái</th>{write && <th>Thao tác</th>}</tr></thead>
+            <tbody>
+              {visibleDates.map((d) => [
+                <tr key={'g' + d} class="grp"><td class="sticky-c"><Icon name="chevron" size={11} /></td><td colSpan={write ? 10 : 9}><b style={{ textTransform: 'capitalize' }}>{new Date(`${d}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}</b>{d === today ? <span class="chip on" style={{ marginLeft: 8 }}>Hôm nay</span> : null}</td></tr>,
+                ...shown.filter((r) => r.date === d).map((r, i) => {
+                  const des = designOf(r);
+                  const c = channelOf(r.channel);
+                  return (
+                    <tr key={r.planId + r.id} style={{ ['--ch' as string]: c.color }}>
+                      <td class="sticky-c mono dim">{i + 1}</td>
+                      <td class="mono"><div class="cv">{r.date.slice(8, 10)}/{r.date.slice(5, 7)}</div></td>
+                      <td class="mono"><div class="cv">{r.time}</div></td>
+                      <td><div class="cv"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><br /><span class="dim small">{FORMATS.find((f) => f.id === r.format)?.label}</span></div></td>
+                      <td class="c-img">
+                        <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sizeForRow(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
+                          {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>Chưa có ảnh</em></span>}
+                        </button>
+                      </td>
+                      <td class="c-topic"><div class="cv">{r.topic}</div></td>
+                      <td><div class="cv">{r.hook}</div></td>
+                      <td class="c-cap"><div class="cv">{r.caption}</div></td>
+                      <td><div class="cv">{r.cta}</div></td>
+                      <td><div class="cv"><StatusChip s={r.status} /></div></td>
+                      {write && <td><div class="cv col" style={{ gap: 4, alignItems: 'flex-start' }}>
+                        {des ? <>
+                          <Btn xs icon="text" onClick={() => void A.openProject(des.id)}>Chỉnh sửa</Btn>
+                          <Btn xs kind="ghost" icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Làm lại', false)) void make(sizeForRow(r), r, true); }}>Làm lại</Btn>
+                        </> : <>
+                          <Btn xs icon="sparkle" onClick={() => void make(sizeForRow(r), r, true)}>AI thiết kế</Btn>
+                          <Btn xs kind="ghost" icon="rect" onClick={() => void make(sizeForRow(r), r, false)}>Tự thiết kế</Btn>
+                        </>}
+                      </div></td>}
+                    </tr>
+                  );
+                }),
+              ])}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {layout === 'cards' && (visibleDates.length ? visibleDates.map((d) => (
         <section key={d} class="mk-day-row">
           <div class="mk-day-h"><b>{new Date(`${d}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}</b>{d === today && <span class="chip on">Hôm nay</span>}</div>
           <div class="mk-posts">
             {shown.filter((r) => r.date === d).map((r) => {
               // the pinned design, else the newest design made for this post (older ones were made before pinning existed)
-              const des = (r.designId ? byId.get(r.designId) : undefined) || designs.find((d) => d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id);
+              const des = designOf(r);
               const c = channelOf(r.channel);
               const z = des?.size || sizeForRow(r);
               return (
@@ -102,7 +149,8 @@ export function DesignHub({ client }: { client: Client }) {
             })}
           </div>
         </section>
-      )) : plans.length ? <div class="mk-none">Không có bài nào từ hôm nay{scope === 'approved' ? ' đã được duyệt. Chọn "Tất cả bài" hoặc duyệt bài trong Kế hoạch.' : '.'}</div> : null}
+      )) : null)}
+      {!visibleDates.length && plans.length ? <div class="mk-none">Không có bài nào từ hôm nay{scope === 'approved' ? ' đã được duyệt. Chọn "Tất cả bài" hoặc duyệt bài trong Kế hoạch.' : '.'}</div> : null}
       {dates.length > days && <div class="row" style={{ justifyContent: 'center', margin: '8px 0 16px' }}><Btn sm onClick={() => setDays(days + 14)}>Xem thêm {Math.min(14, dates.length - days)} ngày</Btn></div>}
 
       {loose.length > 0 && (

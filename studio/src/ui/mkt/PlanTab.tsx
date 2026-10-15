@@ -187,7 +187,7 @@ function PlanView({ client, item, review, plans, onPick, onNew }: { client: Clie
         {write && <span class="grow" />}
         {write && <Btn sm kind="ghost" icon="trash" onClick={async () => { if (await ask(`Xoá "${plan.title}"? Không hoàn tác được.`)) { await deleteItem(client.id, 'plan', item.id); toast('Đã xoá kế hoạch.', 'ok'); } }}>Xoá</Btn>}
       </div>
-      {view === 'table' && <Grid plan={plan} review={review} write={write} onRow={updateRow} onAdd={() => { const last = plan.rows[plan.rows.length - 1]; void commit({ ...plan, rows: [...plan.rows, { id: newId('r'), date: last?.date || plan.setup.start, time: '19:30', channel: (plan.setup.channels[0] || 'facebook') as Channel, format: 'image', pillar: '', topic: 'Bài mới', hook: '', caption: '', cta: '', hashtags: '', visual: '', owner: '', status: 'draft' }] }, 'Thêm bài'); }} onDel={(id) => void commit({ ...plan, rows: plan.rows.filter((r) => r.id !== id) }, 'Xoá bài')} />}
+      {view === 'table' && <Grid planId={item.id} plan={plan} review={review} write={write} onRow={updateRow} onAdd={() => { const last = plan.rows[plan.rows.length - 1]; void commit({ ...plan, rows: [...plan.rows, { id: newId('r'), date: last?.date || plan.setup.start, time: '19:30', channel: (plan.setup.channels[0] || 'facebook') as Channel, format: 'image', pillar: '', topic: 'Bài mới', hook: '', caption: '', cta: '', hashtags: '', visual: '', owner: '', status: 'draft' }] }, 'Thêm bài'); }} onDel={(id) => void commit({ ...plan, rows: plan.rows.filter((r) => r.id !== id) }, 'Xoá bài')} />}
       {view === 'calendar' && <CalendarView plan={plan} write={write} onRow={updateRow} />}
       {view === 'kanban' && <Kanban plan={plan} write={write} onRow={updateRow} />}
       {view === 'summary' && <Summary client={client} plan={plan} />}
@@ -199,7 +199,9 @@ function PlanView({ client, item, review, plans, onPick, onNew }: { client: Clie
 }
 
 // ---------- Bảng (Sheets-like grid) ----------
-function Grid({ plan, review, write, onRow, onAdd, onDel }: { plan: Plan; review?: Review; write: boolean; onRow: (id: string, p: Partial<PlanRow>) => void; onAdd: () => void; onDel: (id: string) => void }) {
+function Grid({ plan, review, write, onRow, onAdd, onDel, planId }: { plan: Plan; review?: Review; write: boolean; onRow: (id: string, p: Partial<PlanRow>) => void; onAdd: () => void; onDel: (id: string) => void; planId: string }) {
+  const store = useStore();
+  const designOf = (r: PlanRow) => (r.designId && store.projects.find((x) => x.id === r.designId)) || store.projects.find((x) => x.kind === 'design' && x.rowRef?.planId === planId && x.rowRef.rowId === r.id);
   const [q, setQ] = useState('');
   const [ch, setCh] = useState('');
   const [st, setSt] = useState('');
@@ -250,13 +252,14 @@ function Grid({ plan, review, write, onRow, onAdd, onDel }: { plan: Plan; review
       </div>
       <div class="mk-sheet" role="grid" aria-rowcount={rows.length}>
         <table>
-          <thead><tr><th class="sticky-c">#</th>{COLS.map((c) => <th key={c.key} style={{ minWidth: (c.width || 12) * 7 }}>{c.label}</th>)}{write && <th />}</tr></thead>
+          <thead><tr><th class="sticky-c">#</th><th>Ảnh</th>{COLS.map((c) => <th key={c.key} style={{ minWidth: (c.width || 12) * 7 }}>{c.label}</th>)}{write && <th />}</tr></thead>
           <tbody>
             {groups.map((g) => [
-              <tr key={'g' + g.label} class="grp"><td class="sticky-c" colSpan={1}><Icon name="chevron" size={11} /></td><td colSpan={COLS.length + (write ? 1 : 0)}><b>{g.label}</b> <span class="dim">· {g.rows.length} bài</span></td></tr>,
+              <tr key={'g' + g.label} class="grp"><td class="sticky-c" colSpan={1}><Icon name="chevron" size={11} /></td><td colSpan={COLS.length + 1 + (write ? 1 : 0)}><b>{g.label}</b> <span class="dim">· {g.rows.length} bài</span></td></tr>,
               ...g.rows.map((r) => (
                 <tr key={r.id} class={`st-${r.status}`} style={{ ['--ch' as string]: channelOf(r.channel).color }}>
                   <td class="sticky-c mono dim">{plan.rows.indexOf(r) + 1}</td>
+                  <td class="c-img sm">{(() => { const d = designOf(r); return <button class={`mk-thumb sm ${d ? '' : 'empty'}`} onClick={() => (d ? void import('../../pipeline/actions').then((A) => A.openProject(d.id)) : go({ view: 'client', id: store.mkt.view === 'client' ? store.mkt.id : '', tab: 'design' }))} title={d ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · làm ở tab Thiết kế'} aria-label={d ? `Chỉnh sửa ảnh bài ${r.topic}` : 'Chưa có ảnh'}>{d?.thumb ? <img src={d.thumb} alt="" loading="lazy" /> : <Icon name="image" size={14} />}</button>; })()}</td>
                   {COLS.map((c) => {
                     const on = editing?.id === r.id && editing.key === c.key;
                     return <td key={c.key} class={`c-${c.key} ${on ? 'editing' : ''}`} tabIndex={write ? 0 : -1} onDblClick={() => write && setEditing({ id: r.id, key: c.key })} onKeyDown={(e) => { if (write && !on && (e.key === 'Enter' || e.key === 'F2')) { e.preventDefault(); setEditing({ id: r.id, key: c.key }); } }} onClick={() => write && ['status', 'channel', 'format'].includes(c.key) && setEditing({ id: r.id, key: c.key })} title={on ? undefined : String((r as unknown as Record<string, unknown>)[c.key] ?? '')}>
