@@ -8,7 +8,7 @@ import { relayAuth } from '../ai/client';
 import { get } from '../store';
 
 export interface MailHealth { img: boolean; tracking: boolean; queue: boolean }
-export interface Sender { id: string; provider: 'resend' | 'brevo' | 'ses'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean }
+export interface Sender { webhook?: string; domain?: { name: string; verified?: boolean; checkedAt?: string } | null; id: string; provider: 'resend' | 'brevo' | 'ses'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean }
 export interface ProviderInfo { id: Sender['provider']; label: string; perDay: number }
 export interface SendInfo { sender: string; subject: string; sendAt: string; status: 'scheduled' | 'sending' | 'waiting' | 'paused' | 'cancelled' | 'done' | 'error'; perDay: number; lastError: string; testSentAt: string | null; ab: null | { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number; phase: 'test' | 'wait' | 'rest'; winner: 'A' | 'B' | null; scores?: { A: number; B: number } } }
 export interface CampaignStats { opens: number; clicks: number; unsubscribes: number; links: { url: string; clicks: number }[]; byVariant: Record<string, { opens: number; clicks: number }>; queue: Record<string, number>; send: SendInfo | null }
@@ -28,6 +28,8 @@ export async function mailHealth(force = false): Promise<MailHealth | null> {
 }
 export const mailHealthCached = (): MailHealth | null => (health.url === base() ? health.v : null);
 
+/** Signed-in call to the relay (JSON in/out), shared by the mail and audience clients. */
+export function relayApi<T>(path: string, init: { method?: string; body?: unknown; raw?: Blob; type?: string } = {}): Promise<T> { return api<T>(path, init); }
 async function api<T>(path: string, init: { method?: string; body?: unknown; raw?: Blob; type?: string } = {}): Promise<T> {
   const u = base(); if (!u) throw new Error('Chưa có relay (Cài đặt → Relay).');
   if (getSession()?.mode !== 'relay') throw new Error('Đăng nhập tài khoản Phloem để dùng ảnh host, huỷ đăng ký và thống kê.');
@@ -81,7 +83,7 @@ export const deleteSender = (id: string) => api<{ ok: true }>(`/mail/senders/${e
 export const testSender = (id: string, to: string) => api<{ ok: true; to: string }>(`/mail/senders/${encodeURIComponent(id)}/test`, { body: { to } });
 
 // ---------- server-side queue ----------
-export interface ServerSendInput { campaign: string; sender: string; subject: string; html: string; text: string; recipients: string[]; sendAt?: string; perDay?: number; ab?: { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number } | null }
+export interface ServerSendInput { audience?: { client?: string; list: string; segment?: string; tags?: string[] }; campaign: string; sender: string; subject: string; html: string; text: string; recipients: string[]; sendAt?: string; perDay?: number; ab?: { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number } | null }
 export const startServerSend = (b: ServerSendInput) => api<{ ok: true; recipients: number; test: number; sendAt: string }>('/mail/send', { body: b });
 export const serverSendStatus = (id: string) => api<{ send: SendInfo; counts: Record<string, number> }>(`/mail/send/${encodeURIComponent(id)}`);
 export const serverSendControl = (id: string, action: 'pause' | 'resume' | 'cancel') => api<{ ok: true; status: string }>(`/mail/send/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
@@ -92,3 +94,9 @@ const LS = 'phloem.mail.campaigns';
 export function myCampaigns(projectId?: string): CampaignRef[] { try { const all = JSON.parse(localStorage.getItem(LS) || '[]') as CampaignRef[]; return projectId ? all.filter((c) => c.projectId === projectId) : all; } catch { return []; } }
 export function rememberCampaign(c: CampaignRef) { try { const all = myCampaigns().filter((x) => x.id !== c.id); all.unshift(c); localStorage.setItem(LS, JSON.stringify(all.slice(0, 60))); } catch { /* ignore */ } }
 export function forgetCampaign(id: string) { try { localStorage.setItem(LS, JSON.stringify(myCampaigns().filter((x) => x.id !== id))); } catch { /* ignore */ } }
+
+// ---------- sending domain ----------
+export interface DnsRecord { type: string; name: string; value: string; priority?: number; status?: string; note?: string }
+export interface DomainState { name: string; verified: boolean; status: string; records: DnsRecord[] }
+export const addSenderDomain = (id: string, domain: string) => api<{ domain: DomainState }>(`/mail/senders/${encodeURIComponent(id)}/domain`, { body: { domain } });
+export const senderDomain = (id: string) => api<{ domain: DomainState | null }>(`/mail/senders/${encodeURIComponent(id)}/domain`);

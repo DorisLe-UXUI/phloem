@@ -73,6 +73,12 @@ async function compose(p: Project, sender: string, senderName = '', o: ComposeOp
   const kb = Math.round((parts.reduce((a, x) => a + x.bytes.length, 0) + html.length) / 1024);
   return { html, text, parts, kb, subject: p.fields.subject || p.fields.campaignName || p.name, links, hosted, tracked: !!o.track };
 }
+/** A finished email for server-side sends (automation steps): hosted images, tracked links, live text, footer. */
+export async function composeForSend(p: Project, fromEmail: string, fromName: string): Promise<{ html: string; text: string; links: string[]; subject: string; kb: number }> {
+  const m = await compose(p, fromEmail, fromName, { hosted: true, track: true });
+  if (!m.hosted) throw new Error('Cần kho ảnh trên relay để gửi từ máy chủ (đăng nhập tài khoản Phloem).');
+  return { html: m.html, text: m.text, links: m.links, subject: m.subject, kb: m.kb };
+}
 /** A composed tracked email for someone without a token (relay refused the address): direct links, mailto unsubscribe. */
 function untracked(m: Composed, sender: string): { html: string; text: string } {
   const mailto = `mailto:${sender}?subject=${encodeURIComponent('Huỷ đăng ký / Unsubscribe')}`;
@@ -309,24 +315,26 @@ export async function sendTest(p: Project) {
 
 /** Hand the whole campaign to the relay: it sends through Resend / Brevo / Amazon SES at the account's pace, on schedule,
  *  with an optional A/B subject test, and keeps going with this tab closed. Images must be hosted (no attachments). */
-export async function startServerQueue(p: Project, sender: Sender, recipientsRaw: string, suppressRaw: string, opt: { sendAt?: string; perDay?: number; ab?: { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number } | null }): Promise<string | null> {
+export async function startServerQueue(p: Project, sender: Sender, recipientsRaw: string, suppressRaw: string, opt: { sendAt?: string; perDay?: number; ab?: { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number } | null; audience?: { client?: string | null; list: string; segment?: string | null; tags?: string[]; label: string; count: number } | null }): Promise<string | null> {
   if (!p.fields.subject.trim()) throw new Error('Điền Subject ở tab Email trước khi gửi.');
   const skip = new Set(parseRecipients(suppressRaw));
-  const list = parseRecipients(recipientsRaw).filter((e) => !skip.has(e));
-  if (!list.length) throw new Error('Chưa có địa chỉ người nhận hợp lệ.');
+  const list = opt.audience ? [] : parseRecipients(recipientsRaw).filter((e) => !skip.has(e));
+  if (!opt.audience && !list.length) throw new Error('Chưa có địa chỉ người nhận hợp lệ.');
+  if (opt.audience && !opt.audience.count) throw new Error('Danh sách / phân nhóm này chưa có ai đang nhận email.');
   if (list.length > 50_000) throw new Error('Tối đa 50.000 người mỗi chiến dịch gửi qua máy chủ.');
+  const n = opt.audience ? opt.audience.count : list.length;
   const when = opt.sendAt ? new Date(opt.sendAt) : null;
   const perDay = Math.min(opt.perDay || sender.perDay, sender.perDay);
-  const days = Math.ceil(list.length / perDay);
+  const days = Math.ceil(n / perDay);
   const abLine = opt.ab ? `\n\nA/B: ${Math.round(opt.ab.split * 100)}% đầu chia đôi nhận 2 tiêu đề; sau ${opt.ab.waitHours} giờ, tiêu đề nhiều ${opt.ab.metric === 'clicks' ? 'click' : 'lượt mở'} hơn được gửi cho số còn lại.` : '';
-  if (!(await ask(`Lên lịch gửi "${p.fields.subject}" từ ${sender.fromName ? `${sender.fromName} <${sender.fromEmail}>` : sender.fromEmail} (${sender.label}) tới ${list.length.toLocaleString('vi-VN')} người?\n\nBắt đầu: ${when ? when.toLocaleString('vi-VN') : 'ngay'} · tối đa ${perDay.toLocaleString('vi-VN')} thư/ngày${days > 1 ? ` (khoảng ${days} ngày)` : ''}. Máy chủ tự gửi, đóng tab vẫn chạy; tạm dừng hoặc huỷ được bất cứ lúc nào.${abLine}\n\nKhông thu hồi được thư đã gửi.`, 'Lên lịch gửi', true))) return null;
+  if (!(await ask(`Lên lịch gửi "${p.fields.subject}" từ ${sender.fromName ? `${sender.fromName} <${sender.fromEmail}>` : sender.fromEmail} (${sender.label}) tới ${opt.audience ? `${opt.audience.label} (khoảng ${n.toLocaleString('vi-VN')} người đang nhận)` : `${n.toLocaleString('vi-VN')} người`}?\n\nBắt đầu: ${when ? when.toLocaleString('vi-VN') : 'ngay'} · tối đa ${perDay.toLocaleString('vi-VN')} thư/ngày${days > 1 ? ` (khoảng ${days} ngày)` : ''}. Máy chủ tự gửi, đóng tab vẫn chạy; tạm dừng hoặc huỷ được bất cứ lúc nào.${abLine}\n\nKhông thu hồi được thư đã gửi.`, 'Lên lịch gửi', true))) return null;
   set({ busy: { label: 'Chuẩn bị chiến dịch…', done: 0, total: 0 } });
   try {
     const m = await compose(p, sender.fromEmail, sender.fromName, { hosted: true, track: true });
     if (!m.hosted) throw new Error('Gửi qua máy chủ cần ảnh lưu trên host, nhưng relay chưa có kho ảnh (IMG_S3_BUCKET).');
     const id = `s_${Date.now().toString(36)}`;
     await registerCampaign(id, { subject: m.subject, from: sender.fromEmail, fromName: sender.fromName, links: m.links });
-    const r = await startServerSend({ campaign: id, sender: sender.id, subject: m.subject, html: m.html, text: m.text, recipients: list, sendAt: when ? when.toISOString() : undefined, perDay, ab: opt.ab || null });
+    const r = await startServerSend({ campaign: id, sender: sender.id, subject: m.subject, html: m.html, text: m.text, recipients: list, sendAt: when ? when.toISOString() : undefined, perDay, ab: opt.ab || null, ...(opt.audience ? { audience: { client: opt.audience.client || undefined, list: opt.audience.list, segment: opt.audience.segment || undefined, tags: opt.audience.tags } } : {}) });
     rememberCampaign({ id, projectId: p.id, subject: m.subject, via: 'server', at: new Date().toISOString(), recipients: r.recipients });
     toast(`Đã lên lịch gửi ${r.recipients.toLocaleString('vi-VN')} email${when ? ` lúc ${when.toLocaleString('vi-VN')}` : ''}.`, 'ok');
     log(`Máy chủ gửi: ${id} · ${r.recipients} người · ${m.kb} KB/thư${r.test ? ` · nhóm A/B ${r.test}` : ''}.`, 'ok');

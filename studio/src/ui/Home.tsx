@@ -91,6 +91,7 @@ export function Home() {
           </>
         )}
         <span class="sep" />
+        <Btn kind="ghost" sm icon="grid" onClick={() => set({ route: { name: 'audience' } })} title="Danh bạ, form đăng ký, chuỗi tự động, báo cáo">Khán giả</Btn>
         <Btn kind="ghost" sm icon="blocks" onClick={() => set({ modal: 'catalog' })} title="Nhập sản phẩm từ Sheet/CSV/Shopify, AI gợi ý nên đẩy gì">Kho hàng{s.catalog.length ? ` · ${s.catalog.length}` : ''}</Btn>
         <Btn kind="ghost" sm icon="figma" onClick={() => set({ modal: 'figma' })}>Import từ Figma</Btn>
         <Btn kind="ghost" sm icon="upload" onClick={() => file.current?.click()}>Mở file .phloem.json</Btn>
@@ -141,6 +142,7 @@ export function Home() {
               <Btn sm kind="primary" icon="grid" onClick={() => void A.openBoard(client.id)}>Mở bảng email</Btn>
               <Btn sm icon="plus" onClick={() => set({ modal: 'templates' })}>Email mới</Btn>
               <Btn sm icon="sparkle" onClick={() => set({ modal: 'ai' })}>Dựng bằng AI</Btn>
+              <Btn sm icon="mail" onClick={() => set({ route: { name: 'audience' } })} title="Danh bạ, form đăng ký, chuỗi tự động của khách này">Khán giả</Btn>
               {!isArtifact() && <a class="btn ghost sm" href={`../mkt/#/c/${encodeURIComponent(client.id)}/overview`} title="Thương hiệu, kế hoạch, thành viên, xoá khách: trong Phloem MKT"><Icon name="external" /> Mở trong MKT</a>}
             </div>
           )}

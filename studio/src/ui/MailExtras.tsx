@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Project } from '../model/types';
 import { getSession } from '../auth/core';
-import { toast } from '../store';
+import { set, toast } from '../store';
+import { audLists, previewRules, segments as audSegments, type AudList, type Segment } from '../pipeline/audience';
 import { HOSTED_PREF, loadQueue, parseRecipients, startServerQueue } from '../pipeline/mailSend';
 import {
   addSuppressions, campaignStats, deleteSender, forgetCampaign, listSenders, listSuppressions, mailHealth, mailHealthCached, mailSignedIn, myCampaigns,
@@ -38,7 +39,18 @@ export function MailRelayBar() {
 
 // ---------------------------------------------------------------------------------------------------------------
 /** Sending accounts + "Lên lịch gửi" through the relay. */
-export function ServerSend({ p, to, skip }: { p: Project; to: string; skip: string }) {
+export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; skip: string; onSource?: (src: 'list' | 'paste') => void }) {
+  const [src, setSrc] = useState<'list' | 'paste'>(() => (ls('phloem.mail.src') === 'paste' ? 'paste' : 'list'));
+  const [aud, setAud] = useState<{ lists: AudList[]; segs: Segment[] } | null>(null);
+  const [listId, setListId] = useState(''); const [segId, setSegId] = useState('');
+  const [count, setCount] = useState<number | null>(null);
+  const client = p.clientId || null;
+  useEffect(() => { onSource?.(src); }, [src]);
+  useEffect(() => { if (!mailSignedIn()) return; void Promise.all([audLists(client), audSegments(client)]).then(([l, sg]) => { setAud({ lists: l.lists, segs: sg.segments }); if (l.lists[0] && !listId) setListId(l.lists[0].id); }).catch(() => setAud({ lists: [], segs: [] })); }, [client]);
+  const curList = aud?.lists.find((l) => l.id === listId) || null;
+  const curSeg = aud?.segs.find((x) => x.id === segId && x.list === listId) || null;
+  useEffect(() => { if (!curList) { setCount(null); return; } if (!curSeg) { setCount(curList.counts.subscribed); return; } void previewRules(client, curList.id, curSeg.match, curSeg.rules).then((r) => setCount(r.count)).catch(() => setCount(null)); }, [listId, segId, aud]);
+  const audience = src === 'list' && curList ? { client, list: curList.id, segment: curSeg?.id || null, label: `${curList.name}${curSeg ? ` · ${curSeg.name}` : ''}`, count: count ?? 0 } : null;
   const [senders, setSenders] = useState<Sender[] | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [sel, setSel] = useState(ls('phloem.mail.sender'));
@@ -58,11 +70,21 @@ export function ServerSend({ p, to, skip }: { p: Project; to: string; skip: stri
   const run = async (fn: () => Promise<unknown>) => { setErr(''); setBusy(true); try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
   const s = senders?.find((x) => x.id === sel) || null;
   const skipSet = new Set(parseRecipients(skip));
-  const n = parseRecipients(to).filter((e) => !skipSet.has(e)).length;
+  const n = src === 'list' ? count || 0 : parseRecipients(to).filter((e) => !skipSet.has(e)).length;
   const cap = Math.min(perDay || s?.perDay || 100, s?.perDay || 100);
   return (
     <div class="col" style={{ gap: 8 }}>
       <div class="small muted">Máy chủ gửi thay bạn qua Resend, Brevo hoặc Amazon SES: hẹn giờ, chia theo hạn mức mỗi ngày, A/B tiêu đề. Đóng tab vẫn chạy.</div>
+      <Seg block value={src} options={[{ v: 'list', label: 'Danh sách Khán giả' }, { v: 'paste', label: 'Dán email' }]} onChange={(v) => { setSrc(v); keep('phloem.mail.src', v); }} />
+      {src === 'list' && (aud === null ? <div class="dim small">Đang tải danh sách…</div> : !aud.lists.length ? (
+        <div class="dim small">Chưa có danh sách{client ? ' cho khách hàng này' : ''}. <a href="#" onClick={(e) => { e.preventDefault(); set({ route: { name: 'audience' }, clientFilter: client }); }}>Mở Khán giả</a> để nhập CSV hoặc tạo form đăng ký.</div>
+      ) : (
+        <div class="grid2">
+          <Field label="Danh sách"><select class="in" value={listId} onChange={(e) => { setListId((e.target as HTMLSelectElement).value); setSegId(''); }}>{aud.lists.map((l) => <option key={l.id} value={l.id}>{l.name} · {l.counts.subscribed.toLocaleString('vi-VN')}</option>)}</select></Field>
+          <Field label="Phân nhóm"><select class="in" value={segId} onChange={(e) => setSegId((e.target as HTMLSelectElement).value)}><option value="">Cả danh sách</option>{aud.segs.filter((x) => x.list === listId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+        </div>
+      ))}
+      {src === 'list' && curList && <div class="dim small">{count === null ? 'Đang đếm…' : `${count.toLocaleString('vi-VN')} người đang nhận`} · tự bỏ qua người đã huỷ, thư dội, báo spam · {'{{first_name|bạn}}'} chèn tên từng người{curList.company?.address ? '' : ' · nên điền địa chỉ công ty (Khán giả → Gửi & tên miền)'}</div>}
       {senders === null ? <div class="dim small">Đang tải kênh gửi…</div> : (
         <>
           {senders.length > 0 && (
@@ -99,8 +121,8 @@ export function ServerSend({ p, to, skip }: { p: Project; to: string; skip: stri
               <Seg block value={metric} options={[{ v: 'opens', label: 'Thắng theo lượt mở' }, { v: 'clicks', label: 'Thắng theo click' }]} onChange={setMetric} />
             </div>
           )}
-          <Btn sm kind="primary" icon="send" disabled={busy || !n || (abOn && !subjectB.trim())} onClick={() => void run(() => startServerQueue(p, s, to, skip, { sendAt: when || undefined, perDay: cap, ab: abOn ? { subjectB: subjectB.trim(), split: split / 100, metric, waitHours: wait } : null }))}>
-            {n ? `${when ? 'Hẹn gửi' : 'Gửi'} tới ${nf(n)} người${n > cap ? ` · ${Math.ceil(n / cap)} ngày` : ''}` : 'Thêm người nhận ở trên'}
+          <Btn sm kind="primary" icon="send" disabled={busy || !n || (abOn && !subjectB.trim())} onClick={() => void run(() => startServerQueue(p, s, to, skip, { sendAt: when || undefined, perDay: cap, ab: abOn ? { subjectB: subjectB.trim(), split: split / 100, metric, waitHours: wait } : null, audience }))}>
+            {n ? `${when ? 'Hẹn gửi' : 'Gửi'} tới ${nf(n)} người${n > cap ? ` · ${Math.ceil(n / cap)} ngày` : ''}` : src === 'list' ? 'Danh sách chưa có ai đang nhận' : 'Thêm người nhận ở trên'}
           </Btn>
         </>
       )}
@@ -114,7 +136,7 @@ const HELP: Record<string, { key: string; how: string }> = {
   brevo: { key: 'API key (xkeysib-…)', how: 'brevo.com → Senders & Domains: xác thực tên miền → SMTP & API → API Keys: tạo key.' },
   ses: { key: '', how: 'AWS → SES: xác thực tên miền (DKIM) và xin thoát sandbox → IAM: user chỉ quyền ses:SendEmail → Access key.' },
 };
-function SenderForm({ providers, onSaved, onCancel }: { providers: ProviderInfo[]; onSaved: (s: Sender) => void; onCancel?: () => void }) {
+export function SenderForm({ providers, onSaved, onCancel }: { providers: ProviderInfo[]; onSaved: (s: Sender) => void; onCancel?: () => void }) {
   const [prov, setProv] = useState<Sender['provider']>('resend');
   const [fromEmail, setFromEmail] = useState(''); const [fromName, setFromName] = useState('');
   const [apiKey, setApiKey] = useState(''); const [accessKeyId, setAccessKeyId] = useState(''); const [secret, setSecret] = useState(''); const [region, setRegion] = useState('ap-southeast-1');

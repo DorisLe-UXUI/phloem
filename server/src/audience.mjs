@@ -332,7 +332,7 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
       return reply(200, true, 'Gần xong! Mở email chúng tôi vừa gửi và bấm Xác nhận đăng ký.', { pending: true });
     }
     upsert(scope, f.list, input, { status: 'subscribed', resubscribe: true, tagsAdd: f.tags, source: 'form', consent });
-    return reply(200, true, f.success || 'Cảm ơn bạn đã đăng ký!');
+    return reply(200, true, f.success || 'Bạn đã có tên trong danh sách. Hẹn gặp bạn trong hộp thư!');
   }
 
   // ---------- recipients for a list send (mail /mail/send) ----------

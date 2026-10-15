@@ -498,6 +498,7 @@ function MailCard() {
   const [skip, setSkip] = useState(() => ls('phloem.mail.skip'));
   const [cap, setCap] = useState(0);
   const [via, setVia] = useState<'gmail' | 'server'>(() => (ls('phloem.mail.via') === 'server' ? 'server' : 'gmail'));
+  const [serverSrc, setServerSrc] = useState<'list' | 'paste'>('list');
   const [err, setErr] = useState('');
   const file = useRef<HTMLInputElement>(null);
   const acc = gmailAccount();
@@ -533,8 +534,8 @@ function MailCard() {
       {signed && <Seg block value={via} options={[{ v: 'gmail', label: 'Gmail của bạn' }, { v: 'server', label: 'Máy chủ gửi' }]} onChange={(v) => { setVia(v); keep('phloem.mail.via', v); }} />}
       {mode === 'server' ? (
         <>
-          {recipients}
-          <ServerSend p={p} to={to} skip={skip} />
+          {serverSrc === 'paste' && recipients}
+          <ServerSend p={p} to={to} skip={skip} onSource={setServerSrc} />
         </>
       ) : (
         <>
