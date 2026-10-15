@@ -1,4 +1,5 @@
 // Module Thương hiệu: sources (website, Google Sheet, Drive, files) → AI brand book → edit → client review → brand kit.
+import { cleanUrl, looksLikeUrl, nameFromUrl } from './MktApp';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { get, toast, useStore } from '../../store';
 import { assets } from '../../storage/assets';
@@ -25,7 +26,7 @@ export function BrandTab({ client }: { client: Client }) {
 
 // ---------- intake ----------
 function BrandIntake({ client, existing, onCancel, onDone }: { client: Client; existing?: BrandBook; onCancel?: () => void; onDone: () => void }) {
-  const [website, setWebsite] = useState(existing?.sources.website || client.website || '');
+  const [website, setWebsite] = useState(existing?.sources.website || (looksLikeUrl(client.website || '') ? client.website! : looksLikeUrl(client.name) ? cleanUrl(client.name) : client.website || ''));
   const [sheet, setSheet] = useState(existing?.sources.sheet || '');
   const [drive, setDrive] = useState(existing?.sources.drive || '');
   const [notes, setNotes] = useState('');
@@ -43,7 +44,7 @@ function BrandIntake({ client, existing, onCancel, onDone }: { client: Client; e
     const t0 = Date.now();
     setStarted(t0); setProg({ step: 0, total: 4, label: 'Bắt đầu…' });
     try {
-      const { book, logo, notes: warn, industry } = await buildBrandBook(client, { website, sheet, drive, notes, files }, setProg, abort.current.signal);
+      const { book, logo, notes: warn, industry, brandName } = await buildBrandBook(client, { website, sheet, drive, notes, files }, setProg, abort.current.signal);
       const by = get().user?.name || 'Bạn';
       const version = (existing?.version || 0) + 1;
       book.version = version;
@@ -54,6 +55,8 @@ function BrandIntake({ client, existing, onCancel, onDone }: { client: Client; e
       if (logo && !client.logo) patch.logo = logo;
       if (website.trim() && !client.website) patch.website = /^https?:/.test(website) ? website.trim() : `https://${website.trim()}`;
       if (industry && !client.industry) patch.industry = industry;
+      // a client created from a link gets its real name from the website
+      if (brandName && (looksLikeUrl(client.name) || client.name === nameFromUrl(client.website || ''))) patch.name = brandName;
       if (Object.keys(patch).length) await saveClient({ ...client, ...patch });
       if (patch.industry) toast(`AI nhận diện ngành: ${patch.industry}`, 'info');
       for (const w of warn) toast(w, 'info');

@@ -1,9 +1,11 @@
 // Tab Thiết kế của một khách (Phloem Design): việc thiết kế từ kế hoạch, các thiết kế đã làm, kho ảnh riêng của khách.
+import { ImportData } from './ImportData';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems } from '../../mkt/data';
-import { SIZES, newDesign, sizeForRow, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, newDesign, sizeForRow, type DesignSize } from '../../mkt/designs';
+import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
 import { Btn, Modal } from '../components';
@@ -18,6 +20,8 @@ export function DesignHub({ client }: { client: Client }) {
   const s = useStore();
   const write = canWrite(client.role) && !client.shared;
   const [picker, setPicker] = useState<Row | null | 'new'>(null);
+  const [own, setOwn] = useState<Row | null>(null);
+  const [importing, setImporting] = useState(false);
   const [busy, setBusy] = useState<{ label: string; done?: number; total?: number } | null>(null);
   const [scope, setScope] = useState<'approved' | 'all'>('approved');
   const [days, setDays] = useState(14);
@@ -66,7 +70,7 @@ export function DesignHub({ client }: { client: Client }) {
   return (
     <>
       <PageHead title="Thiết kế" sub="Mỗi bài trong kế hoạch có ảnh riêng, xếp theo ngày đăng. Ảnh nào chưa đẹp: bấm Chỉnh sửa để mở trang edit (layer như Figma, kéo thả đồ hoạ như Canva)."
-        actions={write ? <>{week.length > 0 && <Btn icon="sparkle" onClick={() => void batch()}>AI thiết kế cả tuần · {week.length}</Btn>}<Btn kind="primary" icon="plus" onClick={() => setPicker('new')}>Thiết kế mới</Btn></> : undefined} />
+        actions={write ? <><Btn icon="download" onClick={() => setImporting(true)} title="Nhập kế hoạch từ Google Sheet, ảnh đã làm từ Drive/web">Nhập từ link</Btn>{week.length > 0 && <Btn icon="sparkle" onClick={() => void batch()}>AI thiết kế cả tuần · {week.length}</Btn>}<Btn kind="primary" icon="plus" onClick={() => setPicker('new')}>Thiết kế mới</Btn></> : undefined} />
 
       <div class="row wrap" style={{ marginBottom: 12 }}>
         <div class="seg"><button class={layout === 'table' ? 'on' : ''} onClick={() => setLayout('table')}><Icon name="grid" size={13} /> Bảng</button><button class={layout === 'cards' ? 'on' : ''} onClick={() => setLayout('cards')}><Icon name="blocks" size={13} /> Thẻ</button></div>
@@ -104,9 +108,11 @@ export function DesignHub({ client }: { client: Client }) {
                         {des ? <>
                           <Btn xs icon="text" onClick={() => void A.openProject(des.id)}>Chỉnh sửa</Btn>
                           <Btn xs kind="ghost" icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Làm lại', false)) void make(sizeForRow(r), r, true); }}>Làm lại</Btn>
+                          <Btn xs kind="ghost" icon="upload" onClick={() => setOwn(r)}>Đổi ảnh</Btn>
                         </> : <>
                           <Btn xs icon="sparkle" onClick={() => void make(sizeForRow(r), r, true)}>AI thiết kế</Btn>
                           <Btn xs kind="ghost" icon="rect" onClick={() => void make(sizeForRow(r), r, false)}>Tự thiết kế</Btn>
+                          <Btn xs kind="ghost" icon="upload" onClick={() => setOwn(r)}>Ảnh của bạn</Btn>
                         </>}
                       </div></td>}
                     </tr>
@@ -141,6 +147,7 @@ export function DesignHub({ client }: { client: Client }) {
                     </> : <>
                       <Btn xs icon="sparkle" onClick={() => void make(sizeForRow(r), r, true)}>AI thiết kế</Btn>
                       <Btn xs icon="rect" onClick={() => void make(sizeForRow(r), r, false)}>Tự thiết kế</Btn>
+                      <Btn xs kind="ghost" icon="upload" onClick={() => setOwn(r)}>Ảnh của bạn</Btn>
                       <Btn xs kind="ghost" onClick={() => setPicker(r)}>Khổ khác…</Btn>
                     </>}
                   </div>}
@@ -178,6 +185,8 @@ export function DesignHub({ client }: { client: Client }) {
 
       {!plans.length && <Empty icon="layers" title="Chưa có kế hoạch" action={<Btn onClick={() => go({ view: 'client', id: client.id, tab: 'plan' })}>Soạn kế hoạch</Btn>}>Bài trong kế hoạch tự thành ô ảnh theo ngày ở đây.</Empty>}
 
+      {importing && <ImportData client={client} onClose={() => setImporting(false)} />}
+      {own && <OwnImage client={client} row={own} onClose={() => setOwn(null)} />}
       {picker && <SizePicker row={picker === 'new' ? null : picker} onClose={() => setPicker(null)} onPick={(z, ai) => void make(z, picker === 'new' ? null : picker, ai)} />}
       {busy && <Modal title="Phloem Design" icon="sparkle" narrow onClose={() => abort.current?.abort()} footer={<Btn kind="ghost" onClick={() => abort.current?.abort()}>{busy.total ? 'Dừng' : 'Huỷ'}</Btn>}>
         <div class="row"><div class="mk-spin" /><span>{busy.label}</span></div>
@@ -185,6 +194,32 @@ export function DesignHub({ client }: { client: Client }) {
         <span class="dim small">{busy.total ? `Bài ${(busy.done || 0) + 1}/${busy.total}. Ảnh xong tới đâu gắn vào bài tới đó; dừng lúc nào cũng được.` : 'AI thiết kế mất khoảng 30–90 giây; bố cục mẫu mất vài giây. Kết quả mở trong trang edit, mọi chữ, hình, ảnh đều là layer chỉnh được.'}</span>
       </Modal>}
     </>
+  );
+}
+
+/** Use the client's own picture for a post: upload, paste (⌘V) or pick from the library; it is pinned to the post. */
+function OwnImage({ client, row, onClose }: { client: Client; row: Row; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const use = async (id: string) => { setBusy(true); try { await designFromImage(client, row, id); toast('Đã gắn ảnh vào bài. Bấm vào ảnh để chỉnh thêm chữ, logo, đồ hoạ.', 'ok'); onClose(); } catch (e) { toast((e as Error).message, 'err'); setBusy(false); } };
+  const fromFiles = async (files: File[]) => { const ids = await addClientImages(client.id, files, 'upload'); if (ids[0]) await use(ids[0]); };
+  useEffect(() => {
+    const h = (e: ClipboardEvent) => { const f = Array.from(e.clipboardData?.files || []).filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void fromFiles(f); } };
+    window.addEventListener('paste', h); return () => window.removeEventListener('paste', h);
+  }, []);
+  const lib = clientImages(client.id);
+  return (
+    <Modal title={`Ảnh cho bài: ${row.topic}`} icon="image" onClose={onClose}>
+      <div data-own-paste class="col" style={{ gap: 12 }}>
+        <label class="mk-drop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void fromFiles(Array.from(e.dataTransfer?.files || [])); }}>
+          <Icon name="upload" size={20} /><span>{busy ? 'Đang gắn ảnh…' : 'Kéo thả ảnh vào đây, bấm để chọn file, hoặc dán (⌘V)'}</span>
+          <input ref={input} type="file" accept="image/*" hidden onChange={(e) => { const f = Array.from((e.target as HTMLInputElement).files || []); (e.target as HTMLInputElement).value = ''; void fromFiles(f); }} />
+        </label>
+        {lib.length > 0 && <><span class="small muted">Hoặc chọn từ kho ảnh của {client.name}</span>
+          <div class="asset-grid mk-pick-grid">{lib.slice(0, 60).map((a) => <button key={a.id} class="asset" disabled={busy} onClick={() => void use(a.id)} title={`${a.name} · ${a.w}×${a.h}`}>{assets.url(a.id) ? <img src={assets.url(a.id)} alt={a.name} loading="lazy" /> : null}<div class="nm">{a.name}</div></button>)}</div></>}
+        <span class="dim small">Ảnh lấp đầy khung {sizeForRow(row).label} ({sizeForRow(row).w}×{sizeForRow(row).h}). Muốn thêm chữ, logo: bấm Chỉnh sửa sau khi gắn.</span>
+      </div>
+    </Modal>
   );
 }
 

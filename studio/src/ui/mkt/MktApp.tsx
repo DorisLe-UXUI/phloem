@@ -1,10 +1,11 @@
 // Phloem MKT shell: top bar (client switcher ⌘K), left navigation, and the agency-level pages
 // (Tổng quan, Khách hàng, Thư viện chung). A client opens its own workspace (Workspace.tsx).
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { set, toast, useStore } from '../../store';
+import { get, set, toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems, isRelay, listItems, loadClients, saveClient } from '../../mkt/data';
 import { digest } from '../../mkt/insights';
+import { addClientImages } from '../../mkt/designs';
 import { go } from '../../mkt/router';
 import { CLIENT_TABS, LANGUAGES, MARKETS, channelOf, type Client } from '../../mkt/types';
 import { Btn, Field, Modal } from '../components';
@@ -28,6 +29,33 @@ export function MktApp() {
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
   }, []);
   useEffect(() => { setNav(false); document.querySelector('.mk-main')?.scrollTo(0, 0); }, [s.mkt]);
+  // paste (⌘V) or drop an image anywhere in a client workspace: it lands in that client's library
+  // (a dialog that handles images itself, like the post image picker, sets data-own-paste and wins)
+  useEffect(() => {
+    const clientId = () => { const v = get().mkt; return get().route.name === 'home' && v.view === 'client' ? v.id : null; };
+    const take = async (files: File[]) => {
+      const id = clientId(); if (!id || !files.length) return;
+      const ids = await addClientImages(id, files, 'paste');
+      if (ids.length) toast(`Đã thêm ${ids.length} ảnh vào kho của ${get().clients.find((c) => c.id === id)?.name || 'khách'} (tab Thiết kế).`, 'ok');
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (document.querySelector('[data-own-paste]') || get().modal) return;
+      const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
+      if (files.length) { e.preventDefault(); void take(files); }
+    };
+    const onOver = (e: DragEvent) => { if (clientId() && Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault(); };
+    const onDrop = (e: DragEvent) => {
+      if (!clientId() || document.querySelector('[data-own-paste]')) return;
+      const files = Array.from(e.dataTransfer?.files || []).filter((f) => f.type.startsWith('image/'));
+      if (!files.length) return;
+      if ((e.target as HTMLElement | null)?.closest?.('.dropzone, .mk-drop')) return; // the library's own drop zone handles it
+      e.preventDefault(); void take(files);
+    };
+    window.addEventListener('paste', onPaste); window.addEventListener('dragover', onOver); window.addEventListener('drop', onDrop);
+    return () => { window.removeEventListener('paste', onPaste); window.removeEventListener('dragover', onOver); window.removeEventListener('drop', onDrop); };
+  }, []);
 
   if (s.mkt.view === 'review') return <ReviewPage token={s.mkt.token} />;
   if (!s.user) return <Gate />;
@@ -218,6 +246,9 @@ const INDUSTRIES = ['F&B / Nhà hàng', 'Thời trang', 'Mỹ phẩm / Làm đ�
 const AUTO = '__auto', OTHER = '__other';
 const COLORS = ['#39ff14', '#6fb7ff', '#ff5fa2', '#ffc53d', '#25f4ee', '#ffa94d', '#b197fc', '#ff5c5c'];
 const CURRENCY: Record<string, string> = { 'Việt Nam': 'VND', 'Hoa Kỳ': 'USD', Canada: 'CAD', 'Úc': 'AUD', Anh: 'GBP', 'Châu Âu': 'EUR', 'Nhật Bản': 'JPY', 'Hàn Quốc': 'KRW', 'Trung Quốc': 'CNY', 'Đài Loan': 'TWD', Singapore: 'SGD', 'Thái Lan': 'THB', Malaysia: 'MYR', Indonesia: 'IDR', Philippines: 'PHP' };
+export const looksLikeUrl = (s: string) => /^(https?:\/\/|www\.)/i.test(s.trim()) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(s.trim());
+/** "https://www.toolmarthou.com/?x" → "Toolmarthou" (a placeholder until the brand step reads the real name). */
+export function nameFromUrl(s: string): string { try { const h = new URL(/^https?:/i.test(s) ? s : `https://${s}`).hostname.replace(/^www\./, '').split('.')[0]; return h.charAt(0).toUpperCase() + h.slice(1); } catch { return ''; } }
 /** Drop tracking parameters people paste with a link (Google srsltid, utm_*, fbclid, gclid). */
 export function cleanUrl(raw: string): string {
   let site = raw.trim(); if (!site) return '';
@@ -240,15 +271,19 @@ export function CreateClient({ onClose, edit }: { onClose: () => void; edit?: Cl
   const submit = async (e?: Event) => {
     e?.preventDefault();
     if (!name.trim()) { toast('Nhập tên khách hàng.', 'err'); return; }
+    // a link typed into the name box (and a word in the website box) is the most common slip: put each where it belongs
+    let nm = name.trim(), web = website.trim();
+    if (looksLikeUrl(nm) && !looksLikeUrl(web)) { web = nm; nm = nameFromUrl(nm) || web; }
+    if (web && !looksLikeUrl(web)) { toast(`"${web}" chưa phải website. Nhập dạng tencongty.com, hoặc để trống.`, 'err'); return; }
     const ind = industry === AUTO ? '' : industry === OTHER ? industryText.trim() : industry;
     const mk = market === OTHER ? marketText.trim() || 'Việt Nam' : market;
-    if (industry === AUTO && !website.trim()) { toast('Để AI tự nhận diện ngành, nhập website. Hoặc chọn ngành.', 'err'); return; }
+    if (industry === AUTO && !web) { toast('Để AI tự nhận diện ngành, nhập website. Hoặc chọn ngành.', 'err'); return; }
     setBusy(true);
     try {
-      const site = cleanUrl(website);
+      const site = cleanUrl(web);
       const logo = edit?.logo; // the brand step reads the real logo from the website
       const currency = edit?.currency && edit.market === mk ? edit.currency : CURRENCY[mk] || (mk === 'Việt Nam' ? 'VND' : 'USD');
-      const c = await saveClient({ ...(edit || {}), id: edit?.id, name: name.trim(), website: site, industry: ind, language, market: mk, logo, color: edit?.color || COLORS[Math.floor(Math.random() * COLORS.length)], status: edit?.status || 'active', timezone: edit?.timezone || 'Asia/Ho_Chi_Minh', currency });
+      const c = await saveClient({ ...(edit || {}), id: edit?.id, name: nm, website: site, industry: ind, language, market: mk, logo, color: edit?.color || COLORS[Math.floor(Math.random() * COLORS.length)], status: edit?.status || 'active', timezone: edit?.timezone || 'Asia/Ho_Chi_Minh', currency });
       onClose();
       if (!edit) { toast(`Đã tạo workspace "${c.name}". Bước tiếp: lên thương hiệu${ind ? '' : ' (AI tự nhận diện ngành từ website)'}.`, 'ok'); go({ view: 'client', id: c.id, tab: 'brand' }); }
       else toast('Đã lưu.', 'ok');

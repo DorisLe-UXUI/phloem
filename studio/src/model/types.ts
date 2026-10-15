@@ -213,7 +213,7 @@ export interface Asset {
   /** ISO time it was added. */
   at?: string;
 }
-export interface AssetSrc { kind: 'web' | 'upload' | 'paste' | 'ai' | 'catalog' | 'logo' | 'graphic' | 'stock'; host?: string; url?: string; page?: string; /** Licence / credit line for stock photos (Openverse). */ credit?: string }
+export interface AssetSrc { kind: 'web' | 'upload' | 'paste' | 'ai' | 'catalog' | 'logo' | 'graphic' | 'stock' | 'reference'; host?: string; url?: string; page?: string; /** Licence / credit line for stock photos (Openverse). */ credit?: string }
 
 export const DEFAULT_BRAND: Brand = {
   primary: '#0F3D2E',

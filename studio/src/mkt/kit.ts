@@ -19,3 +19,11 @@ export function clientEmailBrand(clientId: string | null | undefined): Partial<B
   if (accent?.hex) out.accent = accent.hex;
   return out;
 }
+
+/** House style the AI read from past posts: on the brand book, or a note when there is no book yet. */
+export function styleNotesOf(clientId: string | null | undefined): string {
+  if (!clientId) return '';
+  const b = brandBookOf(clientId); if (b?.styleNotes) return b.styleNotes;
+  const n = cachedItems(clientId)?.find((i) => i.kind === 'note' && i.id === 'style')?.data as { styleNotes?: string } | undefined;
+  return n?.styleNotes || '';
+}

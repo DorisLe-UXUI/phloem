@@ -12,7 +12,7 @@ import { assets } from '../storage/assets';
 import { get, set, toast } from '../store';
 import { history } from '../store';
 import * as A from '../pipeline/actions';
-import { brandBookOf, clientEmailBrand } from './kit';
+import { brandBookOf, clientEmailBrand, styleNotesOf } from './kit';
 import { audienceLine, channelOf, type Client, type PlanRow } from './types';
 
 export interface DesignSize { id: string; label: string; w: number; h: number; group: string }
@@ -120,6 +120,38 @@ export async function newDesign(client: Client, size: DesignSize, row?: (PlanRow
   return p;
 }
 
+/** A post that uses the client's own picture: the photo fills the frame (cover), saved as a design and pinned to the post. */
+export async function designFromImage(client: Client, row: (PlanRow & { planId: string }) | null, assetId: string, open = false) {
+  const a = assets.get(assetId); if (!a) throw new Error('Không tìm thấy ảnh.');
+  const size = row ? sizeForRow(row) : (() => { const r = a.w / a.h; return r > 1.5 ? sizeById('fb-link') : r > 1.1 ? sizeById('gbp') : r > 0.9 ? sizeById('square') : r > 0.7 ? sizeById('portrait') : sizeById('story'); })();
+  const brand = designBrand(client);
+  const doc: Doc = { width: size.w, height: size.h, bg: '#000000', autoHeight: false, nodes: [{ id: uid('n'), type: 'image', name: a.name, x: 0, y: 0, w: size.w, h: size.h, visible: true, locked: false, opacity: 1, link: null, alt: a.name, assetId, fit: 'cover', radius: 0, fill: null, overlay: null } as Node] };
+  await readyDoc(doc);
+  const now = new Date().toISOString();
+  const name = row ? `${row.date.slice(8, 10)}/${row.date.slice(5, 7)} · ${channelOf(row.channel).label} · ${row.topic}`.slice(0, 90) : a.name;
+  const p: Project = { id: uid('p'), name, createdAt: now, updatedAt: now, brand, fields: { campaignName: name, subject: '', preheader: '' }, desktop: doc, mobile: null, drafts: {}, clientId: client.id, kind: 'design', size: { id: size.id, label: size.label, w: size.w, h: size.h }, ...(row ? { rowRef: { planId: row.planId, rowId: row.id } } : {}) };
+  const { db } = await import('../storage/idb');
+  const { cloud } = await import('../storage/sync');
+  const { thumbnail } = await import('../render/renderer');
+  let thumb: string | undefined; try { thumb = thumbnail(doc, brand, assets, 360, size.h / size.w); } catch { /* not decoded yet */ }
+  const stored = { ...p, thumb, owner: get().user?.id || '' };
+  await db.putProject(stored); cloud.pushProjectSoon(stored);
+  await A.refreshProjects();
+  if (row) await attachDesign(client.id, row.planId, row.id, p.id);
+  if (open) await A.openProject(p.id);
+  return p;
+}
+
+/** Images from a paste or a drop, added to a client's library. Returns the new asset ids. */
+export async function addClientImages(clientId: string, files: (File | Blob)[], kind: 'upload' | 'paste' | 'reference' = 'upload'): Promise<string[]> {
+  const ids: string[] = [];
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    try { ids.push((await assets.add(f, (f as File).name || `${kind === 'paste' ? 'Ảnh dán' : 'Ảnh'} ${new Date().toLocaleString('vi-VN')}`, { src: { kind }, client: clientId, project: null })).id); } catch { /* unreadable image */ }
+  }
+  return ids;
+}
+
 /** Pin a design to its post in the plan (the post shows that picture everywhere: Thiết kế, Lịch đăng, the plan grid). */
 export async function attachDesign(clientId: string, planId: string, rowId: string, designId: string) {
   const { cachedItems, putItem } = await import('./data');
@@ -213,28 +245,82 @@ async function thumbB64(id: string): Promise<AiImage | null> {
   } catch { return null; }
 }
 
+const CRITIC = `You are the creative director reviewing a social post before it ships. You get the brief, the HTML and a screenshot of how it RENDERS (exactly what people will see in their feed). Standard: the best agency work on Behance, not "good enough".
+1. Silently score impact, hierarchy, typography, composition/depth, colour, polish 1-10. Anything under 8 is rebuilt, not nudged: a bigger, tighter headline; a clear focal image used boldly (crop in, overlap the frame, layer it); fewer, better elements; real depth (glow, shadow, overlap); generous margins; one CTA.
+2. Fix everything wrong in the render: clipped or overlapping text, elements leaving the frame, weak contrast, cramped spacing, tiny text, awkward empty areas, clutter, boxes where emoji were, anything that did not convert.
+3. Keep the copy facts, language, brand colours, fonts and image ids.
+Return the COMPLETE revised HTML document in one \`\`\`html block. No commentary.`;
+
+/** Which image model the relay offers ('google' | 'openai'), or null. Checked once per page load. */
+let imageAiCache: string | null | undefined;
+export async function imageProvider(): Promise<string | null> {
+  if (imageAiCache !== undefined) return imageAiCache ?? null;
+  try { const r = await fetch(`${(get().settings.relayUrl || '').replace(/\/$/, '')}/`, { signal: AbortSignal.timeout(60_000) }); const j = await r.json(); imageAiCache = j.imageAi || null; } catch { imageAiCache = null; }
+  return imageAiCache ?? null;
+}
+const aspectFor = (z: DesignSize): '1:1' | '3:4' | '4:3' | '9:16' | '16:9' => { const r = z.w / z.h; return r > 1.5 ? '16:9' : r > 1.15 ? '4:3' : r > 0.9 ? '1:1' : r > 0.66 ? '3:4' : '9:16'; };
+
+/** Photos worth giving the designer: the client's own pictures first (past posts, uploads, website, AI), never tiny or logos. */
+function pickImages(clientId: string, logo: string | null, max = 9): string[] {
+  const rank = (k?: string) => (k === 'reference' ? 0 : k === 'upload' || k === 'paste' ? 1 : k === 'ai' ? 2 : k === 'web' ? 3 : 4);
+  const list = clientImages(clientId).filter((a) => a.id !== logo && a.src?.kind !== 'logo' && Math.min(a.w, a.h) >= 240);
+  return list.sort((a, b) => rank(a.src?.kind) - rank(b.src?.kind) || (b.at || '').localeCompare(a.at || '')).slice(0, max).map((a) => a.id);
+}
+
 async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: PlanRow | null, valid: Set<string>, onStage?: (m: string) => void, signal?: AbortSignal): Promise<Doc> {
   const book = brandBookOf(client.id);
-  const ids = [...valid].slice(0, 10);
+  const logo = brand.logoAssetId && assets.get(brand.logoAssetId) ? brand.logoAssetId : null;
+  // 1. a key visual painted for THIS post (Gemini / OpenAI through the relay), when the relay can draw
+  let hero: string | null = null;
+  if (await imageProvider()) {
+    onStage?.('AI đang vẽ ảnh chính cho bài (10–30 giây)…');
+    const style = [book?.imagery?.join('; '), styleNotesOf(client.id)].filter(Boolean).join('. ');
+    const prompt = [
+      `Key visual for a ${channelOf(row?.channel || 'facebook').label} post by ${client.name}${client.industry ? ` (${client.industry})` : ''}.`,
+      row ? `Subject: ${row.topic}. Visual idea: ${row.visual || row.hook}.` : 'Subject: the brand and its product.',
+      style ? `Brand image style: ${style}.` : '',
+      `Colours that fit the brand: ${[brand.primary, brand.accent].join(', ')}.`,
+      'High-end advertising quality, one clear focal subject, depth and soft light, clean area at the top for a headline. Absolutely no text, letters, numbers, watermarks or logos in the image.',
+    ].filter(Boolean).join(' ');
+    try { hero = await generateImage(client.id, prompt, aspectFor(size)); valid.add(hero); }
+    catch (e) { onStage?.(`Không vẽ được ảnh (${(e as Error).message.slice(0, 80)}), dùng ảnh trong kho…`); }
+  }
+  const ids = [...new Set([...(hero ? [hero] : []), ...(logo ? [logo] : []), ...pickImages(client.id, logo)])].filter((id) => assets.get(id));
+  for (const id of ids) valid.add(id);
   const images: AiImage[] = []; const lines: string[] = [];
-  for (const id of ids) { const a = assets.get(id)!; const t = images.length < 8 ? await thumbB64(id) : null; if (t) images.push(t); lines.push(`- "${id}": ${a.name} · ${a.w}×${a.h}${a.src?.kind === 'logo' || id === brand.logoAssetId ? ' · LOGO' : ''}${t ? ` (ảnh #${images.length} đính kèm)` : ''}`); }
+  for (const id of ids) {
+    const a = assets.get(id)!; const t = images.length < 8 ? await thumbB64(id) : null; if (t) images.push(t);
+    const role = id === hero ? ' · HERO: painted for this post, use it as the main visual, big' : id === logo ? ' · LOGO' : a.src?.kind === 'reference' ? " · the client's past work: match its look" : '';
+    lines.push(`- "${id}": ${a.name} · ${a.w}×${a.h}${role}${t ? ` (attached image #${images.length})` : ''}`);
+  }
   const fonts = FONTS.filter((f) => f.google && f.vi).map((f) => f.family).join(', ');
   const brief = [
     `Client: ${client.name}${client.industry ? ` (${client.industry})` : ''}`,
     audienceLine(client),
     book ? `Brand: tagline "${book.tagline}"; voice ${book.voice.traits.join(', ')}; colours ${book.palette.map((c) => `${c.name} ${c.hex} (${c.role})`).join(', ')}; fonts ${book.fonts.heading} / ${book.fonts.body}; imagery: ${book.imagery.join('; ')}` : `Brand colours: primary ${brand.primary}, accent ${brand.accent}, ink ${brand.ink}, bg ${brand.bg}; fonts ${brand.headingFamily} / ${brand.fontFamily}`,
+    styleNotesOf(client.id) ? `HOUSE STYLE from the client's past posts (match it): ${styleNotesOf(client.id)}` : '',
     row ? `Post: ${channelOf(row.channel).label} ${row.format}, ${row.date}. Topic: ${row.topic}. Hook: ${row.hook}. CTA: ${row.cta}. Visual idea from the plan: ${row.visual}` : 'Post: a general brand post.',
+    'Graphics you may add: data-sticker 3D objects; data-icon colour sets (streamline-color:, streamline-plump-color:, icon-park:, twemoji:, noto:, fluent-emoji-flat:) and mono sets (ph:, game-icons:); data-gfx backgrounds. Use few, large, deliberate.',
   ].join('\n');
+  const system = `${SOCIAL}\n\nTECHNICAL CONTRACT (Phloem converts the browser layout into editable layers)\nOUTPUT: one complete HTML document in a single \`\`\`html block. All CSS in one <style>.\nCANVAS: <body> holds exactly one <div id="email" data-email> of EXACTLY width:${size.w}px; height:${size.h}px; overflow:hidden; position:relative, containing ONE <section data-name="Post" style="position:relative;width:${size.w}px;height:${size.h}px">. Everything is positioned inside it; nothing may leave the frame.\n${TECH}\n${NEVER}\nAllowed fonts (exact): ${fonts}.`;
+  // 2. first draft
   onStage?.('AI đang thiết kế…');
-  const text = await streamClaude({
-    system: `${SOCIAL}\n\nTECHNICAL CONTRACT (Phloem converts the browser layout into editable layers)\nOUTPUT: one complete HTML document in a single \`\`\`html block. All CSS in one <style>.\nCANVAS: <body> holds exactly one <div id="email" data-email> of EXACTLY width:${size.w}px; height:${size.h}px; overflow:hidden; position:relative, containing ONE <section data-name="Post" style="position:relative;width:${size.w}px;height:${size.h}px">. Everything is positioned inside it; nothing may leave the frame.\n${TECH}\n${NEVER}\nAllowed fonts (exact): ${fonts}.`,
-    turns: [{ role: 'user', text: `${brief}\n\nFrame: ${size.w}×${size.h}px (${size.label}).\nIMAGE LIST (data-img ids):\n${lines.join('\n') || '(no photos: build the visual with type, colour, 3D objects, generated graphics, icons)'}\n\nDesign and code this post now.`, images }],
-    maxTokens: 16000, effort: 'high',
-  }, (t) => onStage?.(`AI đang thiết kế… ${Math.round(t.length / 100) / 10}k ký tự`), signal);
-  const html = extractHtml(text);
+  const text = await streamClaude({ system, turns: [{ role: 'user', text: `${brief}\n\nFrame: ${size.w}×${size.h}px (${size.label}).\nIMAGE LIST (data-img ids):\n${lines.join('\n') || '(no photos: build the visual with type, colour, 3D objects, generated graphics, icons)'}\n\nDesign and code this post now.`, images }], maxTokens: 16000, effort: 'high' }, (t) => onStage?.(`AI đang thiết kế… ${Math.round(t.length / 100) / 10}k ký tự`), signal);
+  let html = extractHtml(text);
   if (!/<(div|section)[\s>]/i.test(html)) throw new Error('AI không trả về thiết kế. Thử lại.');
   onStage?.('Đang chuyển thành layer…');
-  return toDoc(html, size, brand, valid, onStage);
+  let doc = await toDoc(html, size, brand, valid, onStage);
+  // 3. the creative director looks at the real render and rebuilds what is weak
+  try {
+    await readyDoc(doc); await document.fonts.ready;
+    const k = Math.min(1, 900 / Math.max(size.w, size.h));
+    const shot = renderToCanvas(doc, brand, assets, k).toDataURL('image/jpeg', 0.85).split(',')[1];
+    onStage?.('Giám đốc sáng tạo đang soát và chỉnh bản đầu…');
+    const rev = await streamClaude({ system: `${CRITIC}\n\n${system}`, turns: [{ role: 'user', text: `${brief}\n\nFrame: ${size.w}×${size.h}px.\nIMAGE LIST:\n${lines.join('\n')}\n\nThe LAST attached image is the render of the current design.\n\nCURRENT HTML:\n\`\`\`html\n${html}\n\`\`\``, images: [...images.slice(0, 5), { name: 'render.jpg', mime: 'image/jpeg', base64: shot }] }], maxTokens: 16000, effort: 'high' }, (t) => onStage?.(`Giám đốc sáng tạo đang chỉnh… ${Math.round(t.length / 100) / 10}k ký tự`), signal);
+    const h2 = extractHtml(rev);
+    if (/<(div|section)[\s>]/i.test(h2)) { onStage?.('Đang chuyển bản đã chỉnh thành layer…'); doc = await toDoc(h2, size, brand, valid, onStage); html = h2; }
+  } catch (e) { if (signal?.aborted) throw e; /* keep the first draft */ }
+  return doc;
 }
 
 // ---------- AI image (Google Imagen / OpenAI through the relay; the keys never reach the browser) ----------

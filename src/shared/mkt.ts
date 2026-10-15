@@ -156,3 +156,90 @@ export function toXlsx(sheets: Sheet[]): Uint8Array {
   ];
   return makeZip(files);
 }
+
+// ---------- import an existing content plan from a sheet ----------
+export interface SheetPost { date: string; time: string; channel: string; format: string; topic: string; hook: string; caption: string; cta: string; hashtags: string; visual: string; status: string; pillar: string }
+const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\u0111/g, 'd').replace(/[^a-z0-9]+/g, ' ').trim();
+const HEADERS: Record<keyof SheetPost, string[]> = {
+  date: ['ngay', 'ngay dang', 'date', 'publish date', 'post date', 'ngay dang bai', 'thoi gian dang', 'day'],
+  time: ['gio', 'gio dang', 'time', 'post time', 'khung gio'],
+  channel: ['kenh', 'nen tang', 'channel', 'platform', 'mang xa hoi', 'network'],
+  format: ['dinh dang', 'loai', 'format', 'type', 'post type', 'loai bai'],
+  topic: ['chu de', 'tieu de', 'topic', 'title', 'subject', 'ten bai', 'y tuong', 'content idea', 'idea', 'headline'],
+  hook: ['hook', 'cau mo', 'mo bai', 'opening'],
+  caption: ['caption', 'noi dung', 'content', 'copy', 'bai viet', 'post copy', 'text', 'description', 'mo ta'],
+  cta: ['cta', 'call to action', 'keu goi'],
+  hashtags: ['hashtag', 'hashtags', 'tag', 'tags'],
+  visual: ['hinh anh', 'y tuong hinh anh', 'visual', 'image', 'creative', 'design', 'thiet ke', 'brief anh', 'image idea'],
+  status: ['trang thai', 'status', 'tinh trang', 'duyet', 'approval'],
+  pillar: ['tru cot', 'pillar', 'content pillar', 'nhom noi dung', 'category', 'danh muc'],
+};
+/** Which column holds what: header synonyms in Vietnamese and English, accents and case ignored. */
+export function mapSheetColumns(header: string[]): Partial<Record<keyof SheetPost, number>> {
+  const out: Partial<Record<keyof SheetPost, number>> = {};
+  const h = header.map(fold);
+  for (const [key, names] of Object.entries(HEADERS) as [keyof SheetPost, string[]][]) {
+    let idx = h.findIndex((x, i) => names.includes(x) && !Object.values(out).includes(i));
+    if (idx < 0) idx = h.findIndex((x, i) => names.some((n) => n.length > 3 && x.startsWith(n)) && !Object.values(out).includes(i));
+    if (idx >= 0) out[key] = idx;
+  }
+  return out;
+}
+/** A sheet date → YYYY-MM-DD. dd/mm/yyyy by default (Vietnam); mm/dd/yyyy when `usDates` or when the day cannot be a month. */
+export function parseSheetDate(v: string, usDates = false, fallbackYear = new Date().getFullYear()): string {
+  const s = String(v || '').trim();
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(s);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = /^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?/.exec(s);
+  if (m) {
+    let a = Number(m[1]), b = Number(m[2]); const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : fallbackYear;
+    if (usDates && a <= 12 && b <= 31) [a, b] = [b, a]; else if (!usDates && b > 12 && a <= 12) [a, b] = [b, a];
+    if (b < 1 || b > 12 || a < 1 || a > 31) return '';
+    return `${y}-${String(b).padStart(2, '0')}-${String(a).padStart(2, '0')}`;
+  }
+  const t = Date.parse(s); if (!Number.isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+  return '';
+}
+export function normChannel(v: string): string {
+  const s = fold(v);
+  if (/\b(fb|facebook|meta)\b/.test(s)) return 'facebook';
+  if (/\b(ig|insta|instagram)\b/.test(s)) return 'instagram';
+  if (/tiktok|\btt\b/.test(s)) return 'tiktok';
+  if (/youtube|\byt\b|shorts/.test(s)) return 'youtube';
+  if (/linkedin|\bli\b/.test(s)) return 'linkedin';
+  if (/business profile|gbp|google maps|google business/.test(s)) return 'google_business';
+  if (/search|ads|google/.test(s)) return 'google_search';
+  return 'facebook';
+}
+export function normFormat(v: string): string {
+  const s = fold(v);
+  if (/reel|short/.test(s)) return 'reel'; if (/carousel|album|nhieu anh/.test(s)) return 'carousel'; if (/story/.test(s)) return 'story';
+  if (/video|clip/.test(s)) return 'video'; if (/article|blog|bai viet dai/.test(s)) return 'article'; if (/ads?\b|quang cao/.test(s)) return 'ad';
+  return 'image';
+}
+export function normStatus(v: string, fallback = 'approved'): string {
+  const s = fold(v);
+  if (!s) return fallback;
+  if (/da dang|posted|published|live|done/.test(s)) return 'live';
+  if (/len lich|scheduled/.test(s)) return 'scheduled';
+  if (/da duyet|approved|ok|duyet/.test(s)) return 'approved';
+  if (/cho duyet|pending|review/.test(s)) return 'pending';
+  if (/nhap|draft|todo|chua/.test(s)) return 'draft';
+  return fallback;
+}
+/** Rows of a sheet (first row = header) → posts, or null when the columns cannot be recognised (then the AI maps them). */
+export function postsFromSheet(rows: string[][], opts: { usDates?: boolean; fallbackStatus?: string } = {}): SheetPost[] | null {
+  const hi = rows.findIndex((r) => { const m = mapSheetColumns(r); return m.date !== undefined && (m.topic !== undefined || m.caption !== undefined); });
+  if (hi < 0) return null;
+  const col = mapSheetColumns(rows[hi]);
+  const get = (r: string[], k: keyof SheetPost) => (col[k] === undefined ? '' : String(r[col[k]!] ?? '').trim());
+  const out: SheetPost[] = [];
+  for (const r of rows.slice(hi + 1)) {
+    const date = parseSheetDate(get(r, 'date'), opts.usDates);
+    const topic = get(r, 'topic') || get(r, 'caption').split('\n')[0].slice(0, 120);
+    if (!date || !topic) continue;
+    const time = (/(\d{1,2})[:h](\d{2})?/.exec(get(r, 'time')) || [] as string[]);
+    out.push({ date, time: time[1] ? `${time[1].padStart(2, '0')}:${(time[2] || '00').padStart(2, '0')}` : '19:30', channel: normChannel(get(r, 'channel')), format: normFormat(get(r, 'format')), topic, hook: get(r, 'hook'), caption: get(r, 'caption'), cta: get(r, 'cta'), hashtags: get(r, 'hashtags'), visual: get(r, 'visual'), status: normStatus(get(r, 'status'), opts.fallbackStatus), pillar: get(r, 'pillar') });
+  }
+  return out;
+}

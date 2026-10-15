@@ -1,5 +1,6 @@
 // Module Kế hoạch: setup (1–12 tháng, kênh, mục tiêu, ngân sách) → AI plan → Sheets-like grid with Bảng / Lịch / Kanban /
 // Tóm tắt / Ngân sách / KPI views → export (XLSX, CSV, PDF) → client review link. Approved rows feed Thiết kế and Lịch đăng.
+import { ImportData } from './ImportData';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { get, toast, useStore } from '../../store';
 import { cachedItems, deleteItem, isRelay, newId, putItem } from '../../mkt/data';
@@ -46,6 +47,7 @@ function PlanSetupForm({ client, onCancel, onDone }: { client: Client; onCancel?
   const today = new Date(); const nextMonday = new Date(today.getTime() + ((8 - today.getDay()) % 7 || 7) * 86400e3);
   const [setup, setSetup] = useState<PlanSetup>({ months: 3, start: nextMonday.toISOString().slice(0, 10), channels: ['facebook', 'instagram', 'tiktok'], goals: ['awareness', 'engagement'], budget: 60_000_000, currency: client.currency || 'VND', events: '', postsPerWeek: 3, brief: '' });
   const [prog, setProg] = useState<PlanProgress | null>(null);
+  const [importing, setImporting] = useState(false);
   const [t0, setT0] = useState(0);
   const [, tick] = useState(0);
   const abort = useRef<AbortController | null>(null);
@@ -86,7 +88,8 @@ function PlanSetupForm({ client, onCancel, onDone }: { client: Client; onCancel?
   return (
     <>
       <PageHead title={onCancel ? 'Kế hoạch mới' : 'Kế hoạch'} sub="Chọn thời gian, kênh, mục tiêu và ngân sách. AI soạn chiến lược, trụ cột nội dung, phân bổ ngân sách, KPI và lịch đến từng bài."
-        actions={<>{onCancel && <Btn kind="ghost" onClick={onCancel}>Huỷ</Btn>}<Btn kind="primary" icon="sparkle" disabled={!write} onClick={() => void run()}>Soạn kế hoạch</Btn></>} />
+        actions={<>{onCancel && <Btn kind="ghost" onClick={onCancel}>Huỷ</Btn>}{write && <Btn icon="download" onClick={() => setImporting(true)} title="Đã có kế hoạch trong Google Sheet? Nhập vào đây">Nhập từ Google Sheet</Btn>}<Btn kind="primary" icon="sparkle" disabled={!write} onClick={() => void run()}>Soạn kế hoạch</Btn></>} />
+      {importing && <ImportData client={client} onClose={() => setImporting(false)} />}
       {!brand && <div class="claim"><Icon name="info" /><span class="grow">Chưa có brand book: AI sẽ đoán giọng văn theo ngành. Nên lên thương hiệu trước.</span><Btn sm onClick={() => go({ view: 'client', id: client.id, tab: 'brand' })}>Lên thương hiệu</Btn></div>}
       <div class="mk-cols">
         <section class="mk-card col" style={{ padding: 14, gap: 14 }}>
@@ -137,6 +140,7 @@ function PlanView({ client, item, review, plans, onPick, onNew }: { client: Clie
   const s = useStore();
   const write = canWrite(client.role);
   const [plan, setPlan] = useState<Plan>(item.data);
+  const [importing, setImporting] = useState(false);
   const [view, setView] = useState<View>(() => { try { return (localStorage.getItem('phloem.mkt.planView') as View) || 'table'; } catch { return 'table'; } });
   const dirty = useRef<{ t: ReturnType<typeof setTimeout> | null; edits: number }>({ t: null, edits: 0 });
   useEffect(() => { if (!dirty.current.edits) setPlan(item.data); }, [item.updatedAt]);
@@ -175,6 +179,7 @@ function PlanView({ client, item, review, plans, onPick, onNew }: { client: Clie
         actions={<>
           <ExportMenu client={client} plan={plan} />
           {write && <Btn kind="ghost" icon="plus" onClick={onNew}>Kế hoạch mới</Btn>}
+          {write && <Btn kind="ghost" icon="download" onClick={() => setImporting(true)}>Nhập từ Sheet</Btn>}
           {write && isRelay() && <ShareButton client={client} kind="plan" itemId={item.id} onShared={() => { if (plan.status === 'draft') setStatus('pending'); }} />}
           {write && (plan.status !== 'approved' ? <Btn kind="primary" icon="check" onClick={async () => { if (await ask('Duyệt cả kế hoạch? Mọi bài nháp/chờ duyệt thành "Đã duyệt" và hiện ở Thiết kế, Lịch đăng.', 'Duyệt', false)) setStatus('approved'); }}>Duyệt kế hoạch</Btn> : <Btn kind="ghost" onClick={() => setStatus('draft')}>Mở lại để sửa</Btn>)}
         </>} />
@@ -193,6 +198,7 @@ function PlanView({ client, item, review, plans, onPick, onNew }: { client: Clie
       {view === 'summary' && <Summary client={client} plan={plan} />}
       {view === 'budget' && <BudgetView plan={plan} />}
       {view === 'kpi' && <KpiView plan={plan} />}
+      {importing && <ImportData client={client} onClose={() => setImporting(false)} />}
       <section class="mk-card"><div class="mk-card-h"><b>Lịch sử phiên bản</b></div>{(plan.versions || []).slice().reverse().slice(0, 12).map((v) => <div key={v.version} class="mk-line static"><span class="chip mono">v{v.version}</span><span class="grow">{v.note}</span><span class="dim small">{v.by} · {fmtTime(v.at)}</span></div>)}</section>
     </>
   );
@@ -468,7 +474,8 @@ export function ApprovedWork({ client, mode }: { client: Client; mode: 'design' 
     try { await putItem(client.id, 'plan', planId, { ...p.data, rows: p.data.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)), version, versions: [...(p.data.versions || []), { version, at: new Date().toISOString(), by: get().user?.name || 'Bạn', note }].slice(-40) }); }
     catch (e) { toast((e as Error).message, 'err'); }
   };
-  const copy = (r: PlanRow) => { void navigator.clipboard?.writeText(`${r.hook ? r.hook + '\n\n' : ''}${r.caption}\n\n${r.cta}\n${r.hashtags}`.trim()).then(() => toast('Đã copy caption + CTA + hashtag.', 'ok')); };
+  // full captions already carry the hook, CTA and hashtags: copy as is; older short drafts get the pieces appended
+  const copy = (r: PlanRow) => { const full = /#\S/.test(r.caption); const text = full ? r.caption : `${r.hook && !r.caption.startsWith(r.hook) ? r.hook + '\n\n' : ''}${r.caption}\n\n${r.cta}\n${r.hashtags}`; void navigator.clipboard?.writeText(text.trim()).then(() => toast('Đã copy caption đầy đủ (kèm CTA và hashtag).', 'ok')); };
   const upcoming = rows.filter((r) => mode === 'design' || r.date >= today);
   return (
     <>

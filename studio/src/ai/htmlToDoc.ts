@@ -9,7 +9,7 @@ import { layoutText } from '../render/textLayout';
 import { ensureFonts } from '../render/fonts';
 import { renderToCanvas } from '../render/renderer';
 import { assets } from '../storage/assets';
-import { colorSvg, iconSvg, iconUrl, vectorAsset } from '../design/vector';
+import { colorSvg, iconSvg, iconUrl, vectorAsset, isColorSet } from '../design/vector';
 import { genSvg, svgDataUrl } from '../design/generators';
 import { fluent3dSync, fluent3dUrl, loadFluent3d } from '../design/library';
 
@@ -724,9 +724,9 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
         return;
       }
       if (icon && /^[a-z0-9-]+:[a-z0-9-]+$/.test(icon)) {
-        const c = rgba(cs.color); const color = c ? toHex(c) : null;
+        const c = rgba(cs.color); const multi = isColorSet(icon); const color = !multi && c ? toHex(c) : null; // multicolour sets keep their own colours
         base.fit = 'contain'; base.name = icon.split(':')[1]; base.alt = el.alt || base.alt;
-        base.vector = { svg: '', color, kind: icon.startsWith('fluent-emoji') ? 'sticker' : 'icon' };
+        base.vector = { svg: '', color, kind: multi ? 'sticker' : 'icon' };
         if (ctx.clip && !ctx.rot) { const st = inClip(base, ctx); if (st === 'out') return; if (st !== 'in') cropTo(base, st, base.w, base.h); }
         push(base, ctx, section);
         pending.push(iconSvg(icon).then(async (svg) => { base.vector!.svg = svg; base.assetId = (await vectorAsset(svg, b.w, b.h, base.name, color, temp)).id; }).catch(() => { warnings.push(`Icon ${icon} không tồn tại`); base.visible = false; }));

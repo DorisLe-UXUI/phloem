@@ -13,6 +13,7 @@ import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
 import { createAssetStore, createBlobStore } from './blobs.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
 import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
+import { listDrive } from './drive.mjs';
 import { createMail } from './mail.mjs';
 import { createAudience } from './audience.mjs';
 import { fileURLToPath } from 'node:url';
@@ -134,6 +135,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
     if (url.pathname.startsWith('/db/')) return await dbRoute(url, req, res);
     if (url.pathname === '/site' && req.method === 'POST') { if (!gate(req, res)) return; return await siteRoute(await body(req), res); }
+    if (url.pathname === '/drive' && req.method === 'POST') { if (!gate(req, res)) return; try { const p = await body(req); const files = await listDrive(String(p?.url || ''), async (u) => (await safeGet(u, { accept: 'text/html', limit: 3 * 1024 * 1024, timeout: 15_000, truncate: true })).buf.toString('utf8')); return json(res, 200, { files }); } catch (e) { return json(res, e.status || 502, { error: e.message }); } }
     if (url.pathname === '/csv' && req.method === 'POST') { if (!gate(req, res)) return; return await csvRoute(await body(req), res); }
     if (url.pathname === '/image' && req.method === 'GET') { if (!gate(req, res)) return; return await imageRoute(url.searchParams.get('url') || '', res); }
     if (url.pathname === '/proxy' && req.method === 'POST') { if (!RELAY_TOKEN && !AUTH.me(bearer(req)) && throttled(`proxy:${ipOf(req)}`, 400, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều request qua relay. Đăng nhập tài khoản relay để không bị giới hạn.' }); return await proxy(await body(req), res); }

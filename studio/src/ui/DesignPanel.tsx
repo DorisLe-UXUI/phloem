@@ -9,7 +9,7 @@ import { assets } from '../storage/assets';
 import type { ImageNode } from '../model/types';
 import { uid } from '../model/types';
 import { ANIM_PRESETS, ELEMENTS, ICONS, ICON_STYLES, colorChoices, iconLayer, type ElCat } from '../design/elements';
-import { ICON_SETS, iconCollection, iconTileSvg, searchIcons, vectorAsset } from '../design/vector';
+import { COLOR_SETS, ICON_SETS, iconCollection, iconTileSvg, searchIcons, vectorAsset } from '../design/vector';
 import { GENERATORS, GEN_GROUPS, GEN_PALETTES, genSvg, svgDataUrl, type GenGroup } from '../design/generators';
 import { CAT_VI, fluent3dLayer, fluent3dUrl, loadFluent3d, searchFluent3d, type Fluent3d } from '../design/library';
 import { relayAuth } from '../ai/client';
@@ -21,7 +21,7 @@ const CATS: { v: Cat; label: string }[] = [
   { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' },
   { v: 'sticker', label: 'Sticker' }, { v: 'icon', label: 'Icon' }, { v: 'logo', label: 'Logo' }, { v: 'text', label: 'Chữ' }, { v: 'photo', label: 'Ảnh' }, { v: 'anim', label: 'Hoạt ảnh' },
 ];
-const STICKER_SETS: { v: string; label: string }[] = [{ v: 'fluent-emoji', label: 'Fluent màu' }, { v: 'noto', label: 'Noto' }, { v: 'fluent-emoji-flat', label: 'Phẳng' }, { v: 'fluent-color', label: 'Icon màu' }, { v: 'flat-color-icons', label: 'Icon phẳng' }];
+const STICKER_SETS = COLOR_SETS;
 
 /** What a tile inserts; also the drag payload (text/phloem-el). */
 export type Spec =
@@ -141,7 +141,7 @@ export function DesignPanel() {
       setLoading('Đang tìm…');
       try {
         const sets = cat === 'logo' ? ['logos', 'simple-icons'] : ICON_SETS;
-        const [icons, stickers] = await Promise.all([searchIcons(q, sets as readonly string[], 96).catch(() => []), cat === 'logo' ? Promise.resolve([] as string[]) : searchIcons(q, ['fluent-emoji', 'noto', 'fluent-emoji-flat', 'fluent-color'], 64).catch(() => [])]);
+        const [icons, stickers] = await Promise.all([searchIcons(q, sets as readonly string[], 96).catch(() => []), cat === 'logo' ? Promise.resolve([] as string[]) : searchIcons(q, COLOR_SETS.map((x) => x.v), 96).catch(() => [])]);
         const idx = f3 || (await loadFluent3d().catch(() => null));
         setFound({ icons: icons.filter((x) => !/-(thin|light)$/.test(x)), stickers: stickers.filter((x) => !/-(light|medium|dark|medium-light|medium-dark)$/.test(x)), d3: idx && cat !== 'logo' ? searchFluent3d(idx, q) : [] });
       } finally { setLoading(''); }
@@ -218,7 +218,7 @@ export function DesignPanel() {
         </>
       ) : (
         <>
-          {cat === 'all' && <div class="dp-count">Hơn 15.000 đồ hoạ: 1.600 vật thể 3D, 10.000+ sticker &amp; icon màu, 2.000 logo, nền &amp; hoạ tiết sinh vô hạn theo màu thương hiệu.</div>}
+          {cat === 'all' && <div class="dp-count">Hơn 40.000 đồ hoạ: 1.600 vật thể 3D, 25.000+ sticker, minh hoạ &amp; icon màu, 4.000 hình game, 2.000 logo, nền &amp; hoạ tiết sinh vô hạn theo màu thương hiệu. <a href="https://github.com/DorisLe-UXUI/phloem/blob/main/docs/CREDITS.md" target="_blank" rel="noopener">Nguồn &amp; giấy phép</a></div>}
           {(cat === 'all' || cat === '3d') && (
             <>
               {head('Vật thể 3D', '3d')}

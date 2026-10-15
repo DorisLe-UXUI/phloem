@@ -2200,6 +2200,16 @@ select.in.mk-role {
   padding: 4px;
   width: 64px;
 }
+.mk-pick-grid {
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  max-height: 46vh;
+  overflow: auto;
+}
+.mk-pick-grid .asset {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
 
 /* studio/styles.css */
 :root {

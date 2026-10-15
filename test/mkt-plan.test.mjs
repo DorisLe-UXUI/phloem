@@ -96,3 +96,23 @@ test('toXlsx: a valid workbook with sheets, frozen header, numbers as numbers, e
   assert.ok(s2.includes('<v>30000000</v>'));
   assert.ok(unzip(x, '[Content_Types].xml').includes('sheet2.xml'));
 });
+
+test('sheet import: Vietnamese and English headers, dates, channels, statuses', async () => {
+  const { postsFromSheet, parseSheetDate, normChannel } = await import('../dist/shared.mjs');
+  const vi = [['KẾ HOẠCH THÁNG 11'], ['Ngày đăng', 'Giờ', 'Kênh', 'Định dạng', 'Chủ đề', 'Nội dung', 'Hashtag', 'Trạng thái'],
+    ['05/11/2026', '19h30', 'FB', 'Album', 'Ra mắt menu mới', 'Menu mới đã có!\nGhé ngay', '#caphegio', 'Đã duyệt'],
+    ['', '', '', '', '', '', '', ''],
+    ['7/11', '12:00', 'Insta', 'Reel', 'Hậu trường', '', '', '']];
+  const p = postsFromSheet(vi, { fallbackStatus: 'approved' });
+  assert.equal(p.length, 2);
+  assert.deepEqual([p[0].date, p[0].time, p[0].channel, p[0].format, p[0].status], ['2026-11-05', '19:30', 'facebook', 'carousel', 'approved']);
+  assert.equal(p[1].channel, 'instagram'); assert.equal(p[1].format, 'reel'); assert.equal(p[1].date.slice(5), '11-07');
+  const en = [['Date', 'Platform', 'Title', 'Copy', 'Status'], ['11/05/2026', 'TikTok', 'Storm prep', 'Get ready', 'Posted']];
+  const q = postsFromSheet(en, { usDates: true });
+  assert.deepEqual([q[0].date, q[0].channel, q[0].status], ['2026-11-05', 'tiktok', 'live']);
+  assert.equal(postsFromSheet([['Tên', 'Giá'], ['Cà phê', '30k']]), null, 'not a content plan');
+  assert.equal(parseSheetDate('2026-12-24'), '2026-12-24');
+  assert.equal(parseSheetDate('25/12/2026'), '2026-12-25');
+  assert.equal(parseSheetDate('12/25/2026'), '2026-12-25', 'a day > 12 flips to month/day');
+  assert.equal(normChannel('Google Business Profile'), 'google_business');
+});

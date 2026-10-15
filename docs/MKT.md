@@ -17,6 +17,17 @@ Prompt gốc và lộ trình: [PROMPT-PHLOEM-MKT.md](PROMPT-PHLOEM-MKT.md).
 
 Khách hàng có **ngôn ngữ nội dung** (Việt, Anh, Trung, Nhật, Hàn, Thái, Indonesia, Mã Lai, Pháp, Đức, Tây Ban Nha) và **thị trường** (Việt Nam, Hoa Kỳ, … hoặc tự điền). Giao diện và brand book viết tiếng Việt cho đội agency; tagline, thông điệp, CTA, hashtag, hook, caption, chữ trên thiết kế viết bằng ngôn ngữ của khách, theo văn hoá và ngày lễ của thị trường đó (ngày lễ Việt Nam chỉ dùng khi thị trường là Việt Nam). Ngành có thể để **AI tự nhận diện từ website** khi lên brand book, hoặc chọn **Khác** để tự điền. Link website tự bỏ tham số theo dõi (`srsltid`, `utm_*`, `fbclid`, `gclid`).
 
+### Cập nhật Thiết kế (2026-10-15)
+
+- **Thiết kế · Bảng** (mặc định): mỗi bài một hàng như Google Sheet, cột **Ảnh** (bấm để chỉnh sửa; ô trống: AI thiết kế), nhóm theo ngày; chế độ **Thẻ** vẫn còn. Bảng Kế hoạch cũng có cột Ảnh.
+- Thiết kế tạo từ một bài **tự gắn vào bài**. **AI thiết kế cả tuần** chạy nền từng bài. **Ảnh của bạn**: gắn ảnh có sẵn (tải lên, dán ⌘V, chọn từ kho) vào bài.
+- **Dán (⌘V) hoặc kéo thả ảnh ở bất kỳ đâu** trong workspace khách: ảnh vào kho của khách.
+- **AI thiết kế** = Gemini vẽ ảnh chính riêng cho bài (khi relay có key) → Claude dàn trang → giám đốc sáng tạo xem ảnh render và làm lại phần yếu.
+- **Nhập từ link**: Google Sheet → kế hoạch (nhận cột tiếng Việt/Anh, không nhận ra thì AI đọc bố cục); thư mục Google Drive công khai và trang web → kho ảnh "đã làm"; **AI học phong cách** từ các ảnh đó (ghi vào brand book, mọi thiết kế sau làm theo). Relay: `POST /drive`.
+- **Thư viện đồ hoạ** thêm khoảng 21.000 món: Twemoji, Emojione, FxEmoji, Streamline (màu), Icon Park, Game Icons, Health Icons. Nguồn và giấy phép: [CREDITS.md](CREDITS.md).
+- Brand book, kế hoạch và chữ trên thiết kế viết **toàn bộ bằng ngôn ngữ nội dung của khách** (vì gửi khách duyệt); giao diện app vẫn tiếng Việt. Caption trong kế hoạch là caption hoàn chỉnh (hook, thân, CTA, hashtag).
+- Form khách hàng: link dán nhầm vào ô Tên tự chuyển sang ô Website; tên thật lấy từ website khi lên brand book.
+
 ## Dữ liệu và cách ly
 
 - Relay (`server/src/db.mjs`): `clients`, `client_items` (brand, plan, review, …), `client_audit`, `client_shares`, `client_members`; `projects.client_id`.

@@ -90,6 +90,8 @@ export interface BrandBook {
   kit: { hashtags: string[]; ctas: string[] };
   /** Email brand (colours, fonts, logo assets, shape, links) read from the website, applied to every new email of this client. */
   emailBrand?: Record<string, unknown> | null;
+  /** House style the AI read from the client's past posts and pictures (Nhập dữ liệu → AI học phong cách). */
+  styleNotes?: string;
   version: number;
   versions?: { version: number; at: string; by: string; note: string }[];
   updatedBy?: string;

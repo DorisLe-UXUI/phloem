@@ -4,7 +4,7 @@
 import type { AnimKind, Brand, Color, GroupNode, ImageNode, Node, RectNode, TextNode } from '../model/types';
 import { uid } from '../model/types';
 import { textHeight } from '../render/textLayout';
-import { iconSvg, vectorAsset, svgAspect } from './vector';
+import { iconSvg, vectorAsset, svgAspect, isColorSet } from './vector';
 
 export type ElCat = 'shape' | 'svg' | 'graphic' | 'text';
 export interface ElDef { id: string; label: string; cat: ElCat; /** tile preview: SVG markup using currentColor */ preview: string; make: (c: MakeCtx) => Promise<Node[]> | Node[] }
@@ -31,7 +31,7 @@ export async function iconLayer(id: string, at: { x: number; y: number }, size: 
   const svg = await iconSvg(id);
   const ar = svgAspect(svg);
   const w = ar >= 1 ? size : Math.round(size * ar), h = ar >= 1 ? Math.round(size / ar) : size;
-  const sticker = id.startsWith('fluent-emoji') || id.startsWith('noto');
+  const sticker = isColorSet(id);
   return vec(id.split(':')[1], svg, Math.round(at.x - w / 2), Math.round(at.y - h / 2), w, h, sticker ? null : color, sticker ? 'sticker' : 'icon');
 }
 

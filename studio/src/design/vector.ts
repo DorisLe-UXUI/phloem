@@ -7,7 +7,16 @@ export const ICONIFY = 'https://api.iconify.design';
 /** Iconify's own mirrors (same API): used when one host rate-limits or is down. */
 const HOSTS = ['https://api.iconify.design', 'https://api.simplesvg.com', 'https://api.unisvg.com'];
 /** Icon sets the designer and the AI may use: permissive licences (MIT / ISC / Apache-2.0 / CC0). */
-export const ICON_SETS = ['ph', 'lucide', 'tabler', 'mdi', 'material-symbols', 'ri'] as const;
+export const ICON_SETS = ['ph', 'lucide', 'tabler', 'mdi', 'material-symbols', 'ri', 'game-icons', 'healthicons'] as const;
+/** Multicolour sets (stickers, coloured icons, illustrations): inserted as-is, never recoloured. All licensed for commercial use:
+ *  MIT (fluent-*), Apache-2.0 (noto, fxemoji, icon-park), CC-BY-4.0 (twemoji, emojione, streamline-*: credit in docs/CREDITS.md). */
+export const COLOR_SETS: { v: string; label: string }[] = [
+  { v: 'fluent-emoji', label: 'Fluent 3D màu' }, { v: 'noto', label: 'Noto' }, { v: 'fluent-emoji-flat', label: 'Fluent phẳng' }, { v: 'twemoji', label: 'Twemoji' },
+  { v: 'emojione', label: 'Emojione' }, { v: 'fxemoji', label: 'FxEmoji' }, { v: 'streamline-emojis', label: 'Emoji vẽ tay' },
+  { v: 'streamline-color', label: 'Minh hoạ màu' }, { v: 'streamline-plump-color', label: 'Minh hoạ tròn' }, { v: 'streamline-flex-color', label: 'Minh hoạ mềm' }, { v: 'streamline-ultimate-color', label: 'Minh hoạ chi tiết' },
+  { v: 'icon-park', label: 'Icon Park màu' }, { v: 'fluent-color', label: 'Icon màu' }, { v: 'flat-color-icons', label: 'Icon phẳng' },
+];
+export const isColorSet = (id: string) => { const p = id.split(':')[0]; return COLOR_SETS.some((s) => s.v === p) || p === 'logos'; };
 export const STICKER_SETS = ['fluent-emoji'] as const;
 export const BRAND_ICON_SET = 'simple-icons';
 

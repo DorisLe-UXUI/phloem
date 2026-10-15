@@ -40,10 +40,10 @@ export function coerceBrandBook(raw: any, base: Partial<BrandBook> = {}): BrandB
   };
 }
 
-const SYSTEM = `Bạn là giám đốc chiến lược thương hiệu của một agency marketing Việt Nam. Từ dữ liệu website, bảng tính và tài liệu của khách, viết BRAND BOOK bằng tiếng Việt: cụ thể, dựa trên bằng chứng trong dữ liệu, không sáo rỗng, không bịa số liệu. Khi dữ liệu thiếu, suy luận hợp lý từ ngành và ghi rõ "(đề xuất)".
-Các phần dành cho đội agency (sứ mệnh, persona, quy tắc, ghi chú) viết tiếng Việt; các câu đăng ra ngoài (tagline, thông điệp, CTA, hashtag, ví dụ câu chữ) viết bằng NGÔN NGỮ NỘI DUNG của khách và hợp văn hoá THỊ TRƯỜNG của khách (xem dòng "Public copy language / Target market").
+const SYSTEM = `Bạn là giám đốc chiến lược thương hiệu của một agency marketing. Từ dữ liệu website, bảng tính và tài liệu của khách, viết BRAND BOOK: cụ thể, dựa trên bằng chứng trong dữ liệu, không sáo rỗng, không bịa số liệu. Khi dữ liệu thiếu, suy luận hợp lý từ ngành và ghi rõ là đề xuất.
+NGÔN NGỮ: viết TOÀN BỘ brand book (mọi giá trị trong JSON) bằng NGÔN NGỮ NỘI DUNG của khách (dòng "Public copy language"), vì brand book được gửi cho chính khách duyệt; hợp văn hoá THỊ TRƯỜNG của khách. Chỉ khi ngôn ngữ là tiếng Việt mới viết tiếng Việt.
 Trả lời CHỈ bằng một object JSON đúng schema sau, không markdown, không giải thích:
-{"title": "Brand book <tên>", "industry": "ngành ngắn gọn bằng tiếng Việt, cụ thể (VD: Dụng cụ cầm tay và máy công cụ)", "tagline": "...", "mission": "...", "vision": "...", "values": ["..."],
+{"title": "Brand book <tên thương hiệu>", "brandName": "tên thương hiệu thật, đúng cách viết của khách (VD: Tool Mart)", "industry": "ngành ngắn gọn bằng TIẾNG VIỆT cho đội agency (VD: Dụng cụ cầm tay và máy công cụ)", "tagline": "...", "mission": "...", "vision": "...", "values": ["..."],
  "personas": [{"name": "Tên gợi nhớ", "age": "25-34", "job": "...", "goals": "...", "pains": "...", "channels": "Facebook, TikTok..."}],
  "voice": {"traits": ["3-5 tính từ"], "do": ["nên viết..."], "dont": ["không viết..."]},
  "messages": ["thông điệp chính"], "usp": ["điểm khác biệt"], "competitors": [{"name": "...", "note": "khác gì"}],
@@ -83,14 +83,16 @@ async function readSheet(link: string): Promise<string> {
 const b64 = async (f: Blob) => { const buf = new Uint8Array(await f.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return btoa(s); };
 
 /** Read every source, ask Claude, return the book + the email brand + the client logo (small data URL). */
-export async function buildBrandBook(client: Client, input: BrandInput, onProgress: (p: BrandProgress) => void, signal?: AbortSignal): Promise<{ book: BrandBook; logo: string | null; notes: string[]; industry: string }> {
+export async function buildBrandBook(client: Client, input: BrandInput, onProgress: (p: BrandProgress) => void, signal?: AbortSignal): Promise<{ book: BrandBook; logo: string | null; notes: string[]; industry: string; brandName: string }> {
   const total = 4;
   const notes: string[] = [];
   let site: SiteProfile | null = null, sheet = '';
   let emailBrand: Record<string, unknown> | null = null, logoMain: string | undefined, logoLight: string | undefined, logoData: string | null = null;
   const mock = get().settings.anthropicKey.trim() === 'mock';
 
-  if (input.website.trim() && !mock) {
+  const siteOk = /^(https?:\/\/|www\.)|^[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(input.website.trim());
+  if (input.website.trim() && !siteOk) notes.push(`"${input.website.trim()}" không phải địa chỉ website, bỏ qua bước đọc web.`);
+  if (input.website.trim() && siteOk && !mock) {
     onProgress({ step: 1, total, label: 'Đọc website (màu, font, logo, nội dung, trang con)…' });
     try {
       site = await analyzeSite(input.website, (m) => onProgress({ step: 1, total, label: m }));
@@ -146,7 +148,8 @@ export async function buildBrandBook(client: Client, input: BrandInput, onProgre
   });
   if (!book.palette.length && emailBrand) book.palette = [{ name: 'Chính', hex: String(emailBrand.primary), role: 'primary', ratio: 60 }, { name: 'Nhấn', hex: String(emailBrand.accent), role: 'accent', ratio: 10 }, { name: 'Chữ', hex: String(emailBrand.ink), role: 'neutral', ratio: 20 }, { name: 'Nền', hex: String(emailBrand.bg), role: 'neutral', ratio: 10 }].filter((c) => HEX.test(c.hex)) as PaletteColor[];
   const industry = typeof (raw as { industry?: unknown })?.industry === 'string' ? String((raw as { industry: string }).industry).trim().slice(0, 80) : '';
-  return { book, logo: logoData, notes, industry };
+  const brandName = String((raw as { brandName?: unknown })?.brandName || site?.siteName || '').trim().slice(0, 80);
+  return { book, logo: logoData, notes, industry, brandName };
 }
 
 function mockBook(c: Client) {

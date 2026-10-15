@@ -22,7 +22,7 @@ function brandBrief(b: BrandBook | null): string {
   ].join('\n');
 }
 
-const STRATEGY_SYSTEM = `Bạn là trưởng bộ phận chiến lược của một agency marketing Việt Nam. Lập KẾ HOẠCH MARKETING theo tháng cho khách hàng, viết tiếng Việt cho đội agency, cụ thể và làm được, bám mùa vụ/sự kiện của THỊ TRƯỜNG khách bán hàng (Việt Nam hoặc nước khác, xem dòng Target market).
+const STRATEGY_SYSTEM = `Bạn là trưởng bộ phận chiến lược của một agency marketing Việt Nam. Lập KẾ HOẠCH MARKETING theo tháng cho khách hàng, viết bằng NGÔN NGỮ NỘI DUNG của khách (dòng Public copy language) vì kế hoạch được gửi khách duyệt, cụ thể và làm được, bám mùa vụ/sự kiện của THỊ TRƯỜNG khách bán hàng (Việt Nam hoặc nước khác, xem dòng Target market).
 Trả lời CHỈ bằng JSON đúng schema, không markdown:
 {"title": "Kế hoạch ... ", "strategy": "3-6 câu: mục tiêu, cách tiếp cận, thông điệp xuyên suốt",
  "pillars": [{"name": "Trụ cột", "share": 30, "desc": "nội dung gì, vì sao"}],
@@ -32,8 +32,8 @@ Trả lời CHỈ bằng JSON đúng schema, không markdown:
    "channelWeights": {"facebook": 2, "tiktok": 1}, "kpi": {"Tiếp cận": 120000}}]}
 Quy tắc: 3-5 trụ cột, tổng share = 100; mỗi tháng 1-3 campaign; "weight" là độ nặng ngân sách tháng (1 = bình thường, tháng cao điểm như Tết/11.11 có thể 1.5-2); "channelWeights" chỉ dùng các kênh được giao; KPI là số nguyên thực tế cho thị trường Việt Nam với ngân sách đã cho, đừng phóng đại.`;
 
-const POSTS_SYSTEM = `Bạn là content lead của agency marketing Việt Nam. Viết LỊCH NỘI DUNG cho đúng các ô (slot) được giao: mỗi slot một bài, giữ nguyên "slot" id. "topic" và "visual" viết tiếng Việt cho đội agency; "hook", "caption", "cta", "hashtags" viết bằng NGÔN NGỮ NỘI DUNG của khách (dòng Public copy language), tự nhiên như người bản xứ của thị trường đó, đúng giọng thương hiệu, hook mạnh trong 1-2 giây đầu, caption nháp ngắn gọn có xuống dòng, CTA rõ.
-Trả lời CHỈ bằng JSON: {"posts": [{"slot": "s1", "format": "image|carousel|reel|video|story|article", "pillar": "tên trụ cột", "topic": "chủ đề", "hook": "câu mở", "caption": "caption nháp", "cta": "CTA", "hashtags": "#a #b", "visual": "ý tưởng hình ảnh/video cụ thể"}]}
+const POSTS_SYSTEM = `Bạn là content lead của agency marketing Việt Nam. Viết LỊCH NỘI DUNG cho đúng các ô (slot) được giao: mỗi slot một bài, giữ nguyên "slot" id. MỌI trường (topic, hook, caption, cta, hashtags, visual, pillar) viết bằng NGÔN NGỮ NỘI DUNG của khách (dòng Public copy language), tự nhiên như người bản xứ của thị trường đó, đúng giọng thương hiệu, hook mạnh trong 1-2 giây đầu. "caption" là caption HOÀN CHỈNH, đăng được ngay, không phải nháp: dòng mở (hook), thân 3-6 dòng ngắn có xuống dòng (emoji vừa phải nếu hợp giọng thương hiệu), CTA rõ kèm link/hướng dẫn hành động, rồi một dòng cuối gồm 5-10 hashtag (hashtag thương hiệu trong brand kit + hashtag chủ đề/ngành/thị trường). "hashtags" lặp lại đúng các hashtag đó; "cta" là câu CTA ngắn.
+Trả lời CHỈ bằng JSON: {"posts": [{"slot": "s1", "format": "image|carousel|reel|video|story|article", "pillar": "tên trụ cột", "topic": "chủ đề", "hook": "câu mở", "caption": "caption hoàn chỉnh: hook, thân bài, CTA, dòng hashtag", "cta": "CTA ngắn", "hashtags": "#thuonghieu #chude ...", "visual": "ý tưởng hình ảnh/video cụ thể: bối cảnh, chủ thể, góc máy, ánh sáng, màu"}]}
 Quy tắc: TikTok/YouTube ưu tiên reel/video; LinkedIn ưu tiên article/image; xen kẽ trụ cột theo tỉ lệ; bám sự kiện trong tháng; không trùng chủ đề.`;
 
 /** Build a full plan: strategy (one call), then posts month by month (≤ 3 calls in flight). */
@@ -101,13 +101,13 @@ export async function buildPlan(client: Client, brand: BrandBook | null, setup: 
       let text = '';
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          text = mock ? JSON.stringify(mockPosts(ms, pillars)) : await streamClaude({ system: POSTS_SYSTEM, turns: [{ role: 'user', text: ask }], maxTokens: Math.min(32000, 1200 + ms.length * 420), effort: 'low' }, (t) => { streamed.set(m, t.length); onProgress({ label: `AI đang viết bài từng tháng… (${done - 1}/${months.length} tháng)`, done, total: steps, chars: [...streamed.values()].reduce((a, b) => a + b, 0) }); }, signal);
+          text = mock ? JSON.stringify(mockPosts(ms, pillars)) : await streamClaude({ system: POSTS_SYSTEM, turns: [{ role: 'user', text: ask }], maxTokens: Math.min(48000, 1500 + ms.length * 700), effort: 'low' }, (t) => { streamed.set(m, t.length); onProgress({ label: `AI đang viết bài từng tháng… (${done - 1}/${months.length} tháng)`, done, total: steps, chars: [...streamed.values()].reduce((a, b) => a + b, 0) }); }, signal);
           const j: any = extractJson(text);
           const got = new Map<string, any>((Array.isArray(j?.posts) ? j.posts : []).map((p: any) => [str(p?.slot, 10), p]));
           ms.forEach((s, i) => {
             const p = got.get(ids[i]) || {};
             const fmt = FMT_IDS.has(p.format) ? (p.format as Format) : s.channel === 'tiktok' || s.channel === 'youtube' ? 'reel' : 'image';
-            rows.push({ id: newId('r'), date: s.date, time: s.time, channel: (CH_IDS.has(s.channel as Channel) ? s.channel : 'facebook') as Channel, format: fmt, pillar: str(p.pillar, 60), topic: str(p.topic, 160) || 'Chủ đề (chưa có)', hook: str(p.hook, 240), caption: str(p.caption, 2200), cta: str(p.cta, 80), hashtags: str(p.hashtags, 300), visual: str(p.visual, 400), owner: '', status: 'draft' });
+            rows.push({ id: newId('r'), date: s.date, time: s.time, channel: (CH_IDS.has(s.channel as Channel) ? s.channel : 'facebook') as Channel, format: fmt, pillar: str(p.pillar, 60), topic: str(p.topic, 160) || 'Chủ đề (chưa có)', hook: str(p.hook, 240), caption: str(p.caption, 3000), cta: str(p.cta, 80), hashtags: str(p.hashtags, 300), visual: str(p.visual, 400), owner: '', status: 'draft' });
           });
           break;
         } catch (e) { if (signal?.aborted || attempt === 1) throw new Error(`Không soạn được bài tháng ${m}: ${(e as Error).message}`); }
