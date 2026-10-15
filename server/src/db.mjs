@@ -43,7 +43,27 @@ CREATE TABLE IF NOT EXISTS project_tombstones (
   id TEXT PRIMARY KEY, owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tombstones_owner ON project_tombstones(owner);
+CREATE TABLE IF NOT EXISTS clients (
+  id TEXT PRIMARY KEY, owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+  json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS clients_owner ON clients(owner, updated_at DESC);
+CREATE TABLE IF NOT EXISTS client_items (
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, kind TEXT NOT NULL, id TEXT NOT NULL,
+  json TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (client_id, kind, id)
+);
+CREATE TABLE IF NOT EXISTS client_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS client_audit_client ON client_audit(client_id, at DESC);
+CREATE TABLE IF NOT EXISTS client_shares (
+  token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, item_id TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0
+);
 `;
+/** Kinds of per-client records the API accepts (anything else is refused). */
+export const CLIENT_KINDS = new Set(['brand', 'plan', 'review', 'post', 'campaign', 'report', 'note']);
 
 export const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const now = () => new Date().toISOString();
@@ -72,6 +92,8 @@ export function openDb(file) {
   try { db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE users ADD COLUMN ai_access INTEGER NOT NULL DEFAULT 0'); } catch { /* column exists */ }
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users(google_sub) WHERE google_sub IS NOT NULL'); } catch { /* exists */ }
+  // Phloem MKT (2026-10): an email project may belong to one client of its owner
+  try { db.exec('ALTER TABLE projects ADD COLUMN client_id TEXT'); } catch { /* column exists */ }
   // housekeeping: sessions idle for 30 days and tombstones older than 90 days are gone
   try { db.prepare("DELETE FROM sessions WHERE last_seen < ?").run(new Date(Date.now() - 30 * 86400e3).toISOString()); db.prepare('DELETE FROM project_tombstones WHERE at < ?').run(new Date(Date.now() - 90 * 86400e3).toISOString()); } catch { /* ignore */ }
   const q = (sql) => db.prepare(sql);
@@ -103,7 +125,27 @@ export function openDb(file) {
     sessGet: q('SELECT * FROM sessions WHERE token_hash = ?'), sessTouch: q('UPDATE sessions SET last_seen = ? WHERE token_hash = ?'),
     sessDel: q('DELETE FROM sessions WHERE token_hash = ?'), sessDelUser: q('DELETE FROM sessions WHERE user_id = ?'),
     sessList: q('SELECT token_hash, agent, created_at, last_seen FROM sessions WHERE user_id = ? ORDER BY last_seen DESC'),
-    projList: q('SELECT id, name, updated_at, created_at, thumb, thumb_mobile, provider, length(json) AS size FROM projects WHERE owner = ? ORDER BY updated_at DESC'),
+    projList: q('SELECT id, name, updated_at, created_at, thumb, thumb_mobile, provider, client_id, length(json) AS size FROM projects WHERE owner = ? ORDER BY updated_at DESC'),
+    projSetClient: q('UPDATE projects SET client_id = ? WHERE owner = ? AND id = ?'),
+    // ---- clients: every statement below carries the owner, so one account can never touch another's client ----
+    cliList: q('SELECT * FROM clients WHERE owner = ? ORDER BY updated_at DESC'),
+    cliGet: q('SELECT * FROM clients WHERE owner = ? AND id = ?'),
+    cliPut: q(`INSERT INTO clients (id, owner, name, json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, updated_at = excluded.updated_at WHERE clients.owner = excluded.owner AND excluded.updated_at >= clients.updated_at`),
+    cliDel: q('DELETE FROM clients WHERE owner = ? AND id = ?'),
+    cliProjDel: q('DELETE FROM projects WHERE owner = ? AND client_id = ?'),
+    itemList: q('SELECT i.kind, i.id, i.json, i.updated_at FROM client_items i JOIN clients c ON c.id = i.client_id WHERE c.owner = ? AND i.client_id = ? ORDER BY i.updated_at DESC'),
+    itemListKind: q('SELECT i.kind, i.id, i.json, i.updated_at FROM client_items i JOIN clients c ON c.id = i.client_id WHERE c.owner = ? AND i.client_id = ? AND i.kind = ? ORDER BY i.updated_at DESC'),
+    itemGet: q('SELECT i.kind, i.id, i.json, i.updated_at FROM client_items i JOIN clients c ON c.id = i.client_id WHERE c.owner = ? AND i.client_id = ? AND i.kind = ? AND i.id = ?'),
+    itemPut: q(`INSERT INTO client_items (client_id, kind, id, json, updated_at) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM clients WHERE id = ? AND owner = ?)
+      ON CONFLICT(client_id, kind, id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at WHERE excluded.updated_at >= client_items.updated_at`),
+    itemDel: q('DELETE FROM client_items WHERE client_id = ? AND kind = ? AND id = ? AND EXISTS (SELECT 1 FROM clients WHERE id = ? AND owner = ?)'),
+    auditAdd: q('INSERT INTO client_audit (client_id, actor, action, detail, at) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM clients WHERE id = ? AND owner = ?)'),
+    auditList: q('SELECT a.actor, a.action, a.detail, a.at FROM client_audit a JOIN clients c ON c.id = a.client_id WHERE c.owner = ? AND a.client_id = ? ORDER BY a.at DESC LIMIT 200'),
+    shareAdd: q('INSERT INTO client_shares (token_hash, client_id, kind, item_id, created_at, expires_at) SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM clients WHERE id = ? AND owner = ?)'),
+    shareGet: q('SELECT s.*, c.owner, c.name AS client_name, c.json AS client_json FROM client_shares s JOIN clients c ON c.id = s.client_id WHERE s.token_hash = ? AND s.revoked = 0'),
+    shareItemPut: q('INSERT INTO client_items (client_id, kind, id, json, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(client_id, kind, id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at'),
+    shareAudit: q('INSERT INTO client_audit (client_id, actor, action, detail, at) VALUES (?, ?, ?, ?, ?)'),
     projGet: q('SELECT * FROM projects WHERE owner = ? AND id = ?'),
     projPut: q(`INSERT INTO projects (id, owner, name, json, thumb, thumb_mobile, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at WHERE projects.owner = excluded.owner AND excluded.updated_at >= projects.updated_at`),
@@ -122,7 +164,9 @@ export function openDb(file) {
     profGet: q('SELECT enc, updated_at FROM profiles WHERE owner = ?'),
     profPut: q('INSERT INTO profiles (owner, enc, updated_at) VALUES (?, ?, ?) ON CONFLICT(owner) DO UPDATE SET enc = excluded.enc, updated_at = excluded.updated_at'),
   };
-  const meta = (p) => ({ id: p.id, name: p.name, updatedAt: p.updated_at, createdAt: p.created_at, thumb: p.thumb || undefined, thumbMobile: p.thumb_mobile || undefined, provider: p.provider || undefined, size: p.size });
+  const meta = (p) => ({ id: p.id, name: p.name, updatedAt: p.updated_at, createdAt: p.created_at, thumb: p.thumb || undefined, thumbMobile: p.thumb_mobile || undefined, provider: p.provider || undefined, clientId: p.client_id || undefined, size: p.size });
+  const cli = (c) => ({ ...JSON.parse(c.json), id: c.id, name: c.name, createdAt: c.created_at, updatedAt: c.updated_at });
+  const item = (i) => ({ kind: i.kind, id: i.id, data: JSON.parse(i.json), updatedAt: i.updated_at });
   const parseMeta = (m) => { if (!m) return {}; try { const j = typeof m === 'string' ? JSON.parse(m) : m; return j && typeof j === 'object' ? j : {}; } catch { return {}; } };
   const assetMeta = (a) => ({ id: a.id, name: a.name, mime: a.mime, w: a.w, h: a.h, bytes: a.bytes, createdAt: a.created_at, ...parseMeta(a.meta) });
 
@@ -153,9 +197,12 @@ export function openDb(file) {
       /** Upsert; a body older than the stored copy is refused (`stale`, with the stored updatedAt) instead of silently ignored. */
       put: (owner, p) => {
         const { thumb, thumbMobile, provider, ...rest } = p;
+        // a project can only be filed under a client of the same owner
+        if (p.clientId && !S.cliGet.get(owner, String(p.clientId))) return { id: p.id, forbidden: true };
         const updated = p.updatedAt || now();
         const r = S.projPut.run(p.id, owner, String(p.name || 'Email').slice(0, 200), JSON.stringify(rest), thumb || null, thumbMobile || null, provider || null, p.createdAt || updated, updated);
         if (!Number(r.changes)) { const cur = S.projGet.get(owner, p.id); return { id: p.id, updatedAt: cur ? cur.updated_at : updated, stale: true }; }
+        S.projSetClient.run(p.clientId ? String(p.clientId) : null, owner, p.id);
         S.tombDel.run(p.id); // re-saved after a delete elsewhere: it lives again
         return { id: p.id, updatedAt: updated };
       },
@@ -175,6 +222,36 @@ export function openDb(file) {
     profiles: {
       get: (owner, secret) => { const r = S.profGet.get(owner); if (!r) return { profiles: [], updatedAt: null }; try { return { profiles: JSON.parse(decrypt(secret, r.enc)), updatedAt: r.updated_at }; } catch { return { profiles: [], updatedAt: r.updated_at, corrupt: true }; } }, // corrupt = secret changed: the client must keep its own copy
       put: (owner, secret, profiles) => { const t = now(); S.profPut.run(owner, encrypt(secret, JSON.stringify(profiles)), t); return { updatedAt: t }; },
+    },
+    clients: {
+      list: (owner) => S.cliList.all(owner).map(cli),
+      get: (owner, id) => { const c = S.cliGet.get(owner, id); return c ? cli(c) : null; },
+      put: (owner, c) => {
+        const updated = c.updatedAt || now();
+        const { id, name, createdAt, updatedAt, owner: _o, ...rest } = c;
+        const r = S.cliPut.run(String(id), owner, String(name || 'Khách hàng').slice(0, 120), JSON.stringify(rest), createdAt || updated, updated);
+        if (!Number(r.changes)) { const cur = S.cliGet.get(owner, String(id)); return cur && cur.owner === owner ? { id, updatedAt: cur.updated_at, stale: true } : { id, forbidden: true }; }
+        return { id, updatedAt: updated };
+      },
+      /** Remove a client with everything filed under it (items, audit, shares cascade; its email projects too). */
+      remove: (owner, id) => { if (!S.cliGet.get(owner, id)) return false; S.cliProjDel.run(owner, id); S.cliDel.run(owner, id); return true; },
+    },
+    items: {
+      list: (owner, clientId, kind) => (kind ? S.itemListKind.all(owner, clientId, kind) : S.itemList.all(owner, clientId)).map(item),
+      get: (owner, clientId, kind, id) => { const i = S.itemGet.get(owner, clientId, kind, id); return i ? item(i) : null; },
+      put: (owner, clientId, kind, id, data, updatedAt) => { const t = updatedAt || now(); const r = S.itemPut.run(clientId, kind, String(id).slice(0, 80), JSON.stringify(data ?? null), t, clientId, owner); return Number(r.changes) ? { updatedAt: t } : (S.cliGet.get(owner, clientId) ? { updatedAt: t, stale: true } : { forbidden: true }); },
+      remove: (owner, clientId, kind, id) => Number(S.itemDel.run(clientId, kind, id, clientId, owner).changes) > 0,
+    },
+    audit: {
+      add: (owner, clientId, actor, action, detail = '') => { S.auditAdd.run(clientId, String(actor).slice(0, 120), String(action).slice(0, 60), String(detail).slice(0, 500), now(), clientId, owner); },
+      list: (owner, clientId) => S.auditList.all(owner, clientId),
+    },
+    shares: {
+      /** A review link for one item: the raw token is returned once, only its hash is stored. */
+      create: (owner, clientId, kind, itemId, days = 30) => { const token = randomBytes(18).toString('base64url'); const r = S.shareAdd.run(sha256(token), clientId, kind, itemId, now(), new Date(Date.now() + days * 86400e3).toISOString(), clientId, owner); return Number(r.changes) ? token : null; },
+      resolve: (token) => { const s0 = S.shareGet.get(sha256(String(token || ''))); if (!s0 || s0.expires_at < now()) return null; return { clientId: s0.client_id, owner: s0.owner, kind: s0.kind, itemId: s0.item_id, clientName: s0.client_name, client: JSON.parse(s0.client_json || '{}'), expiresAt: s0.expires_at }; },
+      /** Writes made through a review link: only to that link's client, logged as the reviewer. */
+      write: (sh, kind, id, data, actor, action, detail) => { const t = now(); S.shareItemPut.run(sh.clientId, kind, id, JSON.stringify(data), t); S.shareAudit.run(sh.clientId, `Khách: ${String(actor).slice(0, 80)}`, action, String(detail).slice(0, 500), t); return { updatedAt: t }; },
     },
     kv: {
       get: (owner, key) => { const r = S.kvGet.get(owner, key); return r ? { value: JSON.parse(r.json), updatedAt: r.updated_at } : { value: null, updatedAt: null }; },
