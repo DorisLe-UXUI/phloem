@@ -7,6 +7,7 @@ import { buildBrandBook, type BrandProgress } from '../../mkt/brandAi';
 import { cachedItems, isRelay, putItem, saveClient } from '../../mkt/data';
 import { canWrite, type BrandBook, type Client, type PaletteColor, type Persona, type Review } from '../../mkt/types';
 import { ensureFonts } from '../../render/fonts';
+import { BrandSheet } from './BrandSheet';
 import { Btn, Field } from '../components';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
@@ -145,6 +146,7 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
       {review?.overall && <div class={`claim ${review.overall.status === 'changes' ? 'err' : ''}`}><Icon name={review.overall.status === 'approved' ? 'check' : 'warn'} /><span class="grow"><b>{review.overall.by}</b> {review.overall.status === 'approved' ? 'đã duyệt brand book' : 'muốn sửa brand book'} · {fmtTime(review.overall.at)}</span>{review.overall.status === 'approved' && book.status !== 'approved' && write && <Btn sm kind="primary" onClick={() => setStatus('approved')}>Áp dụng: Đã duyệt</Btn>}</div>}
       {comments.length > 0 && <section class="mk-card"><div class="mk-card-h"><b>Bình luận của khách</b></div>{comments.map((c, i) => <div key={i} class="mk-line static"><b>{c.by}</b><span class="grow">{c.text}</span><span class="dim small mono">{fmtTime(c.at)}</span></div>)}</section>}
 
+      {edit ? (
       <article class="mk-bb" style={{ ['--bb-h' as string]: `'${book.fonts.heading}', serif`, ['--bb-b' as string]: `'${book.fonts.body}', sans-serif`, ['--bb-p' as string]: book.palette.find((c) => c.role === 'primary')?.hex || '#39ff14', ['--bb-a' as string]: book.palette.find((c) => c.role === 'accent')?.hex || '#ffc53d' }}>
         <header class="bb-cover">
           {client.logo ? <img src={client.logo} alt={`Logo ${client.name}`} /> : logoUrl ? <img src={logoUrl} alt={`Logo ${client.name}`} /> : null}
@@ -226,6 +228,7 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
           <p class="bb-note">{L.kitNote(client.name)}</p>
         </Sec>
       </article>
+      ) : <BrandSheet client={client} book={book} L={L} logoUrl={logoUrl} />}
 
       <section class="mk-card">
         <div class="mk-card-h"><b>Lịch sử phiên bản</b><span class="dim small">nguồn: {[book.sources.website, book.sources.sheet && 'Google Sheet', book.sources.drive && 'Drive', ...(book.sources.files || [])].filter(Boolean).join(' · ') || 'ghi chú'}</span></div>
