@@ -308,7 +308,14 @@ export async function attachDesign(clientId: string, planId: string, rowId: stri
   await attachMany(clientId, planId, { [rowId]: [designId] }, 'Gắn thiết kế vào bài');
 }
 /** Pin designs to many posts in one plan write: rowId → design ids (several = carousel slides, in order). */
-export async function attachMany(clientId: string, planId: string, map: Record<string, string[]>, note = 'Gắn thiết kế vào bài') {
+let attachChain: Promise<unknown> = Promise.resolve();
+export function attachMany(clientId: string, planId: string, map: Record<string, string[]>, note = 'Gắn thiết kế vào bài'): Promise<void> {
+  // one plan write at a time: background jobs finishing together must not overwrite each other's pictures
+  const run = attachChain.then(() => attachNow(clientId, planId, map, note));
+  attachChain = run.catch(() => undefined);
+  return run;
+}
+async function attachNow(clientId: string, planId: string, map: Record<string, string[]>, note: string) {
   const { cachedItems, putItem } = await import('./data');
   const it = cachedItems(clientId)?.find((i) => i.kind === 'plan' && i.id === planId); if (!it) return;
   const plan = it.data as import('./types').Plan;

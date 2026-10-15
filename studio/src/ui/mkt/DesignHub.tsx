@@ -10,6 +10,7 @@ import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type P
 import { go } from '../../mkt/router';
 import { Btn, Modal } from '../components';
 import { askPhotos } from './NeedPhotos';
+import { activeCount, cancelAll, cancelJob, enqueue, useJobs } from '../../mkt/jobs';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
 import { Empty, PageHead, StatusChip, fmtDate } from './bits';
@@ -19,6 +20,7 @@ type Row = PlanRow & { planId: string };
 
 export function DesignHub({ client }: { client: Client }) {
   const s = useStore();
+  const J = useJobs();
   const write = canWrite(client.role) && !client.shared;
   const [picker, setPicker] = useState<Row | null | 'new'>(null);
   const [own, setOwn] = useState<Row | null>(null);
@@ -49,8 +51,16 @@ export function DesignHub({ client }: { client: Client }) {
   const slidesOf = (r: Row) => (r.slides || []).map((id) => byId.get(id)).filter(Boolean) as typeof designs;
   const loose = designs.filter((d) => !all.some((r) => r.designId === d.id || (d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id)));
 
+  const jobKey = (r: Row) => `${r.planId}:${r.id}`;
+  const title = (r: Row) => `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic}`.slice(0, 70);
+  /** AI work on a post runs in the background, in that post's own cell; the user keeps working (several at once). */
+  const queueAi = (size: DesignSize, row: Row) => {
+    const ask1 = activeCount() === 0; // only a lone job may stop to ask for missing photos
+    enqueue(jobKey(row), title(row), (onStage, signal) => designPost(client, size, row, { ai: true, open: false, onStage, signal, askPhotos: ask1 ? (plan) => askPhotos(client, plan) : undefined }));
+  };
   const make = async (size: DesignSize, row: Row | null, ai: boolean) => {
     setPicker(null);
+    if (row && ai) { queueAi(size, row); return; }
     abort.current = new AbortController();
     setBusy({ label: ai ? 'AI đang thiết kế…' : 'Đang dựng bố cục…' });
     try { await designPost(client, size, row, { ai, onStage: (m) => setBusy({ label: m }), signal: abort.current.signal, askPhotos: (plan) => askPhotos(client, plan) }); }
@@ -60,27 +70,13 @@ export function DesignHub({ client }: { client: Client }) {
   /** The whole post painted as one finished picture with its text, in the style of the client's past posts. */
   const full = async (row: Row) => {
     if (!pastPosts(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
-    abort.current = new AbortController();
-    setBusy({ label: 'AI đang vẽ cả bài…' });
-    try { await paintFullPost(client, sz(row), row, { onStage: (m) => setBusy({ label: m }), signal: abort.current.signal }); toast('Đã vẽ xong cả bài, đã gắn vào bài trong kế hoạch. Chữ là một phần của ảnh: muốn sửa chữ thì bấm AI vẽ lại hoặc Tự thiết kế.', 'ok'); }
-    catch (e) { toast((e as Error).message, 'err'); }
-    finally { setBusy(null); }
+    enqueue(jobKey(row), title(row), (onStage, signal) => paintFullPost(client, sz(row), row, { onStage, signal }));
   };
   /** AI designs every post of the next 7 days that has no picture yet, one after another, without opening the editor. */
   const batch = async () => {
     if (!week.length) return;
-    if (!(await ask(`AI thiết kế ${week.length} bài trong 7 ngày tới? Mỗi bài khoảng 1–2 phút, ảnh tự gắn vào đúng bài. Bạn vẫn xem và chỉnh từng ảnh sau.`, 'Bắt đầu', false))) return;
-    abort.current = new AbortController();
-    let ok = 0;
-    for (let i = 0; i < week.length; i++) {
-      if (abort.current.signal.aborted) break;
-      const r = week[i];
-      setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic}`, done: i, total: week.length });
-      try { await designPost(client, sz(r), r, { ai: true, open: false, signal: abort.current.signal, onStage: (m) => setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic} · ${m}`, done: i, total: week.length }) }); ok++; }
-      catch (e) { if (abort.current.signal.aborted) break; toast(`${r.topic}: ${(e as Error).message}`, 'err'); }
-    }
-    setBusy(null);
-    toast(`Xong ${ok}/${week.length} ảnh. Bấm vào ảnh nào chưa ưng để chỉnh.`, 'ok');
+    if (!(await ask(`AI thiết kế ${week.length} bài trong 7 ngày tới? Ảnh tạo ngay trong từng bài, 3 bài cùng lúc, xong bài nào báo bài đó. Bạn cứ làm việc khác.`, 'Bắt đầu', false))) return;
+    for (const r of week) enqueue(jobKey(r), title(r), (onStage, signal) => designPost(client, sz(r), r, { ai: true, open: false, onStage, signal }));
   };
 
   return (
@@ -98,6 +94,7 @@ export function DesignHub({ client }: { client: Client }) {
           </select>
         </label>
         <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter(hasDesign).length} đã có ảnh</span>
+        {J.activeCount > 0 && <span class="chip on mk-jobs-chip"><span class="mk-spin" /> Đang tạo {J.activeCount} ảnh trong nền <button onClick={() => cancelAll()} title="Huỷ tất cả">Huỷ hết</button></span>}
       </div>
 
       {layout === 'table' && visibleDates.length > 0 && (
@@ -117,6 +114,7 @@ export function DesignHub({ client }: { client: Client }) {
                       <td class="mono"><div class="cv">{r.time}</div></td>
                       <td><div class="cv"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><br /><span class="dim small">{FORMATS.find((f) => f.id === r.format)?.label}</span></div></td>
                       <td class="c-img">
+                        {(() => { const j = J.jobOf(jobKey(r)); return j ? <div class={`mk-job ${j.state}`}>{j.state === 'running' || j.state === 'queued' ? <div class="mk-spin" /> : <Icon name={j.state === 'done' ? 'check' : 'warn'} size={14} />}<span title={j.stage}>{j.stage}</span>{(j.state === 'running' || j.state === 'queued') && <button onClick={() => cancelJob(j.key)} title="Huỷ việc này">Huỷ</button>}</div> : null; })()}
                         <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sz(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
                           {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>{r.format === 'carousel' ? 'Carousel · chưa có' : 'Chưa có ảnh'}</em></span>}
                           {slidesOf(r).length > 1 && <i class="mk-slide-n">1/{slidesOf(r).length}</i>}
@@ -157,6 +155,7 @@ export function DesignHub({ client }: { client: Client }) {
               return (
                 <article key={r.planId + r.id} class="mk-post">
                   <header class="row"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><span class="dim small">{r.time} · {FORMATS.find((f) => f.id === r.format)?.label}</span><span class="grow" /><StatusChip s={r.status} /></header>
+                  {(() => { const j = J.jobOf(jobKey(r)); return j ? <div class={`mk-job ${j.state}`}>{j.state === 'running' || j.state === 'queued' ? <div class="mk-spin" /> : <Icon name={j.state === 'done' ? 'check' : 'warn'} size={14} />}<span title={j.stage}>{j.stage}</span>{(j.state === 'running' || j.state === 'queued') && <button onClick={() => cancelJob(j.key)}>Huỷ</button>}</div> : null; })()}
                   <div class={`pv ${des ? '' : 'empty'}`} style={{ aspectRatio: `${z.w} / ${z.h}` }} onClick={() => (des ? void A.openProject(des.id) : write && void make(sz(r), r, true))} role="button" tabIndex={0} title={des ? 'Bấm để chỉnh sửa' : 'Bấm để AI thiết kế bài này'}>
                     {des?.thumb ? <img src={des.thumb} alt={`Ảnh bài ${r.topic}`} loading="lazy" /> : <div class="ph"><Icon name="image" size={22} /><span>{r.visual ? r.visual.slice(0, 90) : 'Chưa có ảnh'}</span></div>}
                   </div>

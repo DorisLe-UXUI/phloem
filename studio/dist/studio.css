@@ -3389,6 +3389,73 @@ select.in.mk-role {
   color: var(--text);
   box-shadow: var(--glow);
 }
+.mk-job {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 112px;
+  margin-bottom: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--neon-line, var(--line-2));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--neon) 7%, var(--panel-2));
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--text);
+}
+.mk-post .mk-job {
+  width: auto;
+}
+.mk-job .mk-spin {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
+.mk-job span {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mk-job button {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.mk-job.done {
+  border-color: var(--neon);
+  color: var(--neon);
+}
+.mk-job.error {
+  border-color: var(--err, #ff5c5c);
+  background: color-mix(in srgb, #ff5c5c 10%, var(--panel-2));
+}
+.mk-jobs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mk-jobs-chip .mk-spin {
+  width: 11px;
+  height: 11px;
+  border-width: 2px;
+}
+.mk-jobs-chip button {
+  border: 0;
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
 
 /* studio/styles.css */
 :root {
@@ -7599,4 +7666,33 @@ select.in {
   .ws-tog {
     display: none;
   }
+}
+.fx-presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.fx-p {
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: #F4F1EA;
+  color: #1E1650;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+}
+.fx-p:nth-child(4n+2),
+.fx-p:nth-child(4n+4) {
+  background: #1E1650;
+  color: #fff;
+}
+.fx-p:hover {
+  border-color: var(--neon);
+}
+.fx-p.on {
+  outline: 2px solid var(--neon);
+  outline-offset: 1px;
 }

@@ -774,3 +774,10 @@ select.in { appearance: none; background-image: linear-gradient(45deg, transpare
 .workspace.hide-left .ws-tog.l { left: 0; }
 .workspace.hide-right .ws-tog.r { right: 0; }
 @media (max-width: 820px) { .ws-tog { display: none; } }
+
+/* One-click type styles in the text panel */
+.fx-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.fx-p { height: 44px; padding: 0; border: 1px solid var(--line-2); border-radius: 8px; background: #F4F1EA; color: #1E1650; font-size: 21px; line-height: 1; cursor: pointer; overflow: hidden; }
+.fx-p:nth-child(4n+2), .fx-p:nth-child(4n+4) { background: #1E1650; color: #fff; }
+.fx-p:hover { border-color: var(--neon); }
+.fx-p.on { outline: 2px solid var(--neon); outline-offset: 1px; }

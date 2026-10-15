@@ -2,8 +2,9 @@ import { MAX_RECIPIENTS, clearQueue, connectGmail, defaultCap, disconnectGmail, 
 import { DesignExport } from './mkt/DesignExport';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Check, Suggestion } from '../../../src/shared/types';
-import type { AnimKind, ImageNode, Node, RectNode, TextNode, GroupNode } from '../model/types';
+import type { AnimKind, ImageNode, Node, RectNode, TextEffect, TextEffectKind, TextNode, GroupNode } from '../model/types';
 import { FONTS, LOOP_KINDS } from '../model/types';
+import { ensureFonts } from '../render/fonts';
 import { reraster, vectorAsset } from '../design/vector';
 import { GEN_PALETTES, genSvg } from '../design/generators';
 import { colorChoices } from '../design/elements';
@@ -115,6 +116,30 @@ function AlignRow() {
   );
 }
 
+const FX_OPTIONS: { v: TextEffectKind; label: string }[] = [
+  { v: 'extrude', label: 'Đùn khối 3D' }, { v: 'block3d', label: 'Khối 3D có viền' }, { v: 'hollow3d', label: 'Chữ rỗng 3D' }, { v: 'sticker', label: 'Sticker viền trắng' },
+  { v: 'retro', label: 'Retro 2 lớp' }, { v: 'splice', label: 'Splice (viền + bóng đặc)' }, { v: 'shadow', label: 'Bóng dài' }, { v: 'lift', label: 'Nổi bóng mềm' },
+  { v: 'echo', label: 'Tiếng vọng' }, { v: 'neon', label: 'Neon phát sáng' }, { v: 'glitch', label: 'Glitch RGB' }, { v: 'emboss', label: 'Dập nổi' },
+  { v: 'gradient', label: 'Chuyển màu' }, { v: 'outline', label: 'Chữ rỗng viền' },
+];
+const FX_DEPTH: Record<string, number> = { shadow: 18, sticker: 10, retro: 6, glitch: 4, lift: 14, emboss: 2, echo: 10, splice: 6, outline: 1.6, hollow3d: 7, block3d: 8, extrude: 7 };
+let fontsAsked = false;
+/** One-click type styles (font + weight + effect); the words stay editable and every part can be changed after. */
+const TEXT_STYLES: { id: string; label: string; font: string; weight: number; effect: TextEffect | null; color?: string; css: Record<string, string> }[] = [
+  { id: 'game', label: 'Game vàng 3D', font: 'Baloo 2', weight: 800, color: '#FFC83D', effect: { kind: 'block3d', color: '#B4501E', depth: 8 }, css: { color: '#FFC83D', textShadow: '2px 2px 0 #B4501E, 3px 3px 0 #B4501E' } },
+  { id: 'sticker', label: 'Sticker', font: 'Lalezar', weight: 400, effect: { kind: 'sticker', color: '#FFFFFF', depth: 10 }, css: { color: '#E8357A', textShadow: '0 0 0 #fff, 2px 0 #fff, -2px 0 #fff, 0 2px #fff, 0 -2px #fff' } },
+  { id: 'retro', label: 'Retro 70s', font: 'Bungee', weight: 400, color: '#F5A524', effect: { kind: 'retro', color: '#E5484D', depth: 5 }, css: { color: '#F5A524', textShadow: '2px 2px 0 #E5484D, 4px 4px 0 #8B2A2E' } },
+  { id: 'neon', label: 'Neon', font: 'Vina Sans', weight: 400, color: '#FF4FD8', effect: { kind: 'neon', color: '#FF4FD8' }, css: { color: '#FFD6F7', textShadow: '0 0 6px #FF4FD8' } },
+  { id: 'comic', label: 'Truyện tranh', font: 'Bangers', weight: 400, color: '#FFE14D', effect: { kind: 'splice', color: '#1B1B1B', depth: 6 }, css: { color: '#FFE14D', textShadow: '2px 2px 0 #1B1B1B' } },
+  { id: 'hollow', label: 'Rỗng 3D', font: 'Anton', weight: 400, effect: { kind: 'hollow3d', depth: 7 }, css: { color: 'transparent', WebkitTextStroke: '1px currentColor', textShadow: '2px 2px 0 #888' } },
+  { id: 'glitch', label: 'Glitch', font: 'Space Grotesk', weight: 700, effect: { kind: 'glitch', depth: 4 }, css: { textShadow: '-2px 0 #00E5FF, 2px 0 #FF2BD6' } },
+  { id: 'luxe', label: 'Sang trọng', font: 'Playfair Display', weight: 700, color: '#E9C46A', effect: { kind: 'gradient', color: '#8C6A1F' }, css: { color: '#E9C46A' } },
+  { id: 'soft', label: 'Nổi mềm', font: 'Fredoka', weight: 700, effect: { kind: 'lift', depth: 14 }, css: { textShadow: '0 3px 6px rgba(0,0,0,.4)' } },
+  { id: 'echo', label: 'Tiếng vọng', font: 'Unbounded', weight: 800, effect: { kind: 'echo', depth: 8 }, css: { textShadow: '3px 3px 0 rgba(128,128,128,.4), 6px 6px 0 rgba(128,128,128,.2)' } },
+  { id: 'emboss', label: 'Dập nổi', font: 'Dela Gothic One', weight: 400, effect: { kind: 'emboss', depth: 2 }, css: { textShadow: '-1px -1px 0 rgba(255,255,255,.6), 1px 1px 0 rgba(0,0,0,.4)' } },
+  { id: 'script', label: 'Viết tay', font: 'Pattaya', weight: 400, effect: { kind: 'lift', depth: 8 }, css: {} },
+];
+
 /** Rotation of any layer: 0–360° field, ±15° nudges, a quarter turn and reset (the canvas handle above the selection does the same). */
 function RotateRow({ deg, set }: { deg: number; set: (v: number) => void }) {
   const norm = (a: number) => { const x = ((a + 180) % 360 + 360) % 360 - 180; return Math.round(x * 10) / 10 || 0; };
@@ -206,12 +231,15 @@ function TextProps({ n }: { n: TextNode }) {
       <Field label="Màu chữ"><ColorInput value={n.color} brand={b} onChange={(c) => up({ color: c || '#000000' })} /></Field>
       <Toggle checked={n.autoHeight} onChange={(v) => up({ autoHeight: v })} label="Chiều cao tự theo nội dung" />
       {!n.autoHeight && <Seg block value={n.vAlign} options={[{ v: 'top', label: 'Trên' }, { v: 'middle', label: 'Giữa' }, { v: 'bottom', label: 'Dưới' }]} onChange={(v) => up({ vAlign: v })} />}
-      <Eyebrow>Hiệu ứng 3D</Eyebrow>
+      <Eyebrow>Phong cách chữ</Eyebrow>
+      <div class="fx-presets" ref={(el) => { if (el && !fontsAsked) { fontsAsked = true; ensureFonts(TEXT_STYLES.map((t) => t.font)); } }}>{TEXT_STYLES.map((p) => <button key={p.id} class={`fx-p ${n.effect?.kind === p.effect?.kind && n.fontFamily === p.font ? 'on' : ''}`} title={`${p.label} · ${p.font}`} onClick={() => up({ fontFamily: p.font, fontWeight: p.weight, effect: p.effect, ...(p.color ? { color: p.color } : {}) } as Partial<TextNode>)} style={{ fontFamily: `'${p.font}'`, fontWeight: p.weight, ...p.css }}>Aa</button>)}</div>
+      <Eyebrow>Hiệu ứng</Eyebrow>
       <div class="row">
-        <div class="grow"><Select value={(n.effect?.kind || 'none') as 'none' | 'extrude' | 'neon' | 'outline' | 'shadow'} options={[{ v: 'none', label: 'Không' }, { v: 'extrude', label: 'Đùn khối 3D' }, { v: 'neon', label: 'Neon phát sáng' }, { v: 'outline', label: 'Chữ rỗng viền' }, { v: 'shadow', label: 'Bóng dài' }]} onChange={(v) => up({ effect: v === 'none' ? null : { kind: v, depth: n.effect?.depth, angle: n.effect?.angle, color: n.effect?.color } })} /></div>
-        {n.effect && (n.effect.kind === 'extrude' || n.effect.kind === 'shadow') && <div style={{ width: 86 }}><Num label="Sâu" value={n.effect.depth ?? (n.effect.kind === 'shadow' ? 18 : 7)} min={1} max={40} suffix="px" onChange={(v) => up({ effect: { ...n.effect!, depth: v } })} /></div>}
+        <div class="grow"><Select value={(n.effect?.kind || 'none') as TextEffectKind | 'none'} options={[{ v: 'none', label: 'Không' }, ...FX_OPTIONS]} onChange={(v) => up({ effect: v === 'none' ? null : { kind: v as TextEffectKind, depth: n.effect?.depth, angle: n.effect?.angle, color: n.effect?.color } })} /></div>
+        {n.effect && n.effect.kind !== 'neon' && n.effect.kind !== 'gradient' && <div style={{ width: 86 }}><Num label="Độ" value={n.effect.depth ?? FX_DEPTH[n.effect.kind] ?? 7} min={1} max={40} suffix="px" onChange={(v) => up({ effect: { ...n.effect!, depth: v } })} title="Độ sâu / độ dày / độ lệch của hiệu ứng" /></div>}
+        {n.effect && ['extrude', 'shadow', 'block3d', 'hollow3d', 'retro', 'splice', 'echo'].includes(n.effect.kind) && <div style={{ width: 86 }}><Num label="Góc" value={n.effect.angle ?? 50} min={0} max={359} suffix="°" onChange={(v) => up({ effect: { ...n.effect!, angle: v } })} title="Hướng khối / bóng" /></div>}
       </div>
-      {n.effect && <Field label="Màu hiệu ứng" hint="trống = tự đậm hơn chữ"><ColorInput value={n.effect.color ?? null} brand={b} allowNone onChange={(c) => up({ effect: { ...n.effect!, color: c ?? undefined } })} /></Field>}
+      {n.effect && n.effect.kind !== 'glitch' && n.effect.kind !== 'emboss' && <Field label={n.effect.kind === 'gradient' ? 'Màu cuối (chuyển từ màu chữ)' : 'Màu hiệu ứng'} hint="trống = tự theo màu chữ"><ColorInput value={n.effect.color ?? null} brand={b} allowNone onChange={(c) => up({ effect: { ...n.effect!, color: c ?? undefined } })} /></Field>}
     </div>
   );
 }

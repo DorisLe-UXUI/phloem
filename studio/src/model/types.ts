@@ -144,7 +144,9 @@ export const LOOP_KINDS = new Set<AnimKind>(['marquee', 'pulse', 'float', 'spin'
 export const LOOP_CYCLE = 2.4;
 export function loopPeriod(a: Anim): number { const want = a.dur ?? (a.kind === 'float' || a.kind === 'spin' ? 2.4 : 1.2); return [0.6, 0.8, 1.2, 2.4].reduce((b, p) => (Math.abs(p - want) < Math.abs(b - want) ? p : b), 1.2); }
 /** 3D-ish text treatments drawn by the renderer. */
-export interface TextEffect { kind: 'extrude' | 'neon' | 'outline' | 'shadow'; color?: Color; depth?: number; angle?: number }
+export type TextEffectKind = 'extrude' | 'neon' | 'outline' | 'shadow' | 'block3d' | 'hollow3d' | 'sticker' | 'retro' | 'glitch' | 'lift' | 'emboss' | 'echo' | 'gradient' | 'splice';
+/** Editable type effects drawn from the text itself (the words, font and colours stay editable). */
+export interface TextEffect { kind: TextEffectKind; color?: Color; depth?: number; angle?: number }
 
 export interface GroupNode extends BaseNode {
   type: 'group';
@@ -357,6 +359,26 @@ export const FONTS: { family: string; label: string; google?: string; cat: FontC
   { family: 'Merienda', label: 'Merienda', google: 'Merienda:wght@300;400;500;600;700;800;900', cat: 'script', vi: true },
   { family: 'Amatic SC', label: 'Amatic SC', google: 'Amatic+SC:wght@400;700', cat: 'script', vi: true },
   { family: 'Sedgwick Ave', label: 'Sedgwick Ave', google: 'Sedgwick+Ave', cat: 'script', vi: true },
+  { family: 'Vina Sans', label: 'Vina Sans', google: 'Vina+Sans', cat: 'display', vi: true },
+  { family: 'Bangers', label: 'Bangers', google: 'Bangers', cat: 'display', vi: true },
+  { family: 'Lalezar', label: 'Lalezar', google: 'Lalezar', cat: 'display', vi: true },
+  { family: 'Sigmar', label: 'Sigmar', google: 'Sigmar', cat: 'display', vi: true },
+  { family: 'Oi', label: 'Oi', google: 'Oi', cat: 'display', vi: true },
+  { family: 'Phudu', label: 'Phudu', google: 'Phudu:wght@400;600;800;900', cat: 'display', vi: true },
+  { family: 'Big Shoulders Display', label: 'Big Shoulders Display', google: 'Big+Shoulders+Display:wght@500;700;800;900', cat: 'display', vi: true },
+  { family: 'Bungee Inline', label: 'Bungee Inline', google: 'Bungee+Inline', cat: 'display', vi: true },
+  { family: 'Bungee Outline', label: 'Bungee Outline', google: 'Bungee+Outline', cat: 'display', vi: true },
+  { family: 'Bungee Spice', label: 'Bungee Spice', google: 'Bungee+Spice', cat: 'display', vi: true },
+  { family: 'Chonburi', label: 'Chonburi', google: 'Chonburi', cat: 'display', vi: true },
+  { family: 'Montserrat Alternates', label: 'Montserrat Alternates', google: 'Montserrat+Alternates:wght@400;600;700;800;900', cat: 'sans', vi: true },
+  { family: 'Signika', label: 'Signika', google: 'Signika:wght@400;600;700', cat: 'sans', vi: true },
+  { family: 'Lemonada', label: 'Lemonada', google: 'Lemonada:wght@400;600;700', cat: 'rounded', vi: true },
+  { family: 'Playpen Sans', label: 'Playpen Sans', google: 'Playpen+Sans:wght@400;600;800', cat: 'rounded', vi: true },
+  { family: 'Pattaya', label: 'Pattaya', google: 'Pattaya', cat: 'script', vi: true },
+  { family: 'Borel', label: 'Borel', google: 'Borel', cat: 'script', vi: true },
+  { family: 'Comforter Brush', label: 'Comforter Brush', google: 'Comforter+Brush', cat: 'script', vi: true },
+  { family: 'Moon Dance', label: 'Moon Dance', google: 'Moon+Dance', cat: 'script', vi: true },
+  { family: 'Updock', label: 'Updock', google: 'Updock', cat: 'script', vi: true },
   // system fallbacks (no download)
   { family: 'Helvetica', label: 'Helvetica / Arial', cat: 'system', vi: true },
   { family: 'Georgia', label: 'Georgia', cat: 'system', vi: true },

@@ -363,22 +363,37 @@ function drawText(ctx: CanvasRenderingContext2D, n: TextNode, brand: Brand, s: n
   const ascent = n.fontSize * s * 0.78; // approximate cap baseline inside the line box
   const pad = (lay.lineHeight - n.fontSize * s) / 2;
   const fx = n.effect && n.effect.kind ? n.effect : null;
-  const fxColor = fx ? (col(fx.color, brand) || (fx.kind === 'neon' ? color : shade(color, fx.kind === 'extrude' ? 0.45 : 0.25))) : '';
-  const depth = fx ? Math.max(1, Math.round((fx.depth ?? (fx.kind === 'shadow' ? 18 : 7)) * s)) : 0;
+  const fxColor = fx ? (col(fx.color, brand) || (fx.kind === 'neon' || fx.kind === 'gradient' ? (fx.kind === 'gradient' ? shade(color, 0.5) : color) : fx.kind === 'sticker' ? '#ffffff' : shade(color, fx.kind === 'extrude' || fx.kind === 'block3d' || fx.kind === 'hollow3d' ? 0.45 : 0.25))) : '';
+  const DEF_DEPTH: Record<string, number> = { shadow: 18, sticker: 10, retro: 6, glitch: 4, lift: 14, emboss: 2, echo: 10, splice: 6, outline: 1.6, hollow3d: 7, block3d: 8 };
+  const depth = fx ? Math.max(1, Math.round((fx.depth ?? DEF_DEPTH[fx.kind] ?? 7) * s)) : 0;
   const ang = ((fx?.angle ?? 50) * Math.PI) / 180;
+  const k = fx?.kind;
   lay.lines.forEach((ln, i) => {
     let lx = x;
     if (n.align === 'center') lx = x + (w - ln.width) / 2;
     else if (n.align === 'right') lx = x + w - ln.width;
     const ly = y0 + i * lay.lineHeight + pad + ascent;
-    if (fx?.kind === 'extrude' || fx?.kind === 'shadow') {
-      // stacked offset copies read as an extruded block (or one long flat shadow)
-      ctx.save(); ctx.fillStyle = fxColor; if (fx.kind === 'shadow') ctx.globalAlpha *= 0.35;
-      for (let d = depth; d >= 1; d--) ctx.fillText(ln.text, lx + Math.cos(ang) * d, ly + Math.sin(ang) * d);
-      ctx.restore();
-    }
-    if (fx?.kind === 'neon') { ctx.save(); ctx.shadowColor = fxColor; ctx.shadowBlur = 26 * s; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.fillText(ln.text, lx, ly); ctx.fillText(ln.text, lx, ly); ctx.restore(); }
-    if (fx?.kind === 'outline') { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, (fx.depth || 1.6) * s); ctx.lineJoin = 'round'; ctx.strokeText(ln.text, lx, ly); ctx.restore(); }
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+    const stack = (c: string, from: number, to: number, alpha = 1) => { ctx.save(); ctx.fillStyle = c; ctx.globalAlpha *= alpha; for (let d = from; d >= to; d--) ctx.fillText(ln.text, lx + dx * d, ly + dy * d); ctx.restore(); };
+    const stroke = (c: string, wdt: number, ox = 0, oy = 0) => { ctx.save(); ctx.strokeStyle = c; ctx.lineWidth = Math.max(1, wdt); ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.strokeText(ln.text, lx + ox, ly + oy); ctx.restore(); };
+    // behind the letters
+    if (k === 'extrude' || k === 'shadow') stack(fxColor, depth, 1, k === 'shadow' ? 0.35 : 1);
+    if (k === 'block3d') { stack(fxColor, depth, 1); stroke(shade(fxColor, 0.5), 2.2 * s, dx * depth, dy * depth); }
+    if (k === 'hollow3d') stack(fxColor, depth, 1);
+    if (k === 'sticker') { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 10 * s; ctx.shadowOffsetY = 4 * s; stroke(fxColor, depth * 2); ctx.restore(); stroke(fxColor, depth * 2); }
+    if (k === 'retro') { stack(shade(fxColor, 0.4), depth * 2, depth * 2); stack(fxColor, depth, depth); }
+    if (k === 'splice') { stack(fxColor, depth, depth); }
+    if (k === 'echo') { for (let e = 3; e >= 1; e--) { ctx.save(); ctx.globalAlpha *= 0.18 * (4 - e) / 1.5; ctx.fillStyle = fxColor; ctx.fillText(ln.text, lx + dx * depth * e, ly + dy * depth * e); ctx.restore(); } }
+    if (k === 'glitch') { ctx.save(); ctx.globalAlpha *= 0.85; ctx.fillStyle = '#00E5FF'; ctx.fillText(ln.text, lx - depth, ly); ctx.fillStyle = '#FF2BD6'; ctx.fillText(ln.text, lx + depth, ly); ctx.restore(); }
+    if (k === 'emboss') { ctx.save(); ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.fillText(ln.text, lx - depth, ly - depth); ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillText(ln.text, lx + depth, ly + depth); ctx.restore(); }
+    // the letters
+    if (k === 'neon') { ctx.save(); ctx.shadowColor = fxColor; ctx.shadowBlur = 26 * s; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.fillText(ln.text, lx, ly); ctx.fillText(ln.text, lx, ly); ctx.restore(); }
+    if (k === 'outline') stroke(color, depth);
+    else if (k === 'hollow3d') { ctx.save(); ctx.fillStyle = brand.bg || '#ffffff'; ctx.fillText(ln.text, lx, ly); ctx.restore(); stroke(color, 2.2 * s); }
+    else if (k === 'splice') stroke(color, 2.4 * s); // outlined letters over their solid offset copy
+    else if (k === 'lift') { ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.38)'; ctx.shadowBlur = depth * s; ctx.shadowOffsetY = depth * 0.45 * s; ctx.fillText(ln.text, lx, ly); ctx.restore(); }
+    else if (k === 'gradient') { ctx.save(); const top = ly - n.fontSize * s * 0.8, g = ctx.createLinearGradient(0, top, 0, ly + n.fontSize * s * 0.15); g.addColorStop(0, color); g.addColorStop(1, fxColor); ctx.fillStyle = g; ctx.fillText(ln.text, lx, ly); ctx.restore(); }
+    else if (k === 'block3d') { ctx.fillText(ln.text, lx, ly); stroke(shade(fxColor, 0.5), 2.2 * s); }
     else ctx.fillText(ln.text, lx, ly);
     if (n.underline && ln.width) { ctx.fillRect(lx, ly + 2 * s, ln.width, Math.max(1, s)); }
     if (n.strike && ln.width) { ctx.fillRect(lx, ly - n.fontSize * s * 0.3, ln.width, Math.max(1, 1.2 * s)); }
