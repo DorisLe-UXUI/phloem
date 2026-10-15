@@ -77,7 +77,9 @@ async function sliceToGif(doc: Doc, brand: Brand, s: { x: number; y: number; w: 
   return gif.bytes();
 }
 
-const GIF_SOFT_KB = 650;
+const GIF_SOFT_KB = 500;
+/** All animated slices of one email together: past this, the heaviest block loses frames, then its motion. */
+const GIF_TOTAL_KB = 1500;
 type Rect = { x: number; y: number; w: number; h: number };
 const union = (a: Rect, b: Rect): Rect => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
 
@@ -91,21 +93,33 @@ export async function exportDocSlices(doc: Doc, brand: Brand, plan: SlicePlan, s
   const spanOf = new Map<number, { start: number; end: number; loop: boolean } | null>();
   for (const [k, r] of groups) spanOf.set(k, animSpan(doc.nodes, r));
   const gifBytes = new Map<string, Uint8Array>();
+  const blocks: { k: number; fps: number; enc: Map<string, Uint8Array>; members: typeof plan.slices; span: { start: number; end: number; loop: boolean } }[] = [];
+  const encode = async (members: typeof plan.slices, span: { start: number; end: number; loop: boolean }, fps: number) => { const enc = new Map<string, Uint8Array>(); for (const s of members) enc.set(s.key, await sliceToGif(doc, brand, s, span, fps)); return enc; };
+  const weight = (enc: Map<string, Uint8Array>) => [...enc.values()].reduce((a, b) => a + b.length, 0);
   let done = 0;
   for (const [k, span] of spanOf) {
     if (!span) continue;
     const members = plan.slices.filter((s) => s.keep === k && animSpan(doc.nodes, s));
     let fps = gifFps;
     for (;;) {
-      const enc = new Map<string, Uint8Array>();
-      for (const s of members) enc.set(s.key, await sliceToGif(doc, brand, s, span, fps));
+      const enc = await encode(members, span, fps);
       const heaviest = Math.max(0, ...[...enc.values()].map((b) => b.length));
       const next = Math.round(fps * 0.7);
-      if (heaviest <= GIF_SOFT_KB * 1024 || next < 4) { for (const [key, b] of enc) gifBytes.set(key, b); break; }
+      if (heaviest <= GIF_SOFT_KB * 1024 || next < 4) { blocks.push({ k, fps, enc, members, span }); break; }
       fps = next; // the whole block drops its frame rate together, so sibling slices never tear at a seam
     }
     done += members.length; onProgress?.(Math.min(done, plan.slices.length), plan.slices.length);
   }
+  // whole-email budget: thin the heaviest block's frames; at the floor, it becomes a still (PNG/JPG like the rest)
+  for (let guard = 0; guard < 12; guard++) {
+    const total = blocks.reduce((a, b) => a + weight(b.enc), 0);
+    if (total <= GIF_TOTAL_KB * 1024 || !blocks.length) break;
+    const b = blocks.reduce((m, x) => (weight(x.enc) > weight(m.enc) ? x : m));
+    const next = Math.round(b.fps * 0.7);
+    if (next >= 4) { b.fps = next; b.enc = await encode(b.members, b.span, next); }
+    else blocks.splice(blocks.indexOf(b), 1);
+  }
+  for (const b of blocks) for (const [key, bytes] of b.enc) gifBytes.set(key, bytes);
   const out: ExportedSlice[] = [];
   const fctx = full.getContext('2d', { willReadFrequently: true })!;
   for (let i = 0; i < plan.slices.length; i++) {

@@ -190,6 +190,7 @@ export interface Project {
   design?: { html: string; hash: string; name?: string; at: string; /** the art direction (design.ts Direction) */ dir?: unknown } | null;
 }
 
+
 export interface Asset {
   id: string;
   name: string;

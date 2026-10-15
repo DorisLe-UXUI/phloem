@@ -15,7 +15,7 @@ import { loadFluent3d } from '../design/library';
 
 export interface Palette { bg: string; surface: string; ink: string; muted: string; primary: string; accent: string; onPrimary: string; line: string }
 export interface Direction {
-  name: string; why: string; concept: string; aesthetic: string;
+  name: string; why: string; concept: string; aesthetic: string; /** the hero recipe + the wow moment */ signature?: string;
   palette: Palette; headingFont: string; bodyFont: string; vibe: Vibe;
   layout: string[]; motifs: string; images: { id: string; use: string }[]; fields: EmailFields;
 }
@@ -36,6 +36,7 @@ TYPOGRAPHY
 - Distinctive display face + refined body face (only from the allowed list). Never more than two families.
 - Dramatic scale contrast: display 52–96px, leading 0.9–1.05, slight negative tracking (-0.01 to -0.03em); body 15–18px / 1.5–1.65; eyebrows/labels 11–13px uppercase, tracking 0.14–0.28em.
 - Mix weights on purpose; one highlighted word may change colour, weight or style. Hierarchy readable at a glance.
+- Capitalisation: every headline, sentence, card title and button starts with a capital letter (sentence case or Title Case). Never all-lowercase headlines as a style and never text-transform: lowercase. Only a brand name keeps its own spelling.
 
 COLOUR
 - A dominant colour with sharp accents beats timid, evenly spread palettes. Build from the direction's palette; derive tints and shades.
@@ -57,6 +58,23 @@ FIGMA-LEVEL POLISH (what separates a hand-made design from a template)
 - Every section has a reason to look different (background, scale, alignment), yet all share the same system so the email feels like one piece.
 - Final check before you answer: alignment to the grid, consistent gutters, contrast, nothing touching an edge accidentally, CTA obvious within the first 600px.
 
+THE WOW BAR (non-negotiable)
+- The first screen (top ~700px) is a finished poster: on its own it would earn a save on Dribbble/Behance. Spend half your effort here.
+- Hero headline 72–140px (display face), leading 0.82–0.95, tracking -0.02 to -0.045em, 2–3 short lines; scale contrast with the body ≥ 5:1.
+- Layering: the hero has at least 3 depth planes (background field/texture → main object/photo → type or card → small badge/sticker), with real overlap between them (an object crossing the headline, a card overlapping a photo edge, a badge sitting on a corner).
+- Colour with conviction: a full-bleed colour field, a dark spotlight stage, or a full-bleed photo. A white or pale hero with a small centred headline is never acceptable (except a deliberately "luxury minimal" direction — then the type must be huge and the space dramatic).
+- Every later section earns its place with at least one of: overlap, an oversized element (number, word, object), a colour-field switch, texture, a glass card, a rotated badge. No two consecutive sections share the same layout.
+
+SIGNATURE HERO RECIPES (proven in Phloem; adapt one, combine two, never copy blindly)
+1. Poster type: section background = primary (full bleed) + <img data-gfx="grain"> absolutely covering it at opacity .18; headline 120px+ in onPrimary, one word as outline (-webkit-text-stroke:2px; color:transparent) or in accent; the product photo/3D object position:absolute with z-index above the headline so it crosses the letters; a 112px circular badge (accent fill, rotate(-12deg), 2-line claim 14px bold uppercase) on the object's shoulder.
+2. Product on stage: background radial-gradient(ellipse 70% 55% at 50% 38%, light tint 0%, mid 45%, near-black 100%); a podium = two stacked ellipses (top: light gradient, bottom: darker band) with a blurred dark ellipse shadow under it; product 300–380px tall standing on it; headline huge ABOVE with the product overlapping its bottom 20%; 2–3 tiny spec labels with 1px leader lines pointing at the product.
+3. Magazine cover: full-bleed photo 600×720 (object-fit:cover, choose object-position); masthead = brand or campaign word 110–150px across the top, tight tracking; 3 cover lines (12–14px uppercase, a big number each) on the left; issue tag top-right; a frosted-glass CTA pill bottom-left (backdrop-filter blur 20px, rgba white .18, 1px rgba white .4 border).
+4. Colour blocks + marquee: two stacked colour fields, a 760px-wide band rotated -5deg crossing the seam carrying repeated caps text ("NEW DROP ✦ NEW DROP ✦ …", 22px bold) ; photo in an arch frame (border-radius 300px 300px 24px 24px) overlapping both fields; headline left-aligned 96px.
+5. Giant offer number: "30%" (or the real number) 180–220px in the display face with an outlined duplicate offset 8px behind it (two absolutely positioned layers), a ticket card below with notches (two 28px circles in the background colour at the side edges), a 1px divider (dashed borders render solid) and the code in a mono face, 3D sticker (gift / money / fire) tilted at a corner.
+6. Glass over mesh: background = 3–4 large blurred circles (filter:blur(60px), brand colours, overlapping) or <img data-gfx="aurora|blur">; a frosted-glass card holds headline + CTA; a 3D object 180–220px breaks out of the card's top edge (negative top, z-index above).
+7. Collage: 2–3 photos as polaroids (white 10px border, rotate ±3–6deg, soft shadow) overlapping each other, translucent "tape" strips (rotated rgba rects) on corners, a handwritten-style accent word, 1–2 stickers; headline set on a solid colour block that overlaps the collage.
+8. Bento: a 2–3 column grid of cards with different spans and fills (one photo tile, one huge-number stat tile, one 3D-object tile, one quote/claim tile), radius 20–28px, 12px gaps, each tile a different but harmonious colour.
+
 AVOID (generic AI look)
 - Purple-on-white gradients by default; everything centred in identical rounded cards; emoji bullet lists; grey boxes; 24px headlines; Inter/Roboto everywhere; cookie-cutter SaaS sections; decoration unrelated to the brand; "Welcome to our newsletter" copy.
 
@@ -77,14 +95,18 @@ CONVERTS (use freely):
 - Illustration & decoration: inline <svg viewBox="…" width="…" height="…"> with paths/shapes (blobs, waves, arcs, stars, squiggles, dot grids, arrows, abstract illustrations), colours as fill/stroke attributes or CSS. No <text> inside SVG.
 - Links: every clickable element inside <a href="real URL">. Wrap each product/offer card in ONE <a> so the whole card is clickable; at most 6 distinct destinations per email. Unsubscribe <a href="*|UNSUB|*">, preferences <a href="*|UPDATE_PROFILE|*">.
 - Footer: brand line, website or address, social icons (simple-icons inside links), and the exact words "Huỷ đăng ký" (Vietnamese copy) or "Unsubscribe" (English) linked to *|UNSUB|*.
-- Motion (exported as GIF): data-anim on 3–6 elements. Entrances "fade|up|down|left|right|pop|wipe|type" with data-delay="0.15" (seconds), only in the first section or two. Loops "pulse|float|spin|shake|blink" on at most 2 small stickers/badges (every animated area becomes a GIF, keep them few and small).
+- Motion (exported as GIF, every animated pixel adds weight): data-anim on 2–5 SMALL elements only (badge, sticker, 3D object, headline, CTA; each under ~600×300px; never a photo, a background or a whole section). Entrances "fade|up|down|left|right|pop|wipe|type" with data-delay="0.15" (seconds), only in the first section or two. Loops "pulse|float|spin|shake|blink" on at most 2 small stickers/badges (every animated area becomes a GIF, keep them few and small).
 NEVER (lost in conversion): ::before/::after content, CSS background url(), background-clip:text or gradient-filled text, mask, clip-path, mix-blend-mode, backdrop-filter other than blur(), CSS animations/transitions, <video>, <canvas>, <script>, iframes, list bullets (use icon/shape markers), fonts not in the list, <link> tags, external image URLs, text baked into SVG.
 MOBILE: add @media (max-width:480px) rules: #email{width:100%!important}; stack columns; display type ≈0.6×; side padding 20–24px; images full width. Phloem renders the same HTML at 375px for the mobile version, so nothing may overflow 375px there.
 SIZE: total height 1600–2600px at 600px wide. Body text ≥ 15px, labels ≥ 12px, footer ≥ 12px, buttons ≥ 48px tall. Text on photos needs a scrim or a solid card behind it.`;
 
-const CRITIC = `You are the creative director reviewing a designer's email before it ships. You receive the art direction, the HTML, and screenshots of how it RENDERS in Phloem (exactly what subscribers will see). Return a better version:
-1. Fix everything wrong in the render: overlapping or clipped text, elements outside the 600px canvas, misalignment, cramped or uneven spacing, weak contrast, awkward empty areas, badly cropped photos, decoration covering content, anything that did not convert (follow the technical contract), sections that feel unfinished.
-2. Push the craft toward award-winning: stronger hierarchy and scale contrast, a more striking hero, tighter typographic details, better rhythm between sections, richer but purposeful depth, polished components (buttons, badges, cards, footer). Keep the concept, palette, fonts, copy facts, links and image ids.
+/** The hero recipe list alone, for the planner. */
+const HERO_RECIPES = DESIGN_CRAFT.slice(DESIGN_CRAFT.indexOf('SIGNATURE HERO RECIPES'), DESIGN_CRAFT.indexOf('AVOID (generic AI look)')).trim();
+
+const CRITIC = `You are the creative director reviewing a designer's email before it ships. You receive the art direction, the HTML, and screenshots of how it RENDERS in Phloem (exactly what subscribers will see). Your standard is the best studio work on Behance, not "good enough".
+1. Silently score the hero and every section 1–10 on impact, typography, composition/layering, colour and polish. Anything below 8 is REBUILT, not nudged: bigger headline, a real overlap, a colour-field switch, a 3D object or photo used boldly, a stronger recipe from the list. A timid hero (small headline, pale flat background, nothing overlapping) is always below 8.
+2. Fix everything wrong in the render: overlapping or clipped text, elements outside the 600px canvas, misalignment, cramped or uneven spacing, weak contrast, awkward empty areas, badly cropped photos, decoration covering content, lowercase sentence starts, anything that did not convert (follow the technical contract), sections that feel unfinished.
+3. Keep the concept, palette, fonts, copy facts, links and image ids.
 Return the COMPLETE revised HTML document in one \`\`\`html block. No commentary.`;
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -122,16 +144,17 @@ async function buildCtx(inp: GenInput): Promise<{ ctx: Ctx; images: AiImage[] }>
 
 const PLAN = `You are the creative director of a top design studio. Plan THREE email designs for the brief: three genuinely different art directions (different concept, composition, mood and type — not colour swaps), each one right for this brand and goal. If a website profile is given, all three must feel like that brand's own team made them (its colours, its voice); still vary concept and composition.
 The designer has: the user's photos, a library of studio-quality 3D objects (gifts, rockets, food, devices, hearts, trophies…), procedural backgrounds/patterns/glossy 3D shapes in any palette, thousands of icons and stickers, frosted-glass cards, and ~100 Google fonts with Vietnamese. Plan directions that use these deliberately (e.g. a hero built around one big 3D object, a glass card over a photo, a patterned band).
+Each direction must clear the WOW bar: a first screen that is a finished poster (full-bleed colour field, spotlight stage or full-bleed photo; 3+ overlapping depth planes; a 72–140px headline). The three directions use three DIFFERENT hero recipes.
 Aesthetic territories to draw from (pick what fits, combine, or invent): editorial magazine, Swiss grid, neo-brutalist poster, luxury minimal, soft pastel / organic, playful toy-like stickers, retro-futuristic chrome, Y2K, art deco geometric, Japanese minimal, bold sports campaign, product-on-stage studio lighting, collage / scrapbook, monochrome high-contrast, warm craft / handmade.
 Return ONLY JSON:
-{"directions":[{"name":"short name in the copy language","why":"one sentence: why this direction for this goal","aesthetic":"2–5 words","concept":"3–5 sentences of art direction: the unforgettable idea, hero composition, mood, type treatment, decorative motifs, how photos are used","palette":{"bg":"#hex email background","surface":"#hex cards/sections","ink":"#hex main text","muted":"#hex secondary text","primary":"#hex brand/CTA colour","accent":"#hex second colour","onPrimary":"#hex text on primary","line":"#hex hairlines"},"headingFont":"from list","bodyFont":"from list","vibe":"clean|playful|bold|luxury|editorial","layout":["Section 1 — what it is and how it looks", "… 6–9 entries"],"motifs":"decoration + icons/stickers + motion plan","images":[{"id":"image id","use":"where/how"}],"fields":{"campaignName":"short","subject":"30–55 chars, concrete benefit","preheader":"40–90 chars, continues the subject"}}]}`;
+{"directions":[{"name":"short name in the copy language","why":"one sentence: why this direction for this goal","aesthetic":"2–5 words","signature":"the hero recipe it builds on (number + name from the recipe list, or a new idea described as precisely) and the one wow moment a subscriber will remember","concept":"3–5 sentences of art direction: the unforgettable idea, hero composition (planes, what overlaps what, scale of the headline), mood, type treatment, decorative motifs, how photos/3D objects are used","palette":{"bg":"#hex email background","surface":"#hex cards/sections","ink":"#hex main text","muted":"#hex secondary text","primary":"#hex brand/CTA colour","accent":"#hex second colour","onPrimary":"#hex text on primary","line":"#hex hairlines"},"headingFont":"from list","bodyFont":"from list","vibe":"clean|playful|bold|luxury|editorial","layout":["Section 1 — what it is and how it looks", "… 6–9 entries"],"motifs":"decoration + icons/stickers + motion plan","images":[{"id":"image id","use":"where/how"}],"fields":{"campaignName":"short","subject":"30–55 chars, concrete benefit","preheader":"40–90 chars, continues the subject"}}]}`;
 
 /** Three distinct directions, planned together (so they differ for real). */
 export async function planDirections(inp: GenInput, c: Ctx, images: AiImage[], signal?: AbortSignal): Promise<Direction[]> {
   const text = await askClaude({
-    system: `${PLAN}\n\nAllowed fonts: ${c.fonts}.\nPalette presets you may adapt: ${c.presets}.`,
+    system: `${PLAN}\n\n${HERO_RECIPES}\n\nAllowed fonts: ${c.fonts}.\nPalette presets you may adapt: ${c.presets}.`,
     turns: [{ role: 'user', text: `${c.brief}\n\nIMAGES (ids; attached in order):\n${c.imageLines.join('\n') || '(none — design with type, colour, shapes and icons)'}`, images }],
-    maxTokens: 9000, effort: 'medium',
+    maxTokens: 12000, effort: 'high',
   });
   if (signal?.aborted) throw new Error('Đã huỷ.');
   const j = extractJson<{ directions?: Direction[] }>(text);
@@ -151,7 +174,7 @@ export async function planDirections(inp: GenInput, c: Ctx, images: AiImage[], s
 }
 
 function dirText(d: Direction): string {
-  return `ART DIRECTION "${d.name}" — ${d.aesthetic}\n${d.concept}\nPalette: ${JSON.stringify(d.palette)}\nFonts: heading "${d.headingFont}", body "${d.bodyFont}"\nLayout plan:\n${d.layout.map((l, i) => `${i + 1}. ${l}`).join('\n')}\nMotifs & motion: ${d.motifs}\nImages: ${d.images.map((x) => `"${x.id}" → ${x.use}`).join('; ') || 'as you see fit'}\nSubject: ${d.fields.subject} · Preheader: ${d.fields.preheader}`;
+  return `ART DIRECTION "${d.name}" — ${d.aesthetic}\n${d.signature ? `Signature: ${d.signature}\n` : ''}${d.concept}\nPalette: ${JSON.stringify(d.palette)}\nFonts: heading "${d.headingFont}", body "${d.bodyFont}"\nLayout plan:\n${d.layout.map((l, i) => `${i + 1}. ${l}`).join('\n')}\nMotifs & motion: ${d.motifs}\nImages: ${d.images.map((x) => `"${x.id}" → ${x.use}`).join('; ') || 'as you see fit'}\nSubject: ${d.fields.subject} · Preheader: ${d.fields.preheader}`;
 }
 
 function picks(c: Ctx, d: Direction, max = 8): AiImage[] {

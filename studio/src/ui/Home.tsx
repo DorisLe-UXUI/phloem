@@ -28,6 +28,7 @@ export function Home() {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'new' | 'old' | 'name'>('new');
   useEffect(() => { void A.refreshProjects(); }, []);
+  useEffect(() => { void A.loadEmailClients(); }, [s.user?.id]);
   useEffect(() => {
     if (thumbCache) return;
     let alive = true;
@@ -53,10 +54,15 @@ export function Home() {
     await A.newProject(t.kind, templateBrand(t, DEFAULT_BRAND, BRAND_PRESETS));
   };
 
+  const [newClient, setNewClient] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const client = s.clients.find((c) => c.id === s.clientFilter) || null;
+  const filed = (p: { clientId?: string }) => !!p.clientId && s.clients.some((c) => c.id === p.clientId);
+  const countOf = (id: string | null) => s.projects.filter((p) => (id ? p.clientId === id : !filed(p))).length;
   const projects = useMemo(() => {
-    const list = s.projects.filter((p) => !q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase()));
+    const list = s.projects.filter((p) => (!s.clientFilter || (s.clientFilter === '-' ? !p.clientId || !s.clients.some((c) => c.id === p.clientId) : p.clientId === s.clientFilter)) && (!q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase())));
     return list.sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : sort === 'old' ? a.updatedAt.localeCompare(b.updatedAt) : b.updatedAt.localeCompare(a.updatedAt)));
-  }, [s.projects, q, sort]);
+  }, [s.projects, s.clientFilter, s.clients, q, sort]);
   const fmt = (iso: string) => new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
   const trend = TEMPLATES.filter((t) => t.blocks.length && t.tag === 'trend');
   const classic = TEMPLATES.filter((t) => t.blocks.length && t.tag !== 'trend');
@@ -111,8 +117,35 @@ export function Home() {
         </div>
 
         <section>
+          <div class="client-bar">
+            <span class="eyebrow" style={{ margin: 0 }}>Khách hàng</span>
+            <button class={`cl ${!s.clientFilter ? 'on' : ''}`} onClick={() => set({ clientFilter: null })}>Tất cả<i>{s.projects.length}</i></button>
+            {s.clients.map((c) => (
+              <button key={c.id} class={`cl ${s.clientFilter === c.id ? 'on' : ''}`} onClick={() => set({ clientFilter: c.id })} onDblClick={() => void A.openBoard(c.id)} title="Bấm đúp để mở bảng email của khách này">
+                <span class="dot" style={{ background: A.clientColor(c) }} />{c.name}<i>{countOf(c.id)}</i>
+              </button>
+            ))}
+            {s.clients.length > 0 && countOf(null) > 0 && <button class={`cl ${s.clientFilter === '-' ? 'on' : ''}`} onClick={() => set({ clientFilter: '-' })}>Chưa gán<i>{countOf(null)}</i></button>}
+            {newClient === null
+              ? <button class="cl add" onClick={() => setNewClient('')}><Icon name="plus" size={12} />Khách hàng</button>
+              : <input class="cl-input" autoFocus value={newClient} placeholder="Tên khách hàng, Enter để tạo" onInput={(e) => setNewClient((e.target as HTMLInputElement).value)} onBlur={() => { if (!newClient.trim()) setNewClient(null); }} onKeyDown={(e) => { if (e.key === 'Enter' && newClient.trim()) { const n = newClient; setNewClient(null); void A.addClient(n).then(() => toast('Đã tạo khách hàng (dùng chung với Phloem MKT). Email mới tạo lúc này thuộc khách này.', 'ok')).catch((err) => toast((err as Error).message, 'err')); } if (e.key === 'Escape') setNewClient(null); }} />}
+          </div>
+          {client && (
+            <div class="client-head">
+              <span class="dot" style={{ background: A.clientColor(client) }} />
+              {renaming === client.id
+                ? <input class="cl-input" autoFocus defaultValue={client.name} onBlur={(e) => { void A.renameClient(client.id, (e.target as HTMLInputElement).value).catch((err) => toast((err as Error).message, 'err')); setRenaming(null); }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null); }} />
+                : <b onClick={() => setRenaming(client.id)} title="Bấm để đổi tên">{client.name}</b>}
+              <span class="dim small">{countOf(client.id)} email · mọi email của khách nằm chung một bảng, bấm vào email nào để sửa / gửi / xuất email đó</span>
+              <span class="grow" />
+              <Btn sm kind="primary" icon="grid" onClick={() => void A.openBoard(client.id)}>Mở bảng email</Btn>
+              <Btn sm icon="plus" onClick={() => set({ modal: 'templates' })}>Email mới</Btn>
+              <Btn sm icon="sparkle" onClick={() => set({ modal: 'ai' })}>Dựng bằng AI</Btn>
+              {!isArtifact() && <a class="btn ghost sm" href={`../mkt/#/c/${encodeURIComponent(client.id)}/overview`} title="Thương hiệu, kế hoạch, thành viên, xoá khách: trong Phloem MKT"><Icon name="external" /> Mở trong MKT</a>}
+            </div>
+          )}
           <div class="proj-head">
-            <div class="eyebrow">Project của bạn · {s.projects.length}</div>
+            <div class="eyebrow">{client ? `Email của ${client.name}` : s.clientFilter === '-' ? 'Email chưa gán khách' : 'Project của bạn'} · {projects.length}</div>
             <div class="line" />
             <label class="search"><Icon name="zoomIn" size={14} /><input value={q} placeholder="Tìm kiếm project…" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
             <select class="sort" value={sort} onChange={(e) => setSort((e.target as HTMLSelectElement).value as 'new' | 'old' | 'name')}>
@@ -136,6 +169,7 @@ export function Home() {
                 </div>
                 <div class="meta">
                   <span class="nm">{p.name}</span>
+
                   <Btn xs kind="ghost" icon="copy" title="Nhân bản" onClick={(e) => { e.stopPropagation(); void A.duplicateProject(p.id); }} />
                   <Btn xs kind="ghost" icon="download" title="Mở và xuất" onClick={(e) => { e.stopPropagation(); void A.openProject(p.id).then(() => set({ rightTab: 'export' })); }} />
                   <Btn xs kind="ghost" icon="trash" title="Xoá" onClick={async (e) => { e.stopPropagation(); if (await ask(`Xoá "${p.name}"? Không hoàn tác được.`)) void A.deleteProject(p.id); }} />
@@ -143,7 +177,12 @@ export function Home() {
                 </div>
                 <div class="foot">
                   <span class="prov"><i>{p.provider === 'mailchimp' ? 'M' : p.provider === 'klaviyo' ? 'K' : 'P'}</i>{p.provider === 'mailchimp' ? 'Mailchimp' : p.provider === 'klaviyo' ? 'Klaviyo' : 'Chưa xuất'}</span>
-                  <span class="dt"><Icon name="desktop" size={12} />{fmt(p.updatedAt)}</span>
+                  {s.clients.length > 0 ? (
+                    <select class="cl-move" style={{ borderLeft: `3px solid ${p.clientId && s.clients.some((c) => c.id === p.clientId) ? A.clientColor(s.clients.find((c) => c.id === p.clientId)) : 'var(--line-2)'}` }} title="Chuyển email sang khách hàng" value={p.clientId && s.clients.some((c) => c.id === p.clientId) ? p.clientId : ''} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); void A.setProjectClient(p.id, (e.target as HTMLSelectElement).value || null); }}>
+                      <option value="">Chưa gán khách</option>
+                      {s.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  ) : <span class="dt"><Icon name="desktop" size={12} />{fmt(p.updatedAt)}</span>}
                 </div>
               </div>
             ))}

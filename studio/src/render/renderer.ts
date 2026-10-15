@@ -378,7 +378,7 @@ function drawText(ctx: CanvasRenderingContext2D, n: TextNode, brand: Brand, s: n
       ctx.restore();
     }
     if (fx?.kind === 'neon') { ctx.save(); ctx.shadowColor = fxColor; ctx.shadowBlur = 26 * s; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.fillText(ln.text, lx, ly); ctx.fillText(ln.text, lx, ly); ctx.restore(); }
-    if (fx?.kind === 'outline') { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, 1.6 * s); ctx.lineJoin = 'round'; ctx.strokeText(ln.text, lx, ly); ctx.restore(); }
+    if (fx?.kind === 'outline') { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, (fx.depth || 1.6) * s); ctx.lineJoin = 'round'; ctx.strokeText(ln.text, lx, ly); ctx.restore(); }
     else ctx.fillText(ln.text, lx, ly);
     if (n.underline && ln.width) { ctx.fillRect(lx, ly + 2 * s, ln.width, Math.max(1, s)); }
     if (n.strike && ln.width) { ctx.fillRect(lx, ly - n.fontSize * s * 0.3, ln.width, Math.max(1, 1.2 * s)); }

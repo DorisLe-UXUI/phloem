@@ -16,6 +16,8 @@ import { Btn, ColorInput, Eyebrow, Field, Num, Ring, Seg, Select, TextArea, Text
 import { Icon } from './icons';
 import { ask, isArtifact } from './confirm';
 import { AiPanel } from './AiPanel';
+import { CampaignStatsList, MailRelayBar, ServerSend, SuppressionList } from './MailExtras';
+import { mailSignedIn } from '../pipeline/mailServer';
 
 export function RightPanel() {
   const s = useStore();
@@ -343,6 +345,7 @@ function EmailTab() {
   return (
     <div class="props">
       <Eyebrow>Thông tin email</Eyebrow>
+      <Field label="Khách hàng" hint="email cùng khách nằm chung một bảng"><ClientPicker /></Field>
       <Field label="Tên campaign" for="f-campaignName"><TextInput id="f-campaignName" value={p.fields.campaignName} onCommit={(v) => setField('campaignName', v)} /></Field>
       <Field label="Subject" for="f-subject" hint={`${p.fields.subject.length} ký tự`}><TextInput id="f-subject" value={p.fields.subject} placeholder="30–50 ký tự, nói thẳng lợi ích" onCommit={(v) => setField('subject', v)} /></Field>
       <Field label="Preheader" for="f-preheader" hint="dòng xem trước"><TextInput id="f-preheader" value={p.fields.preheader} placeholder="Nối tiếp subject, 40–90 ký tự" onCommit={(v) => setField('preheader', v)} /></Field>
@@ -462,7 +465,22 @@ function BlockBg({ g }: { g: GroupNode }) {
 }
 
 
-/** Không có Mailchimp/Klaviyo: gửi thẳng bằng Gmail (1–10.000 người, theo hạn mức Gmail), hoặc tải .eml. */
+/** Which customer the open email belongs to (its board), or a new customer typed on the spot. */
+function ClientPicker() {
+  const s = useStore(); const p = s.project!;
+  const [adding, setAdding] = useState(false); const [name, setName] = useState('');
+  useEffect(() => { if (!s.clients.length) void A.loadEmailClients(); }, []);
+  if (adding) return <div class="row" style={{ gap: 6 }}><div class="grow"><TextInput value={name} onInput={setName} onCommit={setName} placeholder="Tên khách hàng mới" /></div><Btn xs kind="primary" disabled={!name.trim()} onClick={() => { void A.addClient(name).then((c) => A.setProjectClient(p.id, c.id)).catch((e) => toast((e as Error).message, 'err')); setAdding(false); setName(''); }}>Tạo</Btn><Btn xs kind="ghost" onClick={() => setAdding(false)}>Huỷ</Btn></div>;
+  return (
+    <div class="row" style={{ gap: 6 }}>
+      <div class="grow"><Select value={p.clientId && s.clients.some((c) => c.id === p.clientId) ? p.clientId : ''} options={[{ v: '', label: 'Chưa gán' }, ...s.clients.map((c) => ({ v: c.id, label: c.name }))]} onChange={(v) => void A.setProjectClient(p.id, v || null)} /></div>
+      <Btn xs kind="ghost" icon="plus" title="Khách hàng mới" onClick={() => setAdding(true)} />
+    </div>
+  );
+}
+
+/** Không có Mailchimp/Klaviyo: gửi thẳng bằng Gmail (1–10.000 người, theo hạn mức Gmail), qua máy chủ gửi (Resend /
+ *  Brevo / Amazon SES, hẹn giờ, A/B), hoặc tải .eml. */
 function MailCard() {
   const s = useStore();
   const p = s.project!;
@@ -470,6 +488,7 @@ function MailCard() {
   const [to, setTo] = useState(() => ls('phloem.mail.to'));
   const [skip, setSkip] = useState(() => ls('phloem.mail.skip'));
   const [cap, setCap] = useState(0);
+  const [via, setVia] = useState<'gmail' | 'server'>(() => (ls('phloem.mail.via') === 'server' ? 'server' : 'gmail'));
   const [err, setErr] = useState('');
   const file = useRef<HTMLInputElement>(null);
   const acc = gmailAccount();
@@ -479,50 +498,71 @@ function MailCard() {
   const q = loadQueue(p.id);
   const busy = !!s.busy;
   const art = isArtifact();
+  const signed = mailSignedIn();
+  const mode = signed ? via : 'gmail';
   const myCap = cap || (acc ? defaultCap(acc.email) : 450);
   const run = async (fn: () => Promise<unknown>) => { setErr(''); try { await fn(); } catch (e) { setErr((e as Error).message); } };
   const keep = (k: string, v: string) => { try { if (v.length < 400_000) localStorage.setItem(k, v); } catch { /* ignore */ } };
   const importFile = async (f: File) => { const t = await f.text(); const got = parseRecipients(t); if (!got.length) { setErr(`Không thấy email nào trong ${f.name}.`); return; } const v = [...new Set([...parseRecipients(to), ...got])].join('\n'); setTo(v); keep('phloem.mail.to', v); toast(`Đã nhập ${got.length.toLocaleString('vi-VN')} email từ ${f.name}.`, 'ok'); };
   const left = q ? q.recipients.length - q.cursor : 0;
+  const limit = mode === 'server' ? 50_000 : MAX_RECIPIENTS;
+  const recipients = (
+    <>
+      <TextArea value={to} rows={3} placeholder={'Người nhận: dán danh sách (mỗi dòng/phẩy một email)\nhoặc bấm Nhập CSV'} onInput={(v) => { setTo(v); keep('phloem.mail.to', v); }} onCommit={(v) => { setTo(v); keep('phloem.mail.to', v); }} />
+      <div class="row small"><span class="grow muted">{n.toLocaleString('vi-VN')} người hợp lệ{n > limit ? ` (vượt ${limit.toLocaleString('vi-VN')})` : ''}{mode === 'gmail' && n > myCap ? ` · khoảng ${Math.ceil(n / myCap)} ngày` : ''}</span><Btn xs icon="upload" onClick={() => file.current?.click()}>Nhập CSV</Btn></div>
+      <input ref={file} type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style={{ display: 'none' }} onChange={(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void importFile(f); (e.target as HTMLInputElement).value = ''; }} />
+      <details class="small"><summary class="dim">{mode === 'gmail' ? 'Danh sách huỷ đăng ký · hạn mức/ngày' : 'Loại thêm email'}</summary>
+        <TextArea value={skip} rows={2} placeholder="Email đã xin huỷ — sẽ bị loại khỏi mọi lần gửi" onInput={(v) => { setSkip(v); keep('phloem.mail.skip', v); }} onCommit={(v) => { setSkip(v); keep('phloem.mail.skip', v); }} />
+        {mode === 'gmail' && <div class="row" style={{ marginTop: 6 }}><span class="grow dim">Thư tối đa mỗi ngày (Gmail cá nhân ≤ 500, Workspace ≤ 2.000)</span><div style={{ width: 90 }}><Num label="" value={myCap} min={1} max={2000} onChange={(v) => setCap(Math.round(v))} /></div></div>}
+      </details>
+    </>
+  );
   return (
     <div class="card">
       <div class="row"><Icon name="mail" style={{ color: 'var(--neon)' }} /><b class="grow">Gửi bằng email thường</b><span class="chip">không cần Mailchimp</span></div>
-      <div class="small muted">Gửi từ Gmail / Google Workspace của bạn tới 1–{MAX_RECIPIENTS.toLocaleString('vi-VN')} người. Mỗi người nhận một email riêng, ảnh nhúng sẵn.</div>
-      {acc ? <div class="row small"><span class="chip on">Gmail</span><span class="grow mono">{acc.email}</span><Btn xs kind="ghost" onClick={() => disconnectGmail()}>Ngắt</Btn></div>
-        : <Btn sm block icon="mail" disabled={busy || art} onClick={() => void run(() => connectGmail())} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : ''}>Kết nối Gmail</Btn>}
-      {q && (
-        <div class="card" style={{ background: 'var(--panel)' }}>
-          <div class="row small"><b class="grow">Chiến dịch: {q.subject}</b><span class={`chip ${q.status === 'done' ? 'on' : q.status === 'capped' || q.status === 'auth' ? 'warn' : ''}`}>{{ ready: 'sẵn sàng', sending: 'đang gửi', paused: 'tạm dừng', capped: 'đủ hạn mức hôm nay', auth: 'cần kết nối lại', done: 'xong' }[q.status]}</span></div>
-          <Progress done={q.cursor} total={q.recipients.length} />
-          <div class="small muted">{q.sent.toLocaleString('vi-VN')} đã gửi · {q.failed.length} lỗi · còn {left.toLocaleString('vi-VN')} · hôm nay {sentToday(q)}/{q.dailyCap} · từ {q.from}</div>
-          {left > 0 && q.status !== 'sending' && <div class="dim small">Còn khoảng {Math.ceil(left / q.dailyCap)} ngày theo hạn mức Gmail. {q.status === 'capped' ? 'Mai mở lại và bấm Tiếp tục gửi.' : ''}</div>}
-          <div class="row">
-            {queueRunning() ? <Btn sm onClick={() => pauseQueue()}>Tạm dừng</Btn>
-              : left > 0 ? <Btn sm kind="primary" icon="send" disabled={busy || !acc} onClick={() => void run(() => runQueue(p))}>Tiếp tục gửi</Btn> : null}
-            <span class="grow" />
-            {!queueRunning() && <Btn xs kind="ghost" onClick={async () => { if (await ask(q.status === 'done' ? 'Xoá chiến dịch đã xong khỏi danh sách?' : `Huỷ chiến dịch? ${left.toLocaleString('vi-VN')} người chưa nhận sẽ không được gửi.`, 'Xoá', true)) clearQueue(p.id); }}>Xoá chiến dịch</Btn>}
-          </div>
-          {q.failed.length > 0 && <details class="small"><summary class="dim">{q.failed.length} địa chỉ lỗi</summary>{q.failed.slice(0, 50).map((f) => <div key={f.email} class="mono dim">{f.email}: {f.error}</div>)}</details>}
-        </div>
-      )}
-      {acc && (!q || q.status === 'done') && (
+      <MailRelayBar />
+      {signed && <Seg block value={via} options={[{ v: 'gmail', label: 'Gmail của bạn' }, { v: 'server', label: 'Máy chủ gửi' }]} onChange={(v) => { setVia(v); keep('phloem.mail.via', v); }} />}
+      {mode === 'server' ? (
         <>
-          <TextArea value={to} rows={3} placeholder={'Người nhận: dán danh sách (mỗi dòng/phẩy một email)\nhoặc bấm Nhập CSV'} onInput={(v) => { setTo(v); keep('phloem.mail.to', v); }} onCommit={(v) => { setTo(v); keep('phloem.mail.to', v); }} />
-          <div class="row small"><span class="grow muted">{n.toLocaleString('vi-VN')} người hợp lệ{n > MAX_RECIPIENTS ? ` (vượt ${MAX_RECIPIENTS.toLocaleString('vi-VN')})` : ''}{n > myCap ? ` · khoảng ${Math.ceil(n / myCap)} ngày` : ''}</span><Btn xs icon="upload" onClick={() => file.current?.click()}>Nhập CSV</Btn></div>
-          <input ref={file} type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" style={{ display: 'none' }} onChange={(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void importFile(f); (e.target as HTMLInputElement).value = ''; }} />
-          <details class="small"><summary class="dim">Danh sách huỷ đăng ký · hạn mức/ngày</summary>
-            <TextArea value={skip} rows={2} placeholder="Email đã xin huỷ — sẽ bị loại khỏi mọi lần gửi" onInput={(v) => { setSkip(v); keep('phloem.mail.skip', v); }} onCommit={(v) => { setSkip(v); keep('phloem.mail.skip', v); }} />
-            <div class="row" style={{ marginTop: 6 }}><span class="grow dim">Thư tối đa mỗi ngày (Gmail cá nhân ≤ 500, Workspace ≤ 2.000)</span><div style={{ width: 90 }}><Num label="" value={myCap} min={1} max={2000} onChange={(v) => setCap(Math.round(v))} /></div></div>
-          </details>
-          <div class="grid2">
-            <Btn sm disabled={busy} onClick={() => void run(() => sendTest(p))}>Gửi thử cho tôi</Btn>
-            <Btn sm kind="primary" icon="send" disabled={busy || !n || n > MAX_RECIPIENTS} onClick={() => void run(() => startQueue(p, to, skip, myCap))}>{n ? `Gửi tới ${n.toLocaleString('vi-VN')} người` : 'Gửi'}</Btn>
-          </div>
+          {recipients}
+          <ServerSend p={p} to={to} skip={skip} />
+        </>
+      ) : (
+        <>
+          <div class="small muted">Gửi từ Gmail / Google Workspace của bạn tới 1–{MAX_RECIPIENTS.toLocaleString('vi-VN')} người. Mỗi người nhận một email riêng.</div>
+          {acc ? <div class="row small"><span class="chip on">Gmail</span><span class="grow mono">{acc.email}</span><Btn xs kind="ghost" onClick={() => disconnectGmail()}>Ngắt</Btn></div>
+            : <Btn sm block icon="mail" disabled={busy || art} onClick={() => void run(() => connectGmail())} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : ''}>Kết nối Gmail</Btn>}
+          {q && (
+            <div class="card" style={{ background: 'var(--panel)' }}>
+              <div class="row small"><b class="grow">Chiến dịch: {q.subject}</b><span class={`chip ${q.status === 'done' ? 'on' : q.status === 'capped' || q.status === 'auth' ? 'warn' : ''}`}>{{ ready: 'sẵn sàng', sending: 'đang gửi', paused: 'tạm dừng', capped: 'đủ hạn mức hôm nay', auth: 'cần kết nối lại', done: 'xong' }[q.status]}</span></div>
+              <Progress done={q.cursor} total={q.recipients.length} />
+              <div class="small muted">{q.sent.toLocaleString('vi-VN')} đã gửi · {q.failed.length} lỗi{q.skipped ? ` · ${q.skipped} đã huỷ ĐK` : ''} · còn {left.toLocaleString('vi-VN')} · hôm nay {sentToday(q)}/{q.dailyCap} · từ {q.from}{q.tracked ? ' · có theo dõi' : ''}</div>
+              {left > 0 && q.status !== 'sending' && <div class="dim small">Còn khoảng {Math.ceil(left / q.dailyCap)} ngày theo hạn mức Gmail. {q.status === 'capped' ? 'Mai mở lại và bấm Tiếp tục gửi.' : ''}</div>}
+              <div class="row">
+                {queueRunning() ? <Btn sm onClick={() => pauseQueue()}>Tạm dừng</Btn>
+                  : left > 0 ? <Btn sm kind="primary" icon="send" disabled={busy || !acc} onClick={() => void run(() => runQueue(p))}>Tiếp tục gửi</Btn> : null}
+                <span class="grow" />
+                {!queueRunning() && <Btn xs kind="ghost" onClick={async () => { if (await ask(q.status === 'done' ? 'Xoá chiến dịch đã xong khỏi danh sách?' : `Huỷ chiến dịch? ${left.toLocaleString('vi-VN')} người chưa nhận sẽ không được gửi.`, 'Xoá', true)) clearQueue(p.id); }}>Xoá chiến dịch</Btn>}
+              </div>
+              {q.failed.length > 0 && <details class="small"><summary class="dim">{q.failed.length} địa chỉ lỗi</summary>{q.failed.slice(0, 50).map((f) => <div key={f.email} class="mono dim">{f.email}: {f.error}</div>)}</details>}
+            </div>
+          )}
+          {acc && (!q || q.status === 'done') && (
+            <>
+              {recipients}
+              <div class="grid2">
+                <Btn sm disabled={busy} onClick={() => void run(() => sendTest(p))}>Gửi thử cho tôi</Btn>
+                <Btn sm kind="primary" icon="send" disabled={busy || !n || n > MAX_RECIPIENTS} onClick={() => void run(() => startQueue(p, to, skip, myCap))}>{n ? `Gửi tới ${n.toLocaleString('vi-VN')} người` : 'Gửi'}</Btn>
+              </div>
+            </>
+          )}
         </>
       )}
+      <CampaignStatsList projectId={p.id} />
+      <SuppressionList localSkip={skip} />
       <div class="row small"><span class="grow muted">Outlook, Apple Mail, Thunderbird…</span><Btn xs icon="download" disabled={busy} onClick={() => void downloadEml(p)}>Tải .eml</Btn></div>
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
-      <div class="dim small">Gmail chặn gửi hàng loạt nếu vượt hạn mức hoặc nhiều người báo spam: chỉ gửi cho người đã đồng ý nhận, giữ link huỷ đăng ký. Trên ~2.000 người/ngày, theo dõi mở/click: dùng Mailchimp/Klaviyo hoặc dịch vụ gửi mail chuyên dụng.</div>
+      <div class="dim small">Chỉ gửi cho người đã đồng ý nhận. Gmail chặn nếu vượt hạn mức hoặc nhiều người báo spam; trên ~2.000 người/ngày dùng Máy chủ gửi (cần tên miền đã xác thực DKIM) hoặc Mailchimp/Klaviyo.</div>
     </div>
   );
 }

@@ -22,6 +22,8 @@ import { get, history, set, toast, type Scrap, type State, type Variant } from '
 import { polishDesign } from './polish';
 import { redesignDoc } from '../ai/redesign';
 import { aiTransport } from '../ai/client';
+import { capText, endsSentence } from '../ai/htmlToDoc';
+import { ask } from '../ui/confirm';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import * as auth from '../auth/core';
 import { cloud } from '../storage/sync';
@@ -437,6 +439,23 @@ export function reflow() { commit(ops.reflowBlocks(doc())); }
 // ---------- one-click fixes ----------
 const CTA_RE = /^(mua|xem|đặt|đăng ký|nhận|tải|khám phá|bắt đầu|thử|liên hệ|shop|buy|get|book|order|start|see|view|learn|try|join|subscribe|sign|download|explore|talk|claim|grab|reserve)/i;
 const walkAll = (list: Node[], fn: (n: Node, parent: Node | null) => void, parent: Node | null = null) => { for (const n of list) { fn(n, parent); if (n.type === 'group') walkAll(n.children, fn, n); } };
+/** Sentence case on the layers: a text layer that starts a sentence gets a capital first letter ("real high." → "Real
+ *  high."). A layer continuing a line (a highlighted word) or the line above (a headline broken into lines without a full
+ *  stop) is left alone. Returns how many layers changed. */
+export function sentenceCaseDoc(d: Doc): number {
+  const texts: TextNode[] = []; walkAll(d.nodes, (n) => { if (n.type === 'text' && n.visible && (n.text || '').trim()) texts.push(n); });
+  const base = (t: TextNode) => t.y + t.fontSize * (t.lineHeight || 1.2);
+  let fixed = 0;
+  for (const t of texts) {
+    const sameLine = texts.some((o) => o !== t && Math.abs(base(o) - base(t)) < t.fontSize * 0.5 && o.x < t.x && o.x + o.w >= t.x - t.fontSize * 1.5 && !endsSentence(o.text));
+    const above = texts.find((o) => o !== t && Math.abs(o.fontSize - t.fontSize) < 0.5 && o.fontFamily === t.fontFamily && o.y < t.y && t.y - (o.y + o.h) < t.fontSize * 0.9 && o.x < t.x + t.w && o.x + o.w > t.x);
+    const starts = !sameLine && !(above && !endsSentence(above.text.trim()));
+    const lines = t.text.split('\n'); let prevEnds = starts;
+    const next = lines.map((ln, i) => { const v = capText(ln, i === 0 ? starts : prevEnds); if (ln.trim()) prevEnds = endsSentence(v); return v; }).join('\n');
+    if (next !== t.text) { if (t.name === t.text.replace(/\s+/g, ' ').trim().slice(0, 32)) t.name = next.replace(/\s+/g, ' ').trim().slice(0, 32); t.text = next; fixed++; }
+  }
+  return fixed;
+}
 
 /** Link every product card / photo that came from the crawled catalog to its real product page (in-doc, no commit). */
 function applyProductLinks(d: Doc, b: Brand): number {
@@ -517,7 +536,10 @@ export async function autoFix(): Promise<string[]> {
   if (free) {
     const { docHash, reviseDesign } = await import('../ai/design');
     clean = docHash(p.desktop) === p.design!.hash;
-    if (transport && get().variant === 'desktop' && clean) {
+    // edited by hand: redrawing from the HTML would drop those edits, so it is the user's call (layer fixes run either way)
+    const redo = transport && get().variant === 'desktop' && !clean && !!p.design?.html
+      && await ask('Email này đã được chỉnh tay. AI có thể vẽ lại cả email từ thiết kế gốc (đẹp hơn, sửa bố cục, nhưng mất các chỉnh tay), hoặc chỉ sửa lỗi trên layer hiện tại (viết hoa đầu câu, làm tròn pixel, link, alt, huỷ đăng ký).', 'AI vẽ lại cả email');
+    if (transport && get().variant === 'desktop' && (clean || redo)) {
       set({ busy: { label: 'Creative director đang xem bản render…', done: 0, total: 0 } });
       try {
         const r = await reviseDesign(p, (m) => set({ busy: { label: m, done: 0, total: 0 } }));
@@ -526,7 +548,7 @@ export async function autoFix(): Promise<string[]> {
         else changes.push('Creative director thấy thiết kế đã ổn');
       } catch (e) { changes.push(`AI chưa vẽ lại được (${(e as Error).message})`); }
       finally { set({ busy: null }); }
-    } else changes.push('Thiết kế tự do đã chỉnh tay: giữ nguyên bố cục, chỉ sửa link, alt, huỷ đăng ký');
+    } else changes.push(transport ? 'Giữ chỉnh tay: sửa trên layer hiện tại' : 'Không có AI: sửa trên layer hiện tại');
   } else if (transport && d.width === 600 && get().variant === 'desktop') {
     set({ busy: { label: 'AI đang xem lại thiết kế…', done: 0, total: 0 } });
     try {
@@ -610,6 +632,8 @@ async function finishFree(d0: Doc, b: Brand, mobile: Doc | null | undefined, bef
   let d = d0;
   const p = get().project!;
   const home = b.links?.website || b.links?.nav?.[0]?.url || '';
+  const caps = sentenceCaseDoc(d); if (caps) changes.push(`Viết hoa đầu câu ở ${caps} đoạn chữ`);
+  const rounded = ops.roundAll(d); if (rounded !== d) { d = rounded; changes.push('Làm tròn toạ độ lẻ pixel'); }
   let alts = 0; walkAll(d.nodes, (n) => { if (n.type === 'image' && n.assetId && !n.vector && !n.decor && !(n.alt || '').trim()) { const a = assets.get(n.assetId); n.alt = (a ? a.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ') : n.name) || 'Ảnh'; alts++; } });
   if (alts) changes.push(`Điền alt cho ${alts} ảnh`);
   let links = 0;
@@ -891,11 +915,59 @@ export async function newProject(kind: TemplateKind, brandOverride?: Partial<Bra
   const t = makeTemplate(kind, b);
   ensureFonts([t.brand.fontFamily, t.brand.headingFamily]);
   const now = new Date().toISOString();
-  const p: Project = { id: uid('p'), name: name || t.name, createdAt: now, updatedAt: now, brand: t.brand, fields: t.fields, desktop: t.doc, mobile: null, drafts: {} };
+  const p: Project = { id: uid('p'), name: name || t.name, createdAt: now, updatedAt: now, brand: t.brand, fields: t.fields, desktop: t.doc, mobile: null, drafts: {}, clientId: currentClientId() };
   history.clear();
   set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [], scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null });
   await saveProject();
 }
+
+// ---------- customers (each one's emails share a board) ----------
+// The customers are Phloem MKT's client workspaces (mkt/data: on the relay for relay accounts, in this browser for local
+// ones), so a customer made here is the same workspace in MKT and the other way round.
+const CLIENT_COLORS = ['#39FF14', '#FF5C39', '#3B82F6', '#F5B700', '#E040FB', '#00C2A8', '#FF4F8B', '#8B5CF6', '#22C55E', '#F97316'];
+export const clientColor = (c: { id: string; color?: string } | undefined | null, i = 0) => c?.color || CLIENT_COLORS[Math.abs([...(c?.id || String(i))].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7)) % CLIENT_COLORS.length];
+/** The customer a new email belongs to: the open email's, else the MKT workspace, else the one the home page shows. */
+export function currentClientId(): string | undefined { const s = get(); const id = s.project ? s.project.clientId || s.activeClientId : s.activeClientId || s.clientFilter; return id && s.clients.some((c) => c.id === id) ? id : undefined; }
+export async function loadEmailClients() { if (!get().user) return; try { const { loadClients } = await import('../mkt/data'); await loadClients(); } catch { /* relay asleep: keep what we have */ } }
+export async function addClient(name: string) {
+  const { saveClient } = await import('../mkt/data');
+  const c = await saveClient({ name: name.trim().slice(0, 60) || 'Khách hàng', color: CLIENT_COLORS[get().clients.length % CLIENT_COLORS.length], status: 'active' });
+  set({ clientFilter: c.id });
+  return c;
+}
+export async function renameClient(id: string, name: string) { const c = get().clients.find((x) => x.id === id); if (!c || !name.trim() || name.trim() === c.name) return; const { saveClient } = await import('../mkt/data'); await saveClient({ ...c, name: name.trim().slice(0, 60) }); }
+/** Move an email to a customer (or none). Works for the open email and for stored ones. */
+export async function setProjectClient(projectId: string, clientId: string | null) {
+  const cid = clientId || undefined;
+  const cur = get().project;
+  if (cur?.id === projectId) { set({ activeClientId: cid ?? null }); patchProject({ clientId: cid }); await saveProject(); return; }
+  const p = await db.getProject(projectId); if (!p) return;
+  const stored = { ...p, clientId: cid, updatedAt: new Date().toISOString() };
+  await db.putProject(stored); cloud.pushProjectSoon(stored); await refreshProjects();
+}
+/** Emails on a customer's board, in a stable order (oldest first, like frames added left to right). */
+export function boardOf(clientId: string | null | undefined) {
+  if (!clientId) return [];
+  return get().projects.filter((m) => m.clientId === clientId).sort((a, b) => (a.createdAt || a.updatedAt).localeCompare(b.createdAt || b.updatedAt) || a.id.localeCompare(b.id));
+}
+/** Open a customer's board on their most recently edited email. */
+export async function openBoard(clientId: string) {
+  set({ clientFilter: clientId, activeClientId: clientId });
+  const list = boardOf(clientId);
+  if (!list.length) { set({ modal: 'templates' }); return; }
+  const last = [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  await openProject(last.id);
+}
+/** Camera to keep across a board switch (the clicked frame stays exactly where it was on screen). */
+export let boardCamera: { zoom: number; pan: { x: number; y: number } } | null = null;
+export async function switchBoardFrame(id: string, cam: { zoom: number; pan: { x: number; y: number } }) {
+  if (get().project?.id === id) return;
+  if (get().dirty) await saveProject();
+  boardCamera = cam;
+  await openProject(id);
+  set({ zoom: cam.zoom, pan: cam.pan });
+}
+export function takeBoardCamera() { const c = boardCamera; boardCamera = null; return c; }
 
 export async function deleteProject(id: string) { try { await db.deleteProject(id); await cloud.deleteProject(id); await refreshProjects(); } catch (e) { toast((e as Error).message, 'err'); } }
 export async function duplicateProject(id: string) {
@@ -926,7 +998,7 @@ export async function importProjectJson(file: File) {
     idMap.set(a.id, na.id);
   }
   const remap = (d: Doc): Doc => ops.mapNodes(d, (n) => (n.type === 'image' && n.assetId && idMap.has(n.assetId) ? { ...n, assetId: idMap.get(n.assetId)! } : n));
-  const p: Project = { ...payload.project, id: uid('p'), desktop: remap(payload.project.desktop), mobile: payload.project.mobile ? remap(payload.project.mobile) : null, updatedAt: new Date().toISOString(), drafts: {} };
+  const p: Project = { ...payload.project, id: uid('p'), desktop: remap(payload.project.desktop), mobile: payload.project.mobile ? remap(payload.project.mobile) : null, updatedAt: new Date().toISOString(), drafts: {}, clientId: currentClientId() };
   await db.putProject({ ...p, owner: ownerId() });
   await refreshProjects();
   await openProject(p.id);

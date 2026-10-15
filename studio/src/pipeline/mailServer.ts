@@ -1,0 +1,94 @@
+// Phloem Email on the relay (server/src/mail.mjs): hosted images, real unsubscribe links + suppression list,
+// open/click tracking, sending accounts (Resend / Brevo / Amazon SES) and the server-side queue (schedule, daily cap,
+// A/B subject test). Everything needs a signed-in relay account; without one the Gmail path falls back to cid: images
+// and a mailto: unsubscribe, exactly as before.
+import { fnv1a } from '../../../src/shared/hash';
+import { getSession, expired } from '../auth/core';
+import { relayAuth } from '../ai/client';
+import { get } from '../store';
+
+export interface MailHealth { img: boolean; tracking: boolean; queue: boolean }
+export interface Sender { id: string; provider: 'resend' | 'brevo' | 'ses'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean }
+export interface ProviderInfo { id: Sender['provider']; label: string; perDay: number }
+export interface SendInfo { sender: string; subject: string; sendAt: string; status: 'scheduled' | 'sending' | 'waiting' | 'paused' | 'cancelled' | 'done' | 'error'; perDay: number; lastError: string; testSentAt: string | null; ab: null | { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number; phase: 'test' | 'wait' | 'rest'; winner: 'A' | 'B' | null; scores?: { A: number; B: number } } }
+export interface CampaignStats { opens: number; clicks: number; unsubscribes: number; links: { url: string; clicks: number }[]; byVariant: Record<string, { opens: number; clicks: number }>; queue: Record<string, number>; send: SendInfo | null }
+
+const base = () => get().settings.relayUrl.trim().replace(/\/$/, '');
+/** Signed in to a relay account (the mail routes are per user). */
+export const mailSignedIn = () => !!base() && getSession()?.mode === 'relay';
+
+let health: { url: string; at: number; v: MailHealth | null } = { url: '', at: 0, v: null };
+/** What this relay offers (null: old relay or unreachable). Cached for a minute. */
+export async function mailHealth(force = false): Promise<MailHealth | null> {
+  const u = base(); if (!u) return null;
+  if (!force && health.url === u && Date.now() - health.at < 60_000) return health.v;
+  try { const r = await fetch(`${u}/`, { signal: AbortSignal.timeout(8000) }); const j = await r.json(); health = { url: u, at: Date.now(), v: j?.mail || null }; }
+  catch { health = { url: u, at: Date.now(), v: null }; }
+  return health.v;
+}
+export const mailHealthCached = (): MailHealth | null => (health.url === base() ? health.v : null);
+
+async function api<T>(path: string, init: { method?: string; body?: unknown; raw?: Blob; type?: string } = {}): Promise<T> {
+  const u = base(); if (!u) throw new Error('Chưa có relay (Cài đặt → Relay).');
+  if (getSession()?.mode !== 'relay') throw new Error('Đăng nhập tài khoản Phloem để dùng ảnh host, huỷ đăng ký và thống kê.');
+  let r: Response;
+  try {
+    r = await fetch(u + path, {
+      method: init.method || (init.body !== undefined || init.raw ? 'POST' : 'GET'),
+      headers: { ...relayAuth(), ...(init.raw ? { 'Content-Type': init.type || 'application/octet-stream' } : init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      body: init.raw || (init.body !== undefined ? JSON.stringify(init.body) : undefined),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch { throw new Error('Không gọi được relay (đang khởi động hoặc mất mạng). Thử lại sau vài giây.'); }
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) throw expired();
+  if (!r.ok) throw new Error(j?.error || `Relay trả HTTP ${r.status}`);
+  return j as T;
+}
+
+// ---------- hosted images ----------
+const hosted = new Map<string, string>(); // fnv(bytes)+size → public URL (content-addressed on the relay too)
+/** Upload slices to the relay's public bucket (4 at a time); returns key → https URL. Re-uploads nothing it has seen. */
+export async function hostImages(items: { key: string; bytes: Uint8Array; mime: string }[], onProgress?: (done: number, total: number) => void): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}; let done = 0; let next = 0;
+  const work = async () => {
+    while (next < items.length) {
+      const it = items[next++];
+      const id = `${fnv1a(it.bytes)}:${it.bytes.length}`;
+      let url = hosted.get(id);
+      if (!url) { url = (await api<{ url: string }>('/img', { raw: new Blob([it.bytes as BlobPart], { type: it.mime }), type: it.mime })).url; hosted.set(id, url); }
+      out[it.key] = url; onProgress?.(++done, items.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, items.length) }, work));
+  return out;
+}
+
+// ---------- campaigns, tokens, stats ----------
+export const registerCampaign = (id: string, c: { subject: string; from: string; fromName: string; links: string[] }) => api<{ ok: true }>('/mail/campaigns', { body: { id, ...c } });
+export const recipientTokens = (campaign: string, emails: string[], variant = '') => api<{ base: string; tokens: Record<string, string>; suppressed: string[] }>('/mail/tokens', { body: { campaign, emails, variant } });
+export const campaignStats = (id: string) => api<CampaignStats>(`/mail/campaigns/${encodeURIComponent(id)}/stats`);
+
+// ---------- suppression list ----------
+export const listSuppressions = () => api<{ suppressions: { email: string; at: string; source: string; campaign: string }[] }>('/mail/suppressions');
+export const addSuppressions = (emails: string[], source = 'manual') => api<{ added: number }>('/mail/suppressions', { body: { emails, source } });
+export const removeSuppression = (email: string) => api<{ ok: true }>(`/mail/suppressions/${encodeURIComponent(email)}`, { method: 'DELETE' });
+
+// ---------- sending accounts ----------
+export const listSenders = () => api<{ senders: Sender[]; providers: ProviderInfo[] }>('/mail/senders');
+export const saveSender = (s: Partial<Sender> & { apiKey?: string; accessKeyId?: string; secret?: string }) => api<{ sender: Sender }>('/mail/senders', { body: s });
+export const deleteSender = (id: string) => api<{ ok: true }>(`/mail/senders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const testSender = (id: string, to: string) => api<{ ok: true; to: string }>(`/mail/senders/${encodeURIComponent(id)}/test`, { body: { to } });
+
+// ---------- server-side queue ----------
+export interface ServerSendInput { campaign: string; sender: string; subject: string; html: string; text: string; recipients: string[]; sendAt?: string; perDay?: number; ab?: { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number } | null }
+export const startServerSend = (b: ServerSendInput) => api<{ ok: true; recipients: number; test: number; sendAt: string }>('/mail/send', { body: b });
+export const serverSendStatus = (id: string) => api<{ send: SendInfo; counts: Record<string, number> }>(`/mail/send/${encodeURIComponent(id)}`);
+export const serverSendControl = (id: string, action: 'pause' | 'resume' | 'cancel') => api<{ ok: true; status: string }>(`/mail/send/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
+
+// ---------- campaigns this browser started (so stats survive a reload) ----------
+export interface CampaignRef { id: string; projectId: string; subject: string; via: 'gmail' | 'server'; at: string; recipients: number }
+const LS = 'phloem.mail.campaigns';
+export function myCampaigns(projectId?: string): CampaignRef[] { try { const all = JSON.parse(localStorage.getItem(LS) || '[]') as CampaignRef[]; return projectId ? all.filter((c) => c.projectId === projectId) : all; } catch { return []; } }
+export function rememberCampaign(c: CampaignRef) { try { const all = myCampaigns().filter((x) => x.id !== c.id); all.unshift(c); localStorage.setItem(LS, JSON.stringify(all.slice(0, 60))); } catch { /* ignore */ } }
+export function forgetCampaign(id: string) { try { localStorage.setItem(LS, JSON.stringify(myCampaigns().filter((x) => x.id !== id))); } catch { /* ignore */ } }

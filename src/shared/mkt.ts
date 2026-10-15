@@ -1,6 +1,7 @@
 // Phloem MKT pure planning logic (no DOM, no network): calendar slots, Vietnamese marketing dates, budget split that
 // adds up to the cent, CSV and XLSX export. Shared so node tests can check it.
 import { makeZip } from './zip';
+import { utf8Bytes } from './hash';
 
 export const ORGANIC_CHANNELS = ['facebook', 'instagram', 'tiktok', 'youtube', 'linkedin', 'google_business'];
 /** Good default posting times per channel (Vietnam audiences); real insights override these later. */
@@ -129,7 +130,7 @@ const colName = (i: number) => { let s = ''; for (i++; i > 0; i = Math.floor((i 
 export interface Sheet { name: string; cols: Column[]; rows: Record<string, unknown>[]; /** row index → fill colour (hex without #) for grouping/status bands */ fills?: Record<number, string> }
 /** Minimal Office Open XML workbook: bold frozen header, column widths, numbers as numbers, optional row fills. */
 export function toXlsx(sheets: Sheet[]): Uint8Array {
-  const te = new TextEncoder();
+  const te = { encode: utf8Bytes }; // shared code also runs in the Figma sandbox (no TextEncoder typings there)
   const fills = [...new Set(sheets.flatMap((s) => Object.values(s.fills || {})))];
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF04140A"/><name val="Calibri"/></font></fonts><fills count="${3 + fills.length}"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF39FF14"/></patternFill></fill>${fills.map((f) => `<fill><patternFill patternType="solid"><fgColor rgb="FF${f.toUpperCase()}"/></patternFill></fill>`).join('')}</fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="${3 + fills.length * 2}"><xf/><xf fontId="1" fillId="2" applyFont="1" applyFill="1"/><xf numFmtId="164" applyNumberFormat="1"/>${fills.map((_, i) => `<xf fillId="${3 + i}" applyFill="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="164" fillId="${3 + i}" applyFill="1" applyNumberFormat="1"/>`).join('')}</cellXfs></styleSheet>`;
   const sheetXml = (s: Sheet) => {

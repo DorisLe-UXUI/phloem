@@ -10,6 +10,7 @@ import { get, history, set, subscribe, toast, useStore } from '../store';
 import * as A from '../pipeline/actions';
 import { Btn } from './components';
 import { Icon } from './icons';
+import { boardFrames, frameAt, framePicture, openFrame } from './board';
 
 type Mode = { kind: 'idle' } | { kind: 'pinch'; d0: number; z0: number; c0: { x: number; y: number }; pan0: { x: number; y: number } } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } }
   // dragging a pasteboard image; `inside` = pointer over the artboard, `over` = image layer that would be replaced
@@ -17,6 +18,14 @@ type Mode = { kind: 'idle' } | { kind: 'pinch'; d0: number; z0: number; c0: { x:
   // crop mode: dragging pans the photo inside its frame
   | { kind: 'crop'; id: string; sx: number; sy: number; fx: number; fy: number; base: Doc; moved: boolean }
   | { kind: 'cut'; id: string; sx: number; sy: number; cur: { x: number; y: number } };
+
+/** Text cut with … to fit `max` px (frame labels never run into the next frame). */
+function fitLabel(ctx: CanvasRenderingContext2D, t: string, max: number): string {
+  if (ctx.measureText(t).width <= max) return t;
+  let lo = 0, hi = t.length;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (ctx.measureText(`${t.slice(0, mid)}…`).width <= max) lo = mid; else hi = mid - 1; }
+  return lo ? `${t.slice(0, lo)}…` : '';
+}
 
 function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -66,6 +75,25 @@ export function CanvasView() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
     const doc = docOf(), z = st.zoom, px = st.pan.x, py = st.pan.y;
+    // the customer's other emails, as frames beside this one
+    const frames = boardFrames();
+    for (const f of frames) {
+      const r = { x: px + f.x * z, y: py, w: f.w * z, h: f.h * z };
+      if (r.x > cw + 40 || r.x + r.w < -40) continue;
+      const hot = frameHover.current === f.id;
+      ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textBaseline = 'bottom'; ctx.fillStyle = hot ? '#39ff14' : '#5d7265';
+      if (f.kind === 'add') {
+        ctx.save(); ctx.setLineDash([6, 5]); ctx.strokeStyle = hot ? '#39ff14' : 'rgba(93,114,101,0.7)'; ctx.lineWidth = 1.5; rrPath(ctx, r.x + 0.5, r.y + 0.5, r.w, r.h, 10 * z); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = hot ? '#39ff14' : '#8aa394'; ctx.font = `700 ${Math.max(11, 22 * z)}px Inter, sans-serif`; ctx.fillText('+ Email mới cho khách này', r.x + r.w / 2, r.y + r.h / 2); ctx.restore();
+        continue;
+      }
+      ctx.fillText(fitLabel(ctx, `${f.name}${hot ? ' · bấm để mở' : ''}`, r.w), r.x, r.y - 6);
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10; ctx.fillStyle = '#111613'; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.restore();
+      const pic = framePicture(f);
+      if (pic) ctx.drawImage(pic, r.x, r.y, r.w, r.h);
+      else { ctx.save(); ctx.fillStyle = '#5d7265'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Đang vẽ…', r.x + r.w / 2, r.y + Math.min(r.h / 2, 200)); ctx.restore(); }
+      if (hot) { ctx.save(); ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2; ctx.strokeRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2); ctx.restore(); }
+    }
     // artboard shadow + glow
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
@@ -76,7 +104,9 @@ export function CanvasView() {
     renderDoc(ctx, doc, st.project.brand, assets, { scale: z, ox: px, oy: py, editor: true, skip: st.editingText ? new Set([st.editingText]) : undefined, t });
     // label
     ctx.font = '600 11px JetBrains Mono, monospace'; ctx.fillStyle = '#5d7265'; ctx.textBaseline = 'bottom';
-    ctx.fillText(`${st.variant === 'mobile' ? 'Mobile' : 'Desktop'} · ${doc.width} × ${doc.height}`, px, py - 6);
+    if (frames.length) ctx.fillStyle = '#39ff14';
+    const dims = `${st.variant === 'mobile' ? 'Mobile' : 'Desktop'} · ${doc.width} × ${doc.height}`;
+    ctx.fillText(frames.length ? fitLabel(ctx, `${st.project.name} · ${dims}`, doc.width * z) || fitLabel(ctx, dims, doc.width * z) : dims, px, py - 6);
     // crop mode: ghost the parts of the photo that fall outside the frame
     if (st.cropping) {
       const n = ops.findNode(doc, st.cropping);
@@ -170,6 +200,7 @@ export function CanvasView() {
   };
 
   const playStart = useRef(0);
+  const frameHover = useRef<string | null>(null);
   useEffect(() => {
     if (!s.playing) return;
     playStart.current = performance.now();
@@ -188,7 +219,7 @@ export function CanvasView() {
   }, []);
 
   // fit on first mount / project change
-  useEffect(() => { zoomFit(); }, [s.project?.id, s.variant]);
+  useEffect(() => { const cam = A.takeBoardCamera(); if (cam) set({ zoom: cam.zoom, pan: cam.pan }); else zoomFit(); }, [s.project?.id, s.variant]);
 
   function zoomFit() {
     const w = wrap.current; if (!w) return;
@@ -292,6 +323,7 @@ export function CanvasView() {
     const sc = hitScrap(d.x, d.y);
     if (sc) { set({ scrapSel: sc.id, selection: [], hover: null }); mode.current = { kind: 'scrap', id: sc.id, sx: d.x, sy: d.y, ox: sc.x, oy: sc.y, moved: false, inside: false, over: null }; return; }
     if (st.scrapSel) set({ scrapSel: null });
+    if (!insideArtboard(d.x, d.y)) { const f = frameAt(d.x, d.y); if (f) { frameHover.current = null; mode.current = { kind: 'idle' }; void openFrame(f); return; } }
     const n = hit(d.x, d.y, e.metaKey || e.ctrlKey);
     if (n) {
       let ids = st.selection;
@@ -320,7 +352,9 @@ export function CanvasView() {
       if (st.tool !== 'select' && st.hover) set({ hover: null });
       if (st.tool === 'select') {
         const hIdx = handleAt(d.x, d.y);
-        wrap.current!.style.cursor = hIdx >= 0 ? CURSORS[hIdx] : hitScrap(d.x, d.y) ? 'grab' : '';
+        const fr = hIdx < 0 && !insideArtboard(d.x, d.y) && !hitScrap(d.x, d.y) ? frameAt(d.x, d.y) : null;
+        if ((fr?.id ?? null) !== frameHover.current) { frameHover.current = fr?.id ?? null; set({}); }
+        wrap.current!.style.cursor = hIdx >= 0 ? CURSORS[hIdx] : hitScrap(d.x, d.y) ? 'grab' : fr ? 'pointer' : '';
         const n = hit(d.x, d.y, e.metaKey || e.ctrlKey);
         const hv = n ? n.id : null;
         if (hv !== st.hover) set({ hover: hv });

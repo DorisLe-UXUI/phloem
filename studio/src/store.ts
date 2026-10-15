@@ -77,11 +77,13 @@ export interface State {
   clientsAt: string | null;
   /** The client workspace an email being edited belongs to (new emails are filed under it). */
   activeClientId: string | null;
+  /** Phloem Email home: the customer whose emails are listed (null = all, '-' = not filed under a customer). */
+  clientFilter: string | null;
 }
 
 export interface Scrap { id: string; assetId: string; x: number; y: number; w: number; h: number }
 
-const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings', LS_CATALOG = 'phloem.catalog';
+const LS_PROFILES = 'phloem.studio.profiles', LS_SETTINGS = 'phloem.studio.settings', LS_CATALOG = 'phloem.catalog', LS_CLIENT_FILTER = 'phloem.email.clientFilter';
 
 /** The relay this build was published with (meta tag in index.html), if any. */
 function hostedRelay(): string { return (typeof document !== 'undefined' && (document.querySelector('meta[name="phloem-relay"]') as HTMLMetaElement | null)?.content) || ''; }
@@ -117,6 +119,7 @@ export const initialState: State = {
   sync: { state: 'off' },
   catalog: loadLS<{ items: CatalogItem[]; at: string | null }>(LS_CATALOG, { items: [], at: null }).items,
   catalogAt: loadLS<{ items: CatalogItem[]; at: string | null }>(LS_CATALOG, { items: [], at: null }).at,
+  clientFilter: (() => { try { const v = JSON.parse(localStorage.getItem(LS_CLIENT_FILTER) || 'null'); return typeof v === 'string' ? v : null; } catch { return null; } })(),
   aiSeed: null,
   scraps: [],
   scrapSel: null,
@@ -169,6 +172,7 @@ export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
   if ('profiles' in p) { try { localStorage.setItem(LS_PROFILES, JSON.stringify(state.profiles)); } catch { /* ignore */ } }
   if ('settings' in p) { try { localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings)); } catch { /* ignore */ } }
   if ('catalog' in p) { try { localStorage.setItem(LS_CATALOG, JSON.stringify({ items: state.catalog, at: state.catalogAt })); } catch { /* ignore */ } }
+  if ('clientFilter' in p) { try { localStorage.setItem(LS_CLIENT_FILTER, JSON.stringify(state.clientFilter)); } catch { /* ignore */ } }
   schedule();
 }
 

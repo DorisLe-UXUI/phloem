@@ -1,0 +1,320 @@
+// Phloem Email sending infrastructure on the relay:
+//   POST /img                         host an email image on the public bucket (small emails, no attachments)
+//   POST /mail/campaigns              register a campaign's links (click redirects only ever go to these)
+//   POST /mail/tokens                 signed per-recipient tokens (unsubscribe, open pixel, click) for browser sends
+//   GET|POST /u/:token                unsubscribe page / one-click unsubscribe (RFC 8058) → suppression list
+//   GET /o/:token.gif                 open pixel          GET /c/:token/:i   click redirect
+//   /mail/suppressions                list / add / remove suppressed addresses
+//   /mail/campaigns/:id/stats         opens, clicks, unsubscribes, sends
+//   /mail/senders                     sending accounts (Resend, Brevo, Amazon SES), credentials encrypted at rest
+//   /mail/send                        server-side queue: schedule, daily cap, A/B subject test, pause/resume/cancel
+// Zero dependencies. Tokens are HMAC-signed so a link can never be forged for another address or campaign.
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { encrypt, decrypt } from './db.mjs';
+import { s3Call } from './backup.mjs';
+
+const now = () => new Date().toISOString();
+const b64u = (buf) => Buffer.from(buf).toString('base64url');
+const sha = (s) => createHash('sha256').update(s).digest('hex');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS mail_suppressions (owner TEXT NOT NULL, email TEXT NOT NULL, at TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', campaign TEXT NOT NULL DEFAULT '', PRIMARY KEY (owner, email));
+CREATE TABLE IF NOT EXISTS mail_campaigns (id TEXT NOT NULL, owner TEXT NOT NULL, json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (owner, id));
+CREATE TABLE IF NOT EXISTS mail_events (owner TEXT NOT NULL, campaign TEXT NOT NULL, email_hash TEXT NOT NULL, kind TEXT NOT NULL, link INTEGER, variant TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS mail_events_c ON mail_events(owner, campaign, kind);
+CREATE TABLE IF NOT EXISTS mail_senders (owner TEXT NOT NULL, id TEXT NOT NULL, enc BLOB NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (owner, id));
+CREATE TABLE IF NOT EXISTS mail_queue (owner TEXT NOT NULL, campaign TEXT NOT NULL, email TEXT NOT NULL, variant TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', error TEXT NOT NULL DEFAULT '', sent_at TEXT, PRIMARY KEY (owner, campaign, email));
+CREATE INDEX IF NOT EXISTS mail_queue_s ON mail_queue(owner, campaign, status);
+`;
+
+/** Image bucket: its own bucket + public URL; credentials default to the backup token (scope it to both buckets). */
+export function imageConfig(env = process.env) {
+  const endpoint = String(env.IMG_S3_ENDPOINT || env.BACKUP_S3_ENDPOINT || '').replace(/\/$/, '');
+  const bucket = env.IMG_S3_BUCKET, key = env.IMG_S3_KEY || env.BACKUP_S3_KEY, secret = env.IMG_S3_SECRET || env.BACKUP_S3_SECRET;
+  const publicUrl = String(env.IMG_PUBLIC_URL || '').replace(/\/$/, '');
+  if (!endpoint || !bucket || !key || !secret || !publicUrl) return null;
+  return { endpoint, bucket, key, secret, region: env.IMG_S3_REGION || 'auto', publicUrl };
+}
+
+// ---------- tokens ----------
+export function makeToken(secret, owner, campaign, email, variant = '') {
+  const body = b64u(JSON.stringify({ o: owner, c: campaign, e: String(email).toLowerCase(), v: variant || undefined }));
+  return `${body}.${b64u(createHmac('sha256', secret).update(body).digest()).slice(0, 22)}`;
+}
+export function readToken(secret, token) {
+  const [body, sig] = String(token || '').split('.');
+  if (!body || !sig) return null;
+  const want = b64u(createHmac('sha256', secret).update(body).digest()).slice(0, 22);
+  if (sig.length !== want.length || !timingSafe(sig, want)) return null;
+  try { const j = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); return j && j.o && j.c && j.e ? { owner: j.o, campaign: j.c, email: j.e, variant: j.v || '' } : null; } catch { return null; }
+}
+function timingSafe(a, b) { let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
+
+/** Per-recipient HTML: the campaign HTML carries placeholders (set by the studio), filled with this recipient's links. */
+export function personalize(html, base, token, nameHint = '') {
+  const unsub = `${base}/u/${token}`;
+  let out = String(html).replace(/__PHLOEM_UNSUB__/g, unsub).replace(/__PHLOEM_CLICK_(\d+)__/g, (_, i) => `${base}/c/${token}/${i}`).replace(/\{\{\s*(first_?name|ten|name)\s*\}\}/gi, esc(nameHint));
+  const pixel = `<img src="${base}/o/${token}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0" />`;
+  out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, `${pixel}</body>`) : out + pixel;
+  return { html: out, unsub };
+}
+
+// ---------- providers ----------
+async function sendResend(s, m) {
+  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${s.apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: s.fromName ? `${s.fromName} <${s.fromEmail}>` : s.fromEmail, to: [m.to], subject: m.subject, html: m.html, text: m.text || undefined, reply_to: s.replyTo || undefined, headers: m.headers }), signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`Resend ${r.status}: ${(await r.text()).slice(0, 200)}`);
+}
+async function sendBrevo(s, m) {
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': s.apiKey, 'Content-Type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ sender: { name: s.fromName || undefined, email: s.fromEmail }, to: [{ email: m.to }], subject: m.subject, htmlContent: m.html, textContent: m.text || undefined, replyTo: s.replyTo ? { email: s.replyTo } : undefined, headers: m.headers }), signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`Brevo ${r.status}: ${(await r.text()).slice(0, 200)}`);
+}
+/** Amazon SES v2 (SigV4 by hand, service "ses"). */
+async function sendSes(s, m) {
+  const region = s.region || 'ap-southeast-1';
+  const host = `email.${region}.amazonaws.com`, path = '/v2/email/outbound-emails';
+  const payload = JSON.stringify({ FromEmailAddress: s.fromName ? `${s.fromName} <${s.fromEmail}>` : s.fromEmail, Destination: { ToAddresses: [m.to] }, ReplyToAddresses: s.replyTo ? [s.replyTo] : undefined, Content: { Simple: { Subject: { Data: m.subject, Charset: 'UTF-8' }, Body: { Html: { Data: m.html, Charset: 'UTF-8' }, ...(m.text ? { Text: { Data: m.text, Charset: 'UTF-8' } } : {}) }, Headers: Object.entries(m.headers || {}).map(([Name, Value]) => ({ Name, Value })) } } });
+  const amzDate = now().replace(/[:-]|\.\d{3}/g, ''), date = amzDate.slice(0, 8);
+  const ph = sha(payload);
+  const canon = ['POST', path, '', `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`, 'content-type;host;x-amz-date', ph].join('\n');
+  const scope = `${date}/${region}/ses/aws4_request`;
+  const h = (k, v) => createHmac('sha256', k).update(v).digest();
+  const sig = createHmac('sha256', h(h(h(h('AWS4' + s.secret, date), region), 'ses'), 'aws4_request')).update(['AWS4-HMAC-SHA256', amzDate, scope, sha(canon)].join('\n')).digest('hex');
+  const r = await fetch(`https://${host}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Amz-Date': amzDate, Authorization: `AWS4-HMAC-SHA256 Credential=${s.accessKeyId}/${scope}, SignedHeaders=content-type;host;x-amz-date, Signature=${sig}` }, body: payload, signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`SES ${r.status}: ${(await r.text()).slice(0, 200)}`);
+}
+const PROVIDERS = { resend: { send: sendResend, perDay: 100, label: 'Resend' }, brevo: { send: sendBrevo, perDay: 300, label: 'Brevo' }, ses: { send: sendSes, perDay: 50000, label: 'Amazon SES' } };
+
+/** Mount the mail routes on the relay. Returns { handle(url, req, res) → true when handled, health(), start() }. */
+export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, requireUser, throttled, env = process.env, log = console.log, providers = PROVIDERS, pace = 150 }) {
+  db.exec(SCHEMA);
+  const PROV = providers;
+  const img = imageConfig(env);
+  const q = (sql) => db.prepare(sql);
+  const S = {
+    supAdd: q('INSERT INTO mail_suppressions (owner, email, at, source, campaign) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner, email) DO NOTHING'),
+    supList: q('SELECT email, at, source, campaign FROM mail_suppressions WHERE owner = ? ORDER BY at DESC'),
+    supDel: q('DELETE FROM mail_suppressions WHERE owner = ? AND email = ?'),
+    supHas: q('SELECT 1 FROM mail_suppressions WHERE owner = ? AND email = ?'),
+    campPut: q('INSERT INTO mail_campaigns (id, owner, json, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner, id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at'),
+    campGet: q('SELECT json FROM mail_campaigns WHERE owner = ? AND id = ?'),
+    campDue: q('SELECT owner, id, json FROM mail_campaigns'),
+    evAdd: q('INSERT INTO mail_events (owner, campaign, email_hash, kind, link, variant, at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    evRecent: q('SELECT 1 FROM mail_events WHERE owner = ? AND campaign = ? AND email_hash = ? AND kind = ? AND COALESCE(link, -1) = ? AND at > ? LIMIT 1'),
+    evStats: q('SELECT kind, variant, COUNT(*) AS n, COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY kind, variant'),
+    evTotals: q('SELECT kind, COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY kind'),
+    evLinks: q("SELECT link, COUNT(*) AS n, COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? AND kind = 'click' GROUP BY link"),
+    senderPut: q('INSERT INTO mail_senders (owner, id, enc, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(owner, id) DO UPDATE SET enc = excluded.enc, updated_at = excluded.updated_at'),
+    senderList: q('SELECT id, enc, updated_at FROM mail_senders WHERE owner = ?'),
+    senderGet: q('SELECT enc FROM mail_senders WHERE owner = ? AND id = ?'),
+    senderDel: q('DELETE FROM mail_senders WHERE owner = ? AND id = ?'),
+    qAdd: q("INSERT INTO mail_queue (owner, campaign, email, variant, status) VALUES (?, ?, ?, ?, 'queued') ON CONFLICT(owner, campaign, email) DO NOTHING"),
+    qNext: q("SELECT email, variant FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'queued' AND variant IN (?, ?) LIMIT ?"),
+    qMark: q('UPDATE mail_queue SET status = ?, error = ?, sent_at = ?, variant = COALESCE(NULLIF(?, \'\'), variant) WHERE owner = ? AND campaign = ? AND email = ?'),
+    qCounts: q('SELECT status, variant, COUNT(*) AS n FROM mail_queue WHERE owner = ? AND campaign = ? GROUP BY status, variant'),
+    qSentToday: q("SELECT COUNT(*) AS n FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'sent' AND sent_at >= ?"),
+    qCancel: q("UPDATE mail_queue SET status = 'cancelled' WHERE owner = ? AND campaign = ? AND status = 'queued'"),
+    qSkipSup: q("UPDATE mail_queue SET status = 'skipped', error = 'đã huỷ đăng ký', sent_at = ? WHERE owner = ? AND campaign = ? AND status = 'queued' AND email IN (SELECT email FROM mail_suppressions WHERE owner = ?)"),
+    qRelabel: q("UPDATE mail_queue SET variant = ? WHERE owner = ? AND campaign = ? AND status = 'queued' AND variant = 'rest'"),
+  };
+  const camp = (owner, id) => { const r = S.campGet.get(owner, id); return r ? JSON.parse(r.json) : null; };
+  const saveCamp = (owner, id, c) => { const t = now(); S.campPut.run(id, owner, JSON.stringify(c), c.createdAt || t, t); };
+  const event = (t, kind, link = null) => {
+    const eh = sha(`${t.owner}|${t.email}`).slice(0, 24);
+    // Gmail/Apple prefetch can hit the pixel several times: count a person once per hour per kind+link
+    if (S.evRecent.get(t.owner, t.campaign, eh, kind, link ?? -1, new Date(Date.now() - 3600e3).toISOString())) return;
+    S.evAdd.run(t.owner, t.campaign, eh, kind, link, t.variant || '', now());
+  };
+  const senders = (owner) => S.senderList.all(owner).map((r) => { try { const s = JSON.parse(decrypt(secret, r.enc)); return { ...s, id: r.id, updatedAt: r.updated_at }; } catch { return null; } }).filter(Boolean);
+  const publicSender = (s) => ({ id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret) });
+
+  const page = (title, msg, extra = '') => `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f3;font:16px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#141714}main{max-width:440px;margin:24px;padding:32px;background:#fff;border-radius:16px;box-shadow:0 18px 40px -20px rgba(0,0,0,.25);text-align:center}h1{font-size:22px;margin:0 0 8px}p{color:#555;margin:0 0 18px}button{font:inherit;font-weight:700;padding:12px 22px;border:0;border-radius:999px;background:#111;color:#fff;cursor:pointer}small{display:block;margin-top:18px;color:#999}</style></head><body><main><h1>${esc(title)}</h1><p>${msg}</p>${extra}<small>Gửi bằng Phloem Email</small></main></body></html>`;
+  const html = (res, code, s) => { res.statusCode = code; res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(s); };
+
+  async function handle(url, req, res) {
+    const p = url.pathname, m = req.method;
+    // ---------- public endpoints (the signed token is the permission) ----------
+    if (p.startsWith('/u/')) {
+      const token = p.slice(3); const t = readToken(secret, token);
+      if (!t) { html(res, 404, page('Link không hợp lệ', 'Link huỷ đăng ký này không đúng hoặc đã bị sửa.')); return true; }
+      const c = camp(t.owner, t.campaign); const from = c?.fromName || c?.from || 'người gửi';
+      if (m === 'POST') { // the button on our page, or a mail client's one-click (List-Unsubscribe-Post)
+        S.supAdd.run(t.owner, t.email, now(), 'unsubscribe', t.campaign); event(t, 'unsub');
+        html(res, 200, page('Đã huỷ đăng ký', `${esc(t.email)} sẽ không nhận email từ ${esc(from)} nữa.`)); return true;
+      }
+      // GET shows a confirm button: link scanners that prefetch URLs never unsubscribe anyone by themselves
+      html(res, 200, page('Huỷ đăng ký?', `Ngừng nhận email từ ${esc(from)} tới <b>${esc(t.email)}</b>.`, `<form method="post"><button type="submit">Huỷ đăng ký</button></form>`)); return true;
+    }
+    if (p.startsWith('/o/') && m === 'GET') {
+      const t = readToken(secret, p.slice(3).replace(/\.gif$/, '')); if (t) { try { event(t, 'open'); } catch { /* never break the image */ } }
+      res.statusCode = 200; res.setHeader('Content-Type', 'image/gif'); res.setHeader('Cache-Control', 'no-store, private'); res.end(GIF); return true;
+    }
+    if (p.startsWith('/c/') && m === 'GET') {
+      const [, , token, idx] = p.split('/'); const t = readToken(secret, token);
+      const c = t ? camp(t.owner, t.campaign) : null; const i = Number(idx);
+      const dest = c && Array.isArray(c.links) && Number.isInteger(i) ? c.links[i] : null;
+      if (!dest || !/^https?:\/\//i.test(dest)) { html(res, 404, page('Link không còn', 'Link này không tồn tại hoặc chiến dịch đã bị xoá.')); return true; }
+      try { event(t, 'click', i); } catch { /* still redirect */ }
+      res.statusCode = 302; res.setHeader('Location', dest); res.setHeader('Cache-Control', 'no-store'); res.end(); return true;
+    }
+    if (p === '/img' || p.startsWith('/mail/')) {
+      const u = requireUser(req, res); if (!u) return true;
+      try {
+        if (p === '/img' && m === 'POST') {
+          if (!img) { json(res, 503, { error: 'Relay chưa cấu hình kho ảnh (IMG_S3_BUCKET, IMG_PUBLIC_URL).' }); return true; }
+          if (throttled(`img:${u.id}`, 3000, 24 * 3600e3)) { json(res, 429, { error: 'Đã tải quá nhiều ảnh hôm nay.' }); return true; }
+          const type = String(req.headers['content-type'] || '').split(';')[0];
+          const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[type];
+          if (!ext) { json(res, 415, { error: 'chỉ nhận PNG/JPG/GIF/WebP' }); return true; }
+          const data = await rawBody(req, 8 * 1024 * 1024);
+          const key = `e/${sha(data).slice(0, 32)}.${ext}`; // content-addressed: the same slice is stored once, forever
+          const r = await s3Call(img, 'PUT', key, data, { 'content-type': type, 'cache-control': 'public, max-age=31536000, immutable' });
+          if (r.status >= 300) { json(res, 502, { error: `Kho ảnh trả HTTP ${r.status}` }); return true; }
+          json(res, 200, { url: `${img.publicUrl}/${key}`, bytes: data.length }); return true;
+        }
+        if (p === '/mail/tokens' && m === 'POST') {
+          const b = await body(req); const cid = String(b?.campaign || '').slice(0, 80);
+          if (!cid || !camp(u.id, cid)) { json(res, 404, { error: 'Đăng ký chiến dịch trước (POST /mail/campaigns).' }); return true; }
+          const out = {}; for (const e of (Array.isArray(b?.emails) ? b.emails : []).slice(0, 1000)) { const em = String(e).toLowerCase().trim(); if (EMAIL_RE.test(em)) out[em] = makeToken(secret, u.id, cid, em, String(b?.variant || '')); }
+          const sup = new Set(S.supList.all(u.id).map((r) => r.email));
+          json(res, 200, { base: publicUrl, tokens: out, suppressed: Object.keys(out).filter((e) => sup.has(e)) }); return true;
+        }
+        if (p === '/mail/campaigns' && m === 'POST') {
+          const b = await body(req); const id = String(b?.id || '').slice(0, 80); if (!id) { json(res, 400, { error: 'thiếu id' }); return true; }
+          const prev = camp(u.id, id) || { createdAt: now() };
+          saveCamp(u.id, id, { ...prev, subject: String(b.subject || prev.subject || '').slice(0, 300), from: String(b.from || prev.from || '').slice(0, 200), fromName: String(b.fromName || prev.fromName || '').slice(0, 120), links: Array.isArray(b.links) ? b.links.map((x) => String(x).slice(0, 2000)).slice(0, 300) : prev.links || [] });
+          json(res, 200, { ok: true }); return true;
+        }
+        const st = /^\/mail\/campaigns\/([^/]+)\/stats$/.exec(p);
+        if (st && m === 'GET') {
+          const id = decodeURIComponent(st[1]); const c = camp(u.id, id); if (!c) { json(res, 404, { error: 'không có chiến dịch' }); return true; }
+          const tot = Object.fromEntries(S.evTotals.all(u.id, id).map((r) => [r.kind, r.u]));
+          const byVariant = {}; for (const r of S.evStats.all(u.id, id)) { const v = r.variant || '-'; byVariant[v] ||= { opens: 0, clicks: 0 }; if (r.kind === 'open') byVariant[v].opens = r.u; else if (r.kind === 'click') byVariant[v].clicks = r.u; }
+          const qc = S.qCounts.all(u.id, id); const queue = {}; for (const r of qc) queue[r.status] = (queue[r.status] || 0) + r.n;
+          const { html: _h, text: _t, ...send } = c.send || {};
+          json(res, 200, { opens: tot.open || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, links: S.evLinks.all(u.id, id).map((r) => ({ url: c.links?.[r.link] || '', clicks: r.u })), byVariant, queue, send: c.send ? send : null }); return true;
+        }
+        if (p === '/mail/suppressions') {
+          if (m === 'GET') { json(res, 200, { suppressions: S.supList.all(u.id) }); return true; }
+          if (m === 'POST') { const b = await body(req); let n = 0; for (const e of (Array.isArray(b?.emails) ? b.emails : []).slice(0, 20000)) { const em = String(e).toLowerCase().trim(); if (EMAIL_RE.test(em)) { S.supAdd.run(u.id, em, now(), String(b?.source || 'manual').slice(0, 30), ''); n++; } } json(res, 200, { added: n }); return true; }
+        }
+        const sd = /^\/mail\/suppressions\/(.+)$/.exec(p);
+        if (sd && m === 'DELETE') { S.supDel.run(u.id, decodeURIComponent(sd[1]).toLowerCase()); json(res, 200, { ok: true }); return true; }
+        // ---------- sending accounts ----------
+        if (p === '/mail/senders') {
+          if (m === 'GET') { json(res, 200, { senders: senders(u.id).map(publicSender), providers: Object.entries(PROV).map(([k, v]) => ({ id: k, label: v.label, perDay: v.perDay })) }); return true; }
+          if (m === 'POST') {
+            const b = await body(req); const prov = String(b?.provider || ''); if (!PROV[prov]) { json(res, 400, { error: 'nhà cung cấp không hỗ trợ' }); return true; }
+            if (!EMAIL_RE.test(String(b?.fromEmail || ''))) { json(res, 400, { error: 'Email người gửi không hợp lệ' }); return true; }
+            const id = String(b?.id || `s_${randomBytes(5).toString('hex')}`).slice(0, 40);
+            const prev = senders(u.id).find((s) => s.id === id) || {};
+            const s = { provider: prov, label: String(b.label || '').slice(0, 60), fromEmail: String(b.fromEmail).trim(), fromName: String(b.fromName || '').slice(0, 120), replyTo: String(b.replyTo || '').slice(0, 200), region: String(b.region || '').slice(0, 30), perDay: Math.max(1, Math.min(100000, Number(b.perDay) || PROV[prov].perDay)), apiKey: b.apiKey ? String(b.apiKey).trim() : prev.apiKey, accessKeyId: b.accessKeyId ? String(b.accessKeyId).trim() : prev.accessKeyId, secret: b.secret ? String(b.secret).trim() : prev.secret };
+            if (prov === 'ses' ? !(s.accessKeyId && s.secret) : !s.apiKey) { json(res, 400, { error: 'Thiếu khoá API' }); return true; }
+            S.senderPut.run(u.id, id, encrypt(secret, JSON.stringify(s)), now());
+            json(res, 200, { sender: publicSender({ ...s, id, updatedAt: now() }) }); return true;
+          }
+        }
+        const sdel = /^\/mail\/senders\/([^/]+)$/.exec(p);
+        if (sdel && m === 'DELETE') { S.senderDel.run(u.id, decodeURIComponent(sdel[1])); json(res, 200, { ok: true }); return true; }
+        const stest = /^\/mail\/senders\/([^/]+)\/test$/.exec(p);
+        if (stest && m === 'POST') {
+          const s = senders(u.id).find((x) => x.id === decodeURIComponent(stest[1])); if (!s) { json(res, 404, { error: 'không có kênh gửi này' }); return true; }
+          const b = await body(req); const to = String(b?.to || u.email);
+          await PROV[s.provider].send(s, { to, subject: 'Phloem Email: kiểm tra kênh gửi', html: '<p>Kênh gửi hoạt động. Email này được gửi từ Phloem Email.</p>', text: 'Kênh gửi hoạt động.', headers: {} });
+          json(res, 200, { ok: true, to }); return true;
+        }
+        // ---------- server-side queue ----------
+        if (p === '/mail/send' && m === 'POST') {
+          const b = await body(req); const id = String(b?.campaign || '').slice(0, 80);
+          const c = camp(u.id, id); if (!c) { json(res, 404, { error: 'Đăng ký chiến dịch trước.' }); return true; }
+          const s = senders(u.id).find((x) => x.id === String(b?.sender || '')); if (!s) { json(res, 400, { error: 'Chọn kênh gửi (Resend / Brevo / Amazon SES).' }); return true; }
+          const htmlBody = String(b?.html || ''); if (!htmlBody || htmlBody.length > 600_000) { json(res, 400, { error: 'HTML trống hoặc quá lớn (ảnh phải lưu trên host).' }); return true; }
+          if (/cid:/i.test(htmlBody)) { json(res, 400, { error: 'HTML còn ảnh đính kèm (cid:): bật lưu ảnh trên host trước.' }); return true; }
+          const list = [...new Set((Array.isArray(b?.recipients) ? b.recipients : []).map((e) => String(e).toLowerCase().trim()).filter((e) => EMAIL_RE.test(e)))].slice(0, 50000);
+          if (!list.length) { json(res, 400, { error: 'Chưa có người nhận hợp lệ.' }); return true; }
+          const ab = b?.ab && b.ab.subjectB ? { subjectB: String(b.ab.subjectB).slice(0, 300), split: Math.max(0.05, Math.min(0.5, Number(b.ab.split) || 0.2)), metric: b.ab.metric === 'clicks' ? 'clicks' : 'opens', waitHours: Math.max(1, Math.min(72, Number(b.ab.waitHours) || 4)), phase: 'test', winner: null } : null;
+          // A/B: the first split×N recipients get A/B halves, the rest wait for the winner
+          const nTest = ab ? Math.max(2, Math.round(list.length * ab.split)) : 0;
+          list.forEach((e, i) => S.qAdd.run(u.id, id, e, ab ? (i < nTest ? (i % 2 ? 'B' : 'A') : 'rest') : 'A'));
+          c.send = { sender: s.id, subject: String(b.subject || c.subject || ''), html: htmlBody, text: String(b.text || '').slice(0, 100000), sendAt: b.sendAt && !Number.isNaN(Date.parse(b.sendAt)) ? new Date(b.sendAt).toISOString() : now(), status: 'scheduled', perDay: Math.max(1, Math.min(s.perDay, Number(b.perDay) || s.perDay)), ab, createdAt: now(), testSentAt: null, lastError: '' };
+          saveCamp(u.id, id, c);
+          json(res, 200, { ok: true, recipients: list.length, test: nTest, sendAt: c.send.sendAt }); return true;
+        }
+        const sc = /^\/mail\/send\/([^/]+)(?:\/(pause|resume|cancel))?$/.exec(p);
+        if (sc) {
+          const id = decodeURIComponent(sc[1]); const c = camp(u.id, id); if (!c?.send) { json(res, 404, { error: 'Chiến dịch chưa có lịch gửi.' }); return true; }
+          if (m === 'POST' && sc[2]) {
+            if (sc[2] === 'pause') c.send.status = 'paused';
+            if (sc[2] === 'resume') c.send.status = 'scheduled';
+            if (sc[2] === 'cancel') { c.send.status = 'cancelled'; S.qCancel.run(u.id, id); }
+            saveCamp(u.id, id, c); json(res, 200, { ok: true, status: c.send.status }); return true;
+          }
+          if (m === 'GET') { const qc = S.qCounts.all(u.id, id); const counts = {}; for (const r of qc) counts[r.status] = (counts[r.status] || 0) + r.n; const { html: _h, text: _t, ...info } = c.send; json(res, 200, { send: info, counts }); return true; }
+        }
+        json(res, 404, { error: 'không có route này' }); return true;
+      } catch (e) { json(res, e.status || 500, { error: e.message }); return true; }
+    }
+    return false;
+  }
+
+  // ---------- worker: sends due campaigns a little at a time (respecting each account's daily cap) ----------
+  let busy = false;
+  async function tick() {
+    if (busy) return; busy = true;
+    try {
+      for (const row of S.campDue.all()) {
+        const c = JSON.parse(row.json); const s0 = c.send;
+        if (!s0 || !['scheduled', 'sending', 'waiting'].includes(s0.status) || s0.sendAt > now()) continue;
+        const owner = row.owner, id = row.id;
+        const sender = senders(owner).find((x) => x.id === s0.sender); if (!sender) { s0.status = 'error'; s0.lastError = 'Kênh gửi đã bị xoá'; saveCamp(owner, id, c); continue; }
+        // A/B: after the test group, wait, then pick the winner and release the rest under its subject
+        let variants = ['A', 'B'];
+        if (s0.ab) {
+          if (s0.ab.phase === 'test') variants = ['A', 'B'];
+          if (s0.ab.phase === 'wait') {
+            if (Date.now() - Date.parse(s0.testSentAt || now()) < s0.ab.waitHours * 3600e3) continue;
+            const rows = S.evStats.all(owner, id); const score = (v) => rows.find((r) => r.variant === v && r.kind === (s0.ab.metric === 'clicks' ? 'click' : 'open'))?.u || 0;
+            s0.ab.winner = score('B') > score('A') ? 'B' : 'A'; s0.ab.scores = { A: score('A'), B: score('B') }; s0.ab.phase = 'rest';
+            S.qRelabel.run(s0.ab.winner, owner, id); saveCamp(owner, id, c);
+          }
+          if (s0.ab.phase === 'rest') variants = [s0.ab.winner, s0.ab.winner];
+        }
+        const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+        const left = s0.perDay - Number(S.qSentToday.get(owner, id, dayStart.toISOString()).n);
+        if (left <= 0) { if (s0.status !== 'waiting') { s0.status = 'waiting'; saveCamp(owner, id, c); } continue; }
+        S.qSkipSup.run(now(), owner, id, owner); // unsubscribed since the list was queued: never sent, never counted
+        const batch = S.qNext.all(owner, id, variants[0], variants[1], Math.min(left, 20));
+        if (!batch.length) {
+          if (s0.ab && s0.ab.phase === 'test') { s0.ab.phase = 'wait'; s0.testSentAt = now(); s0.status = 'waiting'; saveCamp(owner, id, c); continue; }
+          s0.status = 'done'; saveCamp(owner, id, c); log(`[mail] ${id} done`); continue;
+        }
+        s0.status = 'sending';
+        for (const r of batch) {
+          if (S.supHas.get(owner, r.email)) { S.qMark.run('skipped', 'đã huỷ đăng ký', now(), '', owner, id, r.email); continue; }
+          const token = makeToken(secret, owner, id, r.email, r.variant);
+          const per = personalize(s0.html, publicUrl, token);
+          const subject = r.variant === 'B' && s0.ab ? s0.ab.subjectB : s0.subject;
+          try {
+            await PROV[sender.provider].send(sender, { to: r.email, subject, html: per.html, text: s0.text ? `${s0.text}\n\nHuỷ đăng ký: ${per.unsub}` : '', headers: { 'List-Unsubscribe': `<${per.unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
+            S.qMark.run('sent', '', now(), '', owner, id, r.email);
+          } catch (e) {
+            const msg = String(e.message || e).slice(0, 300); S.qMark.run('failed', msg, now(), '', owner, id, r.email); s0.lastError = msg;
+            if (/401|403|invalid|unauthor/i.test(msg)) { s0.status = 'error'; break; } // bad key: stop instead of failing every address
+          }
+          await new Promise((rr) => setTimeout(rr, pace));
+        }
+        if (s0.status === 'sending' && s0.perDay - Number(S.qSentToday.get(owner, id, dayStart.toISOString()).n) <= 0) s0.status = 'waiting'; // cap reached: resumes tomorrow
+        saveCamp(owner, id, c);
+      }
+    } catch (e) { log('[mail] worker:', e?.message || e); }
+    finally { busy = false; }
+  }
+  return {
+    handle,
+    health: () => ({ img: !!img, tracking: true, queue: true }),
+    start: () => { const t = setInterval(() => { void tick(); }, 20_000); t.unref?.(); },
+    tick,
+  };
+}

@@ -12,6 +12,7 @@ import { createAuth } from './auth.mjs';
 import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
 import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
+import { createMail } from './mail.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -36,6 +37,8 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || ''; // optional: e-mail the
 const DB = AUTH.db;
 const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR);
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+// Unsubscribe + suppression list, open/click tracking, hosted email images, sending accounts and the server-side queue.
+const MAIL = createMail({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_URL, json, body, rawBody: raw, requireUser, throttled });
 
 const OAUTH = {
   mailchimp: {
@@ -96,12 +99,16 @@ const server = createServer(async (req, res) => {
         backup: BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), error: BACKUPS.error } : null,
         commit: String(process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '').slice(0, 7), // which build answers (Render sets RENDER_GIT_COMMIT)
         users: AUTH.count(),
+        mail: MAIL.health(),
       });
     }
     if (url.pathname.startsWith('/oauth/callback/')) return await oauthCallback(url, res);
     // client review links: no account, no relay token, only the token in the link (it opens one item of one client)
     if (url.pathname.startsWith('/share/')) return await shareRoute(url, req, res);
+    // Links inside sent emails (unsubscribe, open pixel, click): opened by recipients, so no relay token
+    if (/^\/[uoc]\//.test(url.pathname) && await MAIL.handle(url, req, res)) return;
     if (RELAY_TOKEN && req.headers['x-phloem-token'] !== RELAY_TOKEN) return json(res, 401, { error: 'relay token sai hoặc thiếu' });
+    if (await MAIL.handle(url, req, res)) return;
 
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
     if (url.pathname.startsWith('/db/')) return await dbRoute(url, req, res);
@@ -123,6 +130,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
+MAIL.start();
 server.listen(PORT, () => {
   console.log(`phloem-relay listening on ${PUBLIC_URL}  (token ${RELAY_TOKEN ? 'required' : 'off'}; oauth mailchimp=${!!OAUTH.mailchimp.clientId} klaviyo=${!!OAUTH.klaviyo.clientId})`);
 });

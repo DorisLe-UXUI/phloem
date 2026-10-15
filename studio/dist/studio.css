@@ -5696,3 +5696,97 @@ select.in {
 .gen-tile.busy {
   opacity: .5;
 }
+.client-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.client-bar .cl {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.client-bar .cl:hover {
+  color: var(--text);
+  border-color: var(--neon-line);
+}
+.client-bar .cl.on {
+  color: var(--neon);
+  border-color: var(--neon-line);
+  background: var(--neon-soft);
+}
+.client-bar .cl i {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+}
+.client-bar .cl.add {
+  border-style: dashed;
+}
+.client-bar .dot,
+.client-head .dot,
+.proj .meta .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+.cl-input {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--neon-line);
+  background: var(--panel);
+  color: var(--text);
+  outline: none;
+  min-width: 220px;
+}
+.client-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.client-head b {
+  font-size: 16px;
+  cursor: text;
+}
+.proj .foot .cl-move {
+  margin-left: auto;
+  max-width: 140px;
+  height: 24px;
+  font-size: 11px;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 0 4px;
+}
+@media (max-width: 640px) {
+  .client-head .dim {
+    flex-basis: 100%;
+    order: 9;
+  }
+  .cl-input {
+    min-width: 0;
+    width: 100%;
+  }
+}

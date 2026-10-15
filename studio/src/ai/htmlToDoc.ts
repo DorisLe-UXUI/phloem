@@ -48,8 +48,44 @@ export function extractHtml(text: string): string {
 
 /** The HTML as rendered in previews and in the converter: no scripts/handlers, library images and icons resolved,
  *  Phloem's fonts linked, wrapping forced greedy so line breaks match the canvas layout. */
+/** Block-ish elements: a new one starts a new sentence (headline, paragraph, button, list item, cell…). */
+const SENTENCE_BLOCKS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'LI', 'TD', 'TH', 'DT', 'DD', 'BLOCKQUOTE', 'FIGCAPTION', 'CAPTION', 'BUTTON', 'DIV', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'MAIN', 'ASIDE', 'NAV', 'TABLE', 'TR', 'TBODY', 'CENTER', 'BODY']);
+/** Words that keep their own spelling at a sentence start: iPhone, eBay, 7up, web addresses, @handles, #tags. */
+const KEEP_WORD = /^(?:\S*[A-Z]\S*|\S*\d\S*|\S*[@#/]\S*|\S+\.\S+)$/;
+/** Every headline, sentence and button starts with a capital letter, whatever the model wrote ("real high." → "Real
+ *  high."). Sentence starts = first text of a block, text after a <br>/block that ended a sentence, and after . ! ? … */
+const SENTENCE_END = /[.!?…]["'”’»)]*\s*$/;
+/** Capitalise one piece of text: its first letter when it starts a sentence, and every letter after . ! ? … */
+export function capText(v: string, startsSentence: boolean): string {
+  const up = (t: string, i: number) => t.slice(0, i) + t.charAt(i).toLocaleUpperCase('vi') + t.slice(i + 1);
+  if (startsSentence) {
+    const i = /^[\s"'“‘«(\[¡¿*•–—-]*/.exec(v)![0].length;
+    if (/\p{Ll}/u.test(v.charAt(i)) && !KEEP_WORD.test(v.slice(i).split(/\s/)[0])) v = up(v, i);
+  }
+  return v.replace(/([.!?…])(\s+)(["'“‘«(]?)(\p{Ll})(\S*)/gu, (all, p: string, sp: string, q: string, c: string, rest: string) => (KEEP_WORD.test(c + rest) ? all : `${p}${sp}${q}${c.toLocaleUpperCase('vi')}${rest}`));
+}
+export const endsSentence = (v: string) => SENTENCE_END.test(v);
+
+export function capitalizeSentences(doc: Document, win?: Window | null): void {
+  // with a live window: anything not laid out inline (display:block/flex/inline-block spans, button-like links) is a block
+  const isBlock = (e: Element) => (win ? !/^(inline|contents)$/.test(win.getComputedStyle(e).display) : SENTENCE_BLOCKS.has(e.tagName));
+  const blockOf = (n: Text): Element | null => { let e = n.parentElement; while (e && !isBlock(e)) e = e.parentElement; return e; };
+  const walker = doc.createTreeWalker(doc.body || doc.documentElement, NodeFilter.SHOW_TEXT, { acceptNode: (n: globalThis.Node) => (n.parentElement?.closest('script,style,svg,noscript,code,pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+  let lastBlock: Element | null = null; let pending = true;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text; let v = t.data; if (!v.trim()) continue;
+    const b = blockOf(t);
+    if (b !== lastBlock) { pending = true; lastBlock = b; }
+    v = capText(v, pending);
+    if (v !== t.data) t.data = v;
+    pending = SENTENCE_END.test(v);
+  }
+}
+
 export function prepareHtml(html: string, validIds: Set<string>, width: number): string {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
+  // all-lowercase text as a "style" reads as a typo in an email: drop text-transform: lowercase, then sentence-case
+  const doc = new DOMParser().parseFromString(html.replace(/text-transform\s*:\s*lowercase\s*(!important)?\s*;?/gi, ''), 'text/html');
+  capitalizeSentences(doc);
   doc.querySelectorAll('script, iframe, object, embed, link[rel="stylesheet"], link[rel="preconnect"], base, meta[http-equiv]').forEach((e) => e.remove());
   doc.querySelectorAll('*').forEach((el) => { for (const a of [...el.attributes]) if (/^on/i.test(a.name) || (/^(href|src|xlink:href)$/i.test(a.name) && /^\s*javascript:/i.test(a.value))) el.removeAttribute(a.name); });
   doc.querySelectorAll('img').forEach((img) => {
@@ -283,6 +319,7 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
   const frame = await mount(prepareHtml(rawHtml, opt.validIds, W), W);
   try {
     const d = frame.contentDocument!, win = frame.contentWindow!;
+    capitalizeSentences(d, win); // second pass with real layout: display:block spans and button links start sentences too
     let root: HTMLElement = (d.querySelector('[data-email]') as HTMLElement) || (d.getElementById('email') as HTMLElement) || (d.body.firstElementChild as HTMLElement) || d.body;
     const rootBg = colorOf(win.getComputedStyle(root).backgroundColor) || colorOf(win.getComputedStyle(d.body).backgroundColor) || '#FFFFFF';
     const rootStyle = win.getComputedStyle(root);
@@ -400,6 +437,12 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
       }
       const simple = !n.blur && !n.shadow && !n.gradient?.radial && (n.radius === 0 && !n.radii);
       if (simple) { Object.assign(n, st); inherit(n, ctx); push(n, ctx, section); return; }
+      // a blurred glow / shadow spreads past its box: crop to the clip, not to the box (else the glow gets square edges)
+      const spread = (n.blur || 0) * 2 + (n.shadow ? n.shadow.blur + Math.abs(n.shadow.y) : 0), c = ctx.clip;
+      if (spread && c) {
+        const x0 = Math.max(c.x, n.x - spread), y0 = Math.max(c.y, n.y - spread), x1 = Math.min(c.x + c.w, n.x + n.w + spread), y1 = Math.min(c.y + c.h, n.y + n.h + spread);
+        if (x1 > x0 && y1 > y0) { rasterClipped(n, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, ctx, section); return; }
+      }
       rasterClipped(n, st, ctx, section);
     };
     /** Show only the visible part of an image layer (same pixels on screen): shrink the frame, zoom and shift the focal point. */
@@ -474,7 +517,7 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
     const effectOf = (cs: CSSStyleDeclaration): TextEffect | null => {
       const stroke = px((cs as unknown as Record<string, string>).webkitTextStrokeWidth);
       const fillC = rgba((cs as unknown as Record<string, string>).webkitTextFillColor || cs.color);
-      if (stroke > 0 && (!fillC || fillC.a < 0.05)) return { kind: 'outline' };
+      if (stroke > 0 && (!fillC || fillC.a < 0.05)) return { kind: 'outline', depth: Math.round(stroke * 10) / 10 };
       if (cs.textShadow && cs.textShadow !== 'none') {
         const parts = splitTop(cs.textShadow);
         const sh = parts.map((p) => { const t = splitSpace(p); const c = t.find((x) => isColorTok(x) && !/^[\d.-]/.test(x)); const n = t.filter((x) => /^-?[\d.]+px$/.test(x)).map(px); return { c: c ? colorOf(c) : null, x: n[0] || 0, y: n[1] || 0, b: n[2] || 0 }; });
@@ -502,6 +545,8 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
         color: toHex(c), align, lineHeight: +(lhPx / size).toFixed(3), letterSpacing: cs.letterSpacing === 'normal' ? 0 : Math.round(px(cs.letterSpacing) * 100) / 100, autoHeight: true, vAlign: 'top',
       };
       const fx = effectOf(cs); if (fx) n.effect = fx;
+      // outline type: transparent fill, the visible colour is the stroke's (was falling back to black)
+      if (fx?.kind === 'outline') { const sc = rgba((cs as unknown as Record<string, string>).webkitTextStrokeColor || '') || rgba(cs.color) || { r: 0, g: 0, b: 0, a: 1 }; n.color = toHex(sc); n.opacity = sc.a; }
       if (ctx.rot) n.rotate = Math.round(ctx.rot * 10) / 10;
       return n;
     };
@@ -773,7 +818,10 @@ export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<C
       const tag = el.tagName.toUpperCase();
       const op = parseFloat(cs.opacity);
       const tf = transformOf(cs);
-      const da = (el as HTMLElement).dataset?.anim as AnimKind | undefined;
+      let da = (el as HTMLElement).dataset?.anim as AnimKind | undefined;
+      // every animated pixel ships in every GIF frame: a moving photo or a whole section makes a multi-MB email. Motion
+      // stays on small things (badges, stickers, a headline, the CTA); bigger elements are drawn static.
+      if (da && ANIMS.has(da)) { const r = el.getBoundingClientRect(); if (r.width * r.height > 600 * 300) { warnings.push(`Bỏ hiệu ứng "${da}" trên phần tử lớn (${Math.round(r.width)}×${Math.round(r.height)}px) để GIF nhẹ.`); da = undefined; } }
       const anim: Anim | null = da && ANIMS.has(da) ? { kind: da, delay: Math.max(0, parseFloat((el as HTMLElement).dataset.delay || '0') || 0), dur: Math.max(0.1, parseFloat((el as HTMLElement).dataset.dur || '') || (['pulse', 'shake', 'blink'].includes(da) ? 1.2 : ['float', 'spin'].includes(da) ? 2.4 : 0.8)) } : ctx0.anim;
       const href = tag === 'A' ? el.getAttribute('href') : null;
       const linkAlt = href ? (((el as HTMLElement).innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 80) || (el.querySelector('img[alt]') as HTMLImageElement | null)?.alt || '') : undefined;

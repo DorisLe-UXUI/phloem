@@ -35,6 +35,7 @@ export function sign(cfg, method, objectKey, payload, extraHeaders = {}, when = 
   return { url, headers: { ...headers, authorization: `AWS4-HMAC-SHA256 Credential=${cfg.key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}` }, signature };
 }
 
+export function s3Call(cfg, method, objectKey, payload = Buffer.alloc(0), extra = {}) { return call(cfg, method, objectKey, payload, extra); }
 function call(cfg, method, objectKey, payload = Buffer.alloc(0), extra = {}) {
   const { url, headers } = sign(cfg, method, objectKey, payload, extra);
   return new Promise((resolve, reject) => {

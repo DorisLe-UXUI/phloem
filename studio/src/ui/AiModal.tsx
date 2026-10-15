@@ -10,7 +10,7 @@ import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type 
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
 import { designEmail, docHash, type DesignVariant } from '../ai/design';
-import { prepareHtml } from '../ai/htmlToDoc';
+import { capitalizeSentences, prepareHtml } from '../ai/htmlToDoc';
 import * as ops from '../model/ops';
 import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, linksFromSite, type SiteProduct, type SiteProfile } from '../ai/site';
 import { Btn, Eyebrow, Field, Modal, Seg, Select, TextArea, TextInput } from './components';
@@ -411,6 +411,7 @@ function LiveHtml({ html, ids }: { html: string; ids: string[] }) {
     const f = ref.current; if (!f) return;
     // partial HTML is fine: the browser closes open tags; scroll follows the newest section
     try { f.srcdoc = prepareHtml(html, new Set(ids), 600); } catch { /* mid-tag */ }
+    f.onload = () => { try { if (f.contentDocument) capitalizeSentences(f.contentDocument, f.contentWindow); } catch { /* cross-origin */ } };
     const t = setTimeout(() => { try { const d = f.contentDocument; if (d) d.documentElement.scrollTop = Math.max(0, d.documentElement.scrollHeight - 1320); } catch { /* cross-origin */ } }, 300);
     return () => clearTimeout(t);
   }, [html]);

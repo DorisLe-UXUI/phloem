@@ -5,7 +5,11 @@ import { toBase64, utf8Bytes } from './hash';
 export interface MimePart { cid: string; filename: string; mime: string; bytes: Uint8Array }
 export interface MimeInput {
   html: string; text: string; subject: string;
-  from?: string; to?: string; listUnsubscribe?: string;
+  from?: string; to?: string;
+  /** one or more unsubscribe targets (https and/or mailto), each wrapped in <> */
+  listUnsubscribe?: string | string[];
+  /** RFC 8058 one-click: the https target accepts a POST, so Gmail/Yahoo show their own Unsubscribe button */
+  oneClick?: boolean;
   /** Outlook opens the file as an unsent draft (compose window) instead of a received message. */
   draft?: boolean;
   parts: MimePart[];
@@ -26,7 +30,9 @@ export function buildMime(m: MimeInput): string {
   if (m.from) head.push(`From: ${m.from}`);
   if (m.to) head.push(`To: ${m.to}`);
   head.push(`Subject: ${headerValue(m.subject || '(không tiêu đề)')}`, 'MIME-Version: 1.0');
-  if (m.listUnsubscribe) head.push(`List-Unsubscribe: <${m.listUnsubscribe}>`);
+  const unsub = (Array.isArray(m.listUnsubscribe) ? m.listUnsubscribe : [m.listUnsubscribe]).filter(Boolean) as string[];
+  if (unsub.length) head.push(`List-Unsubscribe: ${unsub.map((u) => `<${u}>`).join(', ')}`);
+  if (m.oneClick && unsub.some((u) => /^https:/i.test(u))) head.push('List-Unsubscribe-Post: List-Unsubscribe=One-Click');
   if (m.draft) head.push('X-Unsent: 1');
   head.push(`Content-Type: multipart/related; boundary="${rel}"; type="multipart/alternative"`);
   const body: string[] = [
@@ -63,8 +69,8 @@ export function uniqueCids(html: string, parts: MimePart[]): { html: string; par
 }
 
 /** Merge tags only an ESP understands become mailto links to the sender (unsubscribe / preferences by reply). */
-export function replaceMergeTags(html: string, sender: string): string {
-  const unsub = sender ? `mailto:${sender}?subject=${encodeURIComponent('Huỷ đăng ký / Unsubscribe')}` : '#';
+export function replaceMergeTags(html: string, sender: string, unsubUrl = ''): string {
+  const unsub = unsubUrl || (sender ? `mailto:${sender}?subject=${encodeURIComponent('Huỷ đăng ký / Unsubscribe')}` : '#');
   const prefs = sender ? `mailto:${sender}?subject=${encodeURIComponent('Cập nhật thông tin / Update preferences')}` : '#';
   return html.replace(/\*\|UNSUB\|\*/g, unsub).replace(/\*\|UPDATE_PROFILE\|\*/g, prefs).replace(/\*\|[A-Z_:]+\|\*/g, '').replace(/\{\{\s*(unsubscribe_url|manage_preferences_url)\s*\}\}/g, unsub);
 }
@@ -79,3 +85,26 @@ export function plainText(preheader: string, slices: { alt: string; link: string
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 /** Recipients pasted in any shape (lines, commas, "Name <a@b>") → unique lowercase addresses. */
 export function parseRecipients(raw: string): string[] { return [...new Set((String(raw).match(EMAIL_RE) || []).map((e) => e.toLowerCase()))]; }
+
+/** Placeholders the relay (or the browser, per recipient) fills with signed links: see server/src/mail.mjs personalize. */
+export const UNSUB_PLACEHOLDER = '__PHLOEM_UNSUB__';
+/** Swap every trackable link (http/https hrefs) for __PHLOEM_CLICK_i__; `links[i]` is where i redirects. The same URL
+ *  shares one index, so per-link click counts add up across repeated buttons. mailto:, tel:, anchors and the unsubscribe
+ *  link stay as they are. */
+export function trackLinks(html: string): { html: string; links: string[] } {
+  const links: string[] = []; const at = new Map<string, number>();
+  const out = html.replace(/(<a\b[^>]*?\bhref=)(["'])(https?:\/\/[^"']+)\2/gi, (_m, pre: string, q: string, url: string) => {
+    const u = url.replace(/&amp;/g, '&');
+    let i = at.get(u); if (i === undefined) { i = links.length; links.push(u); at.set(u, i); }
+    return `${pre}${q}__PHLOEM_CLICK_${i}__${q}`;
+  });
+  return { html: out, links };
+}
+/** Browser-side twin of the relay's personalize(): one recipient's links + open pixel. */
+export function personalizeHtml(html: string, base: string, token: string): { html: string; unsub: string } {
+  const unsub = `${base}/u/${token}`;
+  let out = html.split(UNSUB_PLACEHOLDER).join(unsub).replace(/__PHLOEM_CLICK_(\d+)__/g, (_m, i: string) => `${base}/c/${token}/${i}`);
+  const pixel = `<img src="${base}/o/${token}.gif" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0" />`;
+  out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, `${pixel}</body>`) : out + pixel;
+  return { html: out, unsub };
+}

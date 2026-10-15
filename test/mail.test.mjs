@@ -1,0 +1,168 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createMail, imageConfig, makeToken, personalize, readToken } from '../server/src/mail.mjs';
+import { openDb } from '../server/src/db.mjs';
+
+const SECRET = 'test-secret';
+const BASE = 'https://relay.test';
+
+test('tokens are signed per owner, campaign and address', () => {
+  const t = makeToken(SECRET, 'u_1', 'c1', 'An@Example.com', 'B');
+  assert.deepEqual(readToken(SECRET, t), { owner: 'u_1', campaign: 'c1', email: 'an@example.com', variant: 'B' });
+  assert.equal(readToken('other', t), null);
+  const [body, sig] = t.split('.');
+  const forged = Buffer.from(JSON.stringify({ o: 'u_1', c: 'c1', e: 'victim@example.com' })).toString('base64url');
+  assert.equal(readToken(SECRET, `${forged}.${sig}`), null);
+  assert.equal(readToken(SECRET, `${body}.${sig.slice(0, -1)}x`), null);
+  assert.equal(readToken(SECRET, 'garbage'), null);
+});
+
+test('personalize fills unsubscribe, click and name placeholders and appends the pixel', () => {
+  const html = '<html><body><a href="__PHLOEM_CLICK_0__">A</a><a href="__PHLOEM_CLICK_12__">B</a><a href="__PHLOEM_UNSUB__">Huỷ</a>Chào {{first_name}}</body></html>';
+  const out = personalize(html, BASE, 'tok', '<Lan>');
+  assert.ok(out.html.includes(`href="${BASE}/c/tok/0"`));
+  assert.ok(out.html.includes(`href="${BASE}/c/tok/12"`));
+  assert.ok(out.html.includes(`href="${BASE}/u/tok"`));
+  assert.ok(out.html.includes('Chào &lt;Lan&gt;'));
+  assert.match(out.html, /<img src="https:\/\/relay\.test\/o\/tok\.gif"[^>]*><\/body>/);
+  assert.equal(out.unsub, `${BASE}/u/tok`);
+});
+
+test('imageConfig needs a bucket and a public URL, borrowing backup credentials', () => {
+  assert.equal(imageConfig({ BACKUP_S3_ENDPOINT: 'https://x', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's' }), null);
+  const c = imageConfig({ BACKUP_S3_ENDPOINT: 'https://x/', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', IMG_S3_BUCKET: 'img', IMG_PUBLIC_URL: 'https://pub.example/' });
+  assert.equal(c.bucket, 'img'); assert.equal(c.key, 'k'); assert.equal(c.endpoint, 'https://x'); assert.equal(c.publicUrl, 'https://pub.example');
+});
+
+// ---------- routes, with fake req/res ----------
+function harness(extra = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'phloem-mail-'));
+  const db = openDb(join(dir, 'p.db'));
+  const sent = [];
+  const fake = { send: async (s, m) => { if (m.to.startsWith('bad')) throw new Error('400 rejected'); sent.push({ ...m, from: s.fromEmail }); }, perDay: 1000, label: 'Fake' };
+  const json = (res, code, obj) => { res.statusCode = code; res.obj = obj; res.end(JSON.stringify(obj)); };
+  const mail = createMail({
+    raw: db.raw, secret: SECRET, publicUrl: BASE, json, body: async (req) => req.body || {}, rawBody: async (req) => req.bytes,
+    requireUser: (req, res) => req.user || (json(res, 401, { error: 'login' }), null), throttled: () => false,
+    env: {}, log: () => {}, providers: { fake }, pace: 0, ...extra,
+  });
+  const call = async (method, path, { user = { id: 'u_1', email: 'me@x.co' }, body } = {}) => {
+    const res = { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(x) { this.text = String(x ?? ''); } };
+    const handled = await mail.handle(new URL(path, BASE), { method, headers: {}, user, body }, res);
+    return { handled, ...res };
+  };
+  return { mail, call, sent, db };
+}
+
+test('unsubscribe: GET asks, POST suppresses; tokens report suppressed addresses', async () => {
+  const { call } = harness();
+  await call('POST', '/mail/campaigns', { body: { id: 'c1', subject: 'Hi', fromName: 'HappyTown', links: ['https://happy.town/a'] } });
+  const tk = await call('POST', '/mail/tokens', { body: { campaign: 'c1', emails: ['a@x.co', 'not-an-email', 'B@x.co'] } });
+  assert.deepEqual(Object.keys(tk.obj.tokens), ['a@x.co', 'b@x.co']);
+  const t = tk.obj.tokens['a@x.co'];
+  const ask = await call('GET', `/u/${t}`, { user: null });
+  assert.equal(ask.statusCode, 200); assert.match(ask.text, /<form method="post">/); assert.match(ask.text, /HappyTown/);
+  let sup = await call('GET', '/mail/suppressions');
+  assert.equal(sup.obj.suppressions.length, 0, 'a prefetch of the GET must not unsubscribe');
+  const done = await call('POST', `/u/${t}`, { user: null });
+  assert.match(done.text, /Đã huỷ đăng ký/);
+  sup = await call('GET', '/mail/suppressions');
+  assert.deepEqual(sup.obj.suppressions.map((r) => r.email), ['a@x.co']);
+  const tk2 = await call('POST', '/mail/tokens', { body: { campaign: 'c1', emails: ['a@x.co', 'b@x.co'] } });
+  assert.deepEqual(tk2.obj.suppressed, ['a@x.co']);
+  const bad = await call('GET', '/u/forged.token', { user: null });
+  assert.equal(bad.statusCode, 404);
+  // another user's suppression list is separate
+  const other = await call('GET', '/mail/suppressions', { user: { id: 'u_2' } });
+  assert.equal(other.obj.suppressions.length, 0);
+  await call('DELETE', '/mail/suppressions/A%40x.co');
+  assert.equal((await call('GET', '/mail/suppressions')).obj.suppressions.length, 0);
+});
+
+test('open pixel and click redirect count unique people, and only redirect to registered links', async () => {
+  const { call } = harness();
+  await call('POST', '/mail/campaigns', { body: { id: 'c1', links: ['https://happy.town/a', 'javascript:alert(1)'] } });
+  const t = makeToken(SECRET, 'u_1', 'c1', 'a@x.co');
+  const px = await call('GET', `/o/${t}.gif`, { user: null });
+  assert.equal(px.headers['content-type'], 'image/gif');
+  await call('GET', `/o/${t}.gif`, { user: null }); // Gmail prefetch: still one open
+  const c = await call('GET', `/c/${t}/0`, { user: null });
+  assert.equal(c.statusCode, 302); assert.equal(c.headers.location, 'https://happy.town/a');
+  assert.equal((await call('GET', `/c/${t}/1`, { user: null })).statusCode, 404, 'non-http link never redirects');
+  assert.equal((await call('GET', `/c/${t}/9`, { user: null })).statusCode, 404);
+  const other = makeToken(SECRET, 'u_2', 'c1', 'a@x.co'); // same campaign id, another owner: no such campaign
+  assert.equal((await call('GET', `/c/${other}/0`, { user: null })).statusCode, 404);
+  const st = await call('GET', '/mail/campaigns/c1/stats');
+  assert.equal(st.obj.opens, 1); assert.equal(st.obj.clicks, 1);
+  assert.deepEqual(st.obj.links, [{ url: 'https://happy.town/a', clicks: 1 }]);
+  // a broken token still serves the gif
+  assert.equal((await call('GET', '/o/nope.gif', { user: null })).headers['content-type'], 'image/gif');
+});
+
+test('private routes need a signed-in user; senders never return their keys', async () => {
+  const { call } = harness();
+  assert.equal((await call('GET', '/mail/suppressions', { user: null })).statusCode, 401);
+  assert.equal((await call('POST', '/img', {})).statusCode, 503, 'no bucket configured');
+  const bad = await call('POST', '/mail/senders', { body: { provider: 'fake', fromEmail: 'news@happy.town' } });
+  assert.equal(bad.statusCode, 400);
+  const s = await call('POST', '/mail/senders', { body: { provider: 'fake', fromEmail: 'news@happy.town', apiKey: 'sk_live_secret' } });
+  assert.equal(s.obj.sender.hasKey, true); assert.ok(!JSON.stringify(s.obj).includes('sk_live_secret'));
+  const list = await call('GET', '/mail/senders');
+  assert.ok(!JSON.stringify(list.obj).includes('sk_live_secret'));
+  assert.equal((await call('GET', '/mail/senders', { user: { id: 'u_2' } })).obj.senders.length, 0);
+  assert.equal((await call('GET', '/nope')).handled, false);
+});
+
+test('server queue: skips suppressed, respects the daily cap, adds List-Unsubscribe, and A/B picks a winner', async () => {
+  const { call, mail, sent, db } = harness();
+  const sender = (await call('POST', '/mail/senders', { body: { provider: 'fake', fromEmail: 'news@happy.town', apiKey: 'k', perDay: 3 } })).obj.sender;
+  await call('POST', '/mail/campaigns', { body: { id: 'c1', subject: 'S', links: ['https://happy.town'] } });
+  await call('POST', '/mail/suppressions', { body: { emails: ['b@x.co'] } });
+  const html = '<body><a href="__PHLOEM_CLICK_0__">x</a><a href="__PHLOEM_UNSUB__">u</a></body>';
+  const cidHtml = await call('POST', '/mail/send', { body: { campaign: 'c1', sender: sender.id, html: '<img src="cid:a">', recipients: ['a@x.co'] } });
+  assert.equal(cidHtml.statusCode, 400, 'attachments cannot go through the queue');
+  const r = await call('POST', '/mail/send', { body: { campaign: 'c1', sender: sender.id, subject: 'Xin chào', html, recipients: ['a@x.co', 'b@x.co', 'c@x.co', 'd@x.co', 'e@x.co', 'a@x.co'] } });
+  assert.equal(r.obj.recipients, 5);
+  await mail.tick();
+  // cap 3 per day: suppressed b is skipped (does not count), a c d sent, e waits for tomorrow
+  assert.deepEqual(sent.map((m) => m.to), ['a@x.co', 'c@x.co', 'd@x.co']);
+  assert.match(sent[0].headers['List-Unsubscribe'], /^<https:\/\/relay\.test\/u\/.+>$/);
+  assert.equal(sent[0].headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+  assert.ok(sent[0].html.includes(`${BASE}/c/`) && sent[0].html.includes(`${BASE}/o/`));
+  const st = await call('GET', '/mail/send/c1');
+  assert.equal(st.obj.counts.sent, 3); assert.equal(st.obj.counts.skipped, 1); assert.equal(st.obj.counts.queued, 1);
+  assert.equal(st.obj.send.status, 'waiting'); assert.ok(!('html' in st.obj.send));
+  await call('POST', '/mail/send/c1/cancel');
+  assert.equal((await call('GET', '/mail/send/c1')).obj.counts.cancelled, 1);
+
+  // A/B: 10 recipients, split 0.4 → 4 test (A,B,A,B), B wins on opens, the rest go out with subject B
+  sent.length = 0;
+  const big = (await call('POST', '/mail/senders', { body: { provider: 'fake', fromEmail: 'news@happy.town', apiKey: 'k', perDay: 1000 } })).obj.sender;
+  await call('POST', '/mail/campaigns', { body: { id: 'ab', subject: 'A', links: [] } });
+  const people = Array.from({ length: 10 }, (_, i) => `p${i}@x.co`);
+  await call('POST', '/mail/send', { body: { campaign: 'ab', sender: big.id, subject: 'Subject A', html, recipients: people, ab: { subjectB: 'Subject B', split: 0.4, metric: 'opens', waitHours: 1 } } });
+  await mail.tick();
+  assert.deepEqual(sent.map((m) => m.subject), ['Subject A', 'Subject B', 'Subject A', 'Subject B']);
+  await mail.tick(); // test group done → wait phase
+  // two B recipients open, one A recipient opens
+  for (const [to, v] of [['p1@x.co', 'B'], ['p3@x.co', 'B'], ['p0@x.co', 'A']]) await call('GET', `/o/${makeToken(SECRET, 'u_1', 'ab', to, v)}.gif`, { user: null });
+  await mail.tick();
+  assert.equal(sent.length, 4, 'still waiting for the test window');
+  // jump the clock: pretend the test went out 2 hours ago
+  const row = (await call('GET', '/mail/send/ab')).obj.send; assert.equal(row.ab.phase, 'wait');
+  const raw = db.raw.prepare('SELECT json FROM mail_campaigns WHERE owner = ? AND id = ?').get('u_1', 'ab');
+  const c = JSON.parse(raw.json); c.send.testSentAt = new Date(Date.now() - 2 * 3600e3).toISOString();
+  db.raw.prepare('UPDATE mail_campaigns SET json = ? WHERE owner = ? AND id = ?').run(JSON.stringify(c), 'u_1', 'ab');
+  await mail.tick();
+  assert.equal(sent.length, 10);
+  assert.ok(sent.slice(4).every((m) => m.subject === 'Subject B'));
+  const fin = (await call('GET', '/mail/send/ab')).obj.send;
+  assert.equal(fin.ab.winner, 'B'); assert.deepEqual(fin.ab.scores, { A: 1, B: 2 });
+  await mail.tick();
+  assert.equal((await call('GET', '/mail/send/ab')).obj.send.status, 'done');
+  const stats = await call('GET', '/mail/campaigns/ab/stats');
+  assert.deepEqual(stats.obj.byVariant.B, { opens: 2, clicks: 0 });
+});
