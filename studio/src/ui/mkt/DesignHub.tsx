@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems } from '../../mkt/data';
-import { SIZES, addClientImages, clientImages, designFromImage, designPost, sizeForRow, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, designPost, paintFullPost, pastPosts, sizeForRow, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
@@ -50,6 +50,15 @@ export function DesignHub({ client }: { client: Client }) {
     abort.current = new AbortController();
     setBusy({ label: ai ? 'AI đang thiết kế…' : 'Đang dựng bố cục…' });
     try { await designPost(client, size, row, { ai, onStage: (m) => setBusy({ label: m }), signal: abort.current.signal, askPhotos: (plan) => askPhotos(client, plan) }); }
+    catch (e) { toast((e as Error).message, 'err'); }
+    finally { setBusy(null); }
+  };
+  /** The whole post painted as one finished picture with its text, in the style of the client's past posts. */
+  const full = async (row: Row) => {
+    if (!pastPosts(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
+    abort.current = new AbortController();
+    setBusy({ label: 'AI đang vẽ cả bài…' });
+    try { await paintFullPost(client, sizeForRow(row), row, { onStage: (m) => setBusy({ label: m }), signal: abort.current.signal }); toast('Đã vẽ xong cả bài, đã gắn vào bài trong kế hoạch. Chữ là một phần của ảnh: muốn sửa chữ thì bấm AI vẽ lại hoặc Tự thiết kế.', 'ok'); }
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(null); }
   };
@@ -107,6 +116,7 @@ export function DesignHub({ client }: { client: Client }) {
                           {des
                             ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sizeForRow(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>
                             : <button class="ai" onClick={() => void make(sizeForRow(r), r, true)} title="AI vẽ ảnh và dựng bố cục theo nội dung bài"><Icon name="sparkle" size={12} />AI thiết kế</button>}
+                          <button class="ai" onClick={() => void full(r)} title="AI vẽ nguyên bài hoàn chỉnh, có sẵn toàn bộ chữ, giống phong cách các bài cũ của khách"><Icon name="image" size={12} />AI vẽ cả bài</button>
                           <button onClick={() => (des ? void A.openProject(des.id) : void make(sizeForRow(r), r, false))} title={des ? 'Mở trang chỉnh sửa (layer, chữ, đồ hoạ)' : 'Dựng bố cục trống theo thương hiệu rồi tự chỉnh'}><Icon name="text" size={12} />Tự thiết kế</button>
                           <button onClick={() => setOwn(r)} title="Dùng ảnh có sẵn: tải lên, dán, hoặc chọn từ kho"><Icon name="upload" size={12} />{des ? 'Đổi ảnh' : 'Ảnh của bạn'}</button>
                         </div>}

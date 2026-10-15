@@ -154,6 +154,73 @@ export async function newCarousel(client: Client, size: DesignSize, row: PlanRow
   return ids;
 }
 
+/** The client's published posts in the library (imported from Drive / Figma / web), spread over time, for style references. */
+export function pastPosts(clientId: string, n = 3): string[] {
+  const list = clientImages(clientId).filter((a) => a.src?.kind === 'reference' && Math.min(a.w, a.h) >= 300).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  if (list.length <= n) return list.map((a) => a.id);
+  return Array.from({ length: n }, (_, i) => list[Math.floor((i * list.length) / n)].id);
+}
+
+const FULL_POST = `You art-direct a COMPLETE social media post that an image model (Gemini image) paints in one go, ALL TEXT INCLUDED. You get the brand, the post copy and the brand's real published posts (attached pictures).
+Write ONE English prompt of 150–260 words:
+1. Layout and style copied from the attached past posts: where the logo, headline, picture, support line and CTA pill sit; their illustration or photo style, palette, type treatment (weight, colour, outline, highlight), decorative motifs. The new post must look like the next post of that feed.
+2. The scene for THIS post's topic, in that same style.
+3. Every text element verbatim in double quotes with its role and rough size: brand wordmark, headline (at most 8 words), one support line (at most 14 words), CTA pill text, website or handle when known. Text in the post's language, spelled exactly as given.
+End with: "Render every text crisp, spelled exactly as quoted, high contrast, inside the frame; no other text, no watermark."
+Reply with JSON only: {"prompt":"…"}`;
+
+/** Paint the whole post as one finished picture with all its text, in the style of the client's past posts, and pin it to the post.
+ *  A carousel gets one painted picture per planned slide. Returns the design ids. */
+export async function paintFullPost(client: Client, size: DesignSize, row: PlanRow & { planId: string }, opts: { onStage?: (m: string) => void; signal?: AbortSignal; open?: boolean } = {}): Promise<string[]> {
+  if (!(await imageProvider())) throw new Error('Relay chưa có key tạo ảnh (GEMINI_API_KEY hoặc CF_AI_TOKEN).');
+  const refs = pastPosts(client.id, 3);
+  const logo = designBrand(client).logoAssetId;
+  const refImgs = (await Promise.all(refs.map((id) => thumbB64(id, 768)))).filter(Boolean) as AiImage[];
+  const book = brandBookOf(client.id);
+  const site = (client.website || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  let slides: { headline: string; body: string; visual: string; role: string }[] = [{ headline: row.hook || row.topic, body: '', visual: row.visual, role: 'single' }];
+  if (row.format === 'carousel') {
+    opts.onStage?.('AI đang lên dàn ý các slide…');
+    try {
+      const out = await askClaude({ system: CAROUSEL_PLAN, turns: [{ role: 'user', text: `${audienceLine(client)}\nBrand: ${client.name}.\nTopic: ${row.topic}\nHook: ${row.hook}\nCaption: ${row.caption}\nCTA: ${row.cta}\nVisual idea: ${row.visual}` }], maxTokens: 3000, effort: 'low' });
+      const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]);
+      const sl = (Array.isArray(j.slides) ? j.slides : []).slice(0, 10).map((x: any) => ({ role: String(x?.role || 'content'), headline: String(x?.headline || ''), body: String(x?.body || ''), visual: String(x?.visual || '') })).filter((x: { headline: string }) => x.headline);
+      if (sl.length >= 2) slides = sl;
+    } catch (e) { if (opts.signal?.aborted) throw e; }
+  }
+  const aspect = aspectFor(size);
+  const ids: string[] = [];
+  for (let i = 0; i < slides.length; i++) {
+    if (opts.signal?.aborted) throw new Error('Đã huỷ.');
+    const sl = slides[i]; const tag = slides.length > 1 ? `Slide ${i + 1}/${slides.length} · ` : '';
+    opts.onStage?.(`${tag}Art director đang xem ${refImgs.length} bài cũ của khách và viết prompt…`);
+    const brief = [
+      `Brand: ${client.name}${client.industry ? ` (${client.industry})` : ''}. ${audienceLine(client)}`,
+      book ? `Brand colours: ${book.palette.map((c) => `${c.name} ${c.hex}`).join(', ')}. Fonts: ${book.fonts.heading} / ${book.fonts.body}. Tagline: "${book.tagline}".` : '',
+      styleNotesOf(client.id) ? `House style notes: ${styleNotesOf(client.id)}` : '',
+      `Post: ${channelOf(row.channel).label} ${row.format}, aspect ${aspect}. Topic: ${row.topic}.`,
+      slides.length > 1 ? `CAROUSEL slide ${i + 1} of ${slides.length} (${sl.role}); show a small "${i + 1}/${slides.length}" marker; keep one look across slides.` : '',
+      `Headline: "${sl.headline}". Support line: "${sl.body || (row.caption || '').split(/\n/)[0].slice(0, 90)}". CTA: "${row.cta}". Website/handle: "${site}".`,
+      `Visual idea: ${sl.visual || row.visual}`,
+      refImgs.length ? `The ${refImgs.length} attached pictures are the brand's published posts (style references).` : 'No past posts yet: design a striking post in the brand colours.',
+    ].filter(Boolean).join('\n');
+    let prompt = '';
+    try {
+      const out = await askClaude({ system: FULL_POST, turns: [{ role: 'user', text: brief, images: refImgs }], maxTokens: 2000, effort: 'low' });
+      prompt = String(JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]).prompt || '').trim();
+    } catch (e) { if (opts.signal?.aborted) throw e; }
+    if (prompt.length < 80) prompt = `A finished ${channelOf(row.channel).label} post for ${client.name} in the exact style of the reference posts. Headline "${sl.headline}". CTA pill "${row.cta}". ${site ? `Website "${site}". ` : ''}Render every text crisp and spelled exactly; no other text.`;
+    opts.onStage?.(`${tag}AI đang vẽ cả bài, có chữ (20–60 giây)…`);
+    const asset = await generateImage(client.id, prompt, aspect, [...refs, ...(logo && assets.get(logo) ? [logo] : [])].slice(0, 4));
+    const p = await designFromImage(client, row, asset, false, { attach: false, refresh: false });
+    ids.push(p.id);
+  }
+  await attachMany(client.id, row.planId, { [row.id]: ids }, slides.length > 1 ? `AI vẽ cả bài · carousel ${slides.length} slide` : 'AI vẽ cả bài');
+  await A.refreshProjects();
+  if (opts.open && ids[0]) await A.openProject(ids[0]);
+  return ids;
+}
+
 /** Design one post: a carousel gets all its slides, anything else one design. */
 export async function designPost(client: Client, size: DesignSize, row: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; open?: boolean; onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos } = {}) {
   if (row && opts.ai && row.format === 'carousel') { const ids = await newCarousel(client, size, row, opts); if (opts.open !== false && ids[0]) await A.openProject(ids[0]); return ids; }
@@ -332,7 +399,7 @@ async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: Pla
   const images: AiImage[] = []; const lines: string[] = [];
   for (const id of ids) {
     const a = assets.get(id)!; const t = images.length < 8 ? await thumbB64(id) : null; if (t) images.push(t);
-    const role = id === hero ? ' · HERO: painted for this post, use it as the main visual, big' : id === logo ? ' · LOGO' : a.src?.kind === 'reference' ? " · the client's past work: match its look" : '';
+    const role = id === hero ? ' · HERO: painted for this post, use it as the main visual, big' : id === logo ? ' · LOGO' : a.src?.kind === 'reference' ? ' · PAST POST published by this brand: copy its layout system and style' : '';
     lines.push(`- "${id}": ${a.name} · ${a.w}×${a.h}${role}${t ? ` (attached image #${images.length})` : ''}`);
   }
   const fonts = FONTS.filter((f) => f.google && f.vi).map((f) => f.family).join(', ');
@@ -341,6 +408,7 @@ async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: Pla
     audienceLine(client),
     book ? `Brand: tagline "${book.tagline}"; voice ${book.voice.traits.join(', ')}; colours ${book.palette.map((c) => `${c.name} ${c.hex} (${c.role})`).join(', ')}; fonts ${book.fonts.heading} / ${book.fonts.body}; imagery: ${book.imagery.join('; ')}` : `Brand colours: primary ${brand.primary}, accent ${brand.accent}, ink ${brand.ink}, bg ${brand.bg}; fonts ${brand.headingFamily} / ${brand.fontFamily}`,
     styleNotesOf(client.id) ? `HOUSE STYLE from the client's past posts (match it): ${styleNotesOf(client.id)}` : '',
+    ids.some((id) => assets.get(id)?.src?.kind === 'reference') ? "PAST POSTS: the attached pictures marked PAST POST are this brand's real published posts. Design the NEXT post of that same feed: same layout grid and margins, same headline treatment (weight, size ratio, colour, outline / shadow / highlight), same illustration or photo style, same palette, same logo spot and CTA pill style, same decorative motifs. Do not invent a new style; only the content changes." : '',
     row ? `Post: ${channelOf(row.channel).label} ${row.format}, ${row.date}. Topic: ${row.topic}. Hook: ${row.hook}. CTA: ${row.cta}. Visual idea from the plan: ${row.visual}` : 'Post: a general brand post.',
     slide ? `CAROUSEL: this is slide ${slide.i} of ${slide.n} (${slide.role}). All slides share ONE design system: same background treatment, type, colours, margins and logo spot, so they read as one swipeable set. Put a small "${slide.i}/${slide.n}" in a corner${slide.i < slide.n ? ' and a subtle swipe cue (arrow) on the right edge' : ''}. ${slide.role === 'cover' ? 'Cover: the hook, huge, plus the hero picture.' : slide.role === 'cta' ? 'Last slide: the call to action and the brand, calm and clear.' : 'Content slide: ONE point, a short headline and at most two short lines; reuse the hero picture smaller or cropped, or an icon / 3D object.'}` : '',
     'Graphics you may add: data-sticker 3D objects; data-icon colour sets (streamline-color:, streamline-plump-color:, icon-park:, twemoji:, noto:, fluent-emoji-flat:) and mono sets (ph:, game-icons:); data-gfx backgrounds. Use few, large, deliberate.',
