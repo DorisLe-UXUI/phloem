@@ -20,6 +20,8 @@ export const SIZES: DesignSize[] = [
   { id: 'square', label: 'Vuông 1:1', w: 1080, h: 1080, group: 'Facebook · Instagram' },
   { id: 'portrait', label: 'Dọc 4:5', w: 1080, h: 1350, group: 'Facebook · Instagram' },
   { id: 'story', label: 'Story / Reel 9:16', w: 1080, h: 1920, group: 'Instagram · TikTok · Facebook' },
+  { id: 'land43', label: 'Ngang 4:3', w: 1440, h: 1080, group: 'Facebook · Instagram' },
+  { id: 'land169', label: 'Ngang 16:9', w: 1920, h: 1080, group: 'Facebook · YouTube' },
   { id: 'fb-link', label: 'Ảnh link / quảng cáo 1.91:1', w: 1200, h: 628, group: 'Facebook · LinkedIn' },
   { id: 'yt-thumb', label: 'Thumbnail YouTube 16:9', w: 1280, h: 720, group: 'YouTube' },
   { id: 'li-cover', label: 'Ảnh bìa LinkedIn', w: 1584, h: 396, group: 'LinkedIn' },
@@ -28,6 +30,22 @@ export const SIZES: DesignSize[] = [
   { id: 'display', label: 'Banner Display 300×250', w: 300, h: 250, group: 'Google Display' },
 ];
 export const sizeById = (id: string) => SIZES.find((s) => s.id === id) || SIZES[0];
+
+/** A frame with the picture's own proportions (short side 1080, long side at most 1920), named after the closest standard size. */
+export function sizeForImage(w: number, h: number): DesignSize {
+  const r = w / h;
+  const near = SIZES.find((z) => Math.abs(z.w / z.h - r) / r < 0.02);
+  if (near) return near;
+  const W = r >= 1 ? Math.min(1920, Math.round(1080 * r)) : 1080, H = r >= 1 ? Math.round(W / r) : Math.min(1920, Math.round(1080 / r));
+  return { id: 'image', label: `Theo ảnh ${W}×${H}`, w: W, h: H, group: 'Theo ảnh' };
+}
+
+/** The frame size the agency picked for a client on the Thiết kế page ('auto' = by channel and format). */
+export const preferredSizeKey = (clientId: string) => `phloem.mkt.size.${clientId}`;
+export function preferredSize(clientId: string, row: Pick<PlanRow, 'channel' | 'format'> | null): DesignSize {
+  let id = 'auto'; try { id = localStorage.getItem(preferredSizeKey(clientId)) || 'auto'; } catch { /* private mode */ }
+  return id !== 'auto' && SIZES.some((z) => z.id === id) ? sizeById(id) : row ? sizeForRow(row) : sizeById('portrait');
+}
 
 /** The natural size for a plan row: reels/stories vertical, LinkedIn and YouTube landscape, feed posts 4:5. */
 export function sizeForRow(r: Pick<PlanRow, 'channel' | 'format'>): DesignSize {
@@ -212,7 +230,7 @@ export async function paintFullPost(client: Client, size: DesignSize, row: PlanR
     if (prompt.length < 80) prompt = `A finished ${channelOf(row.channel).label} post for ${client.name} in the exact style of the reference posts. Headline "${sl.headline}". CTA pill "${row.cta}". ${site ? `Website "${site}". ` : ''}Render every text crisp and spelled exactly; no other text.`;
     opts.onStage?.(`${tag}AI đang vẽ cả bài, có chữ (20–60 giây)…`);
     const asset = await generateImage(client.id, prompt, aspect, [...refs, ...(logo && assets.get(logo) ? [logo] : [])].slice(0, 4));
-    const p = await designFromImage(client, row, asset, false, { attach: false, refresh: false });
+    const p = await designFromImage(client, row, asset, false, { attach: false, refresh: false, size: 'image' });
     ids.push(p.id);
   }
   await attachMany(client.id, row.planId, { [row.id]: ids }, slides.length > 1 ? `AI vẽ cả bài · carousel ${slides.length} slide` : 'AI vẽ cả bài');
@@ -229,9 +247,10 @@ export async function designPost(client: Client, size: DesignSize, row: (PlanRow
 }
 
 /** A post that uses the client's own picture: the photo fills the frame (cover), saved as a design and pinned to the post. */
-export async function designFromImage(client: Client, row: (PlanRow & { planId: string }) | null, assetId: string, open = false, opts: { attach?: boolean; refresh?: boolean } = {}) {
+export async function designFromImage(client: Client, row: (PlanRow & { planId: string }) | null, assetId: string, open = false, opts: { attach?: boolean; refresh?: boolean; size?: DesignSize | 'image' } = {}) {
   const a = assets.get(assetId); if (!a) throw new Error('Không tìm thấy ảnh.');
-  const size = row ? sizeForRow(row) : (() => { const r = a.w / a.h; return r > 1.5 ? sizeById('fb-link') : r > 1.1 ? sizeById('gbp') : r > 0.9 ? sizeById('square') : r > 0.7 ? sizeById('portrait') : sizeById('story'); })();
+  // a finished post (imported, or painted whole) keeps its own proportions; a photo for a post fills the chosen frame
+  const size = opts.size === 'image' || (!opts.size && a.src?.kind === 'reference') ? sizeForImage(a.w, a.h) : opts.size || (row ? preferredSize(client.id, row) : sizeForImage(a.w, a.h));
   const brand = designBrand(client);
   const doc: Doc = { width: size.w, height: size.h, bg: '#000000', autoHeight: false, nodes: [{ id: uid('n'), type: 'image', name: a.name, x: 0, y: 0, w: size.w, h: size.h, visible: true, locked: false, opacity: 1, link: null, alt: a.name, assetId, fit: 'cover', radius: 0, fill: null, overlay: null } as Node] };
   await readyDoc(doc);
@@ -248,6 +267,30 @@ export async function designFromImage(client: Client, row: (PlanRow & { planId: 
   if (row && opts.attach !== false) await attachDesign(client.id, row.planId, row.id, p.id);
   if (open) await A.openProject(p.id);
   return p;
+}
+
+/** Designs made from one imported picture (a past post) whose frame does not match the picture: reframe them to the picture's
+ *  own proportions so nothing is cropped. Returns how many were fixed. */
+export async function refitImported(clientId: string): Promise<number> {
+  const { db } = await import('../storage/idb');
+  const { cloud } = await import('../storage/sync');
+  const { thumbnail } = await import('../render/renderer');
+  let n = 0;
+  for (const m of get().projects.filter((p) => p.clientId === clientId && p.kind === 'design')) {
+    const p = await db.getProject(m.id); if (!p) continue;
+    const d = p.desktop; const img = d.nodes.length === 1 && d.nodes[0].type === 'image' ? d.nodes[0] : null;
+    const a = img?.assetId ? assets.get(img.assetId) : null;
+    if (!img || !a || a.src?.kind !== 'reference' || img.x !== 0 || img.y !== 0 || img.w !== d.width || img.h !== d.height) continue;
+    if (Math.abs(a.w / a.h - d.width / d.height) / (a.w / a.h) < 0.02) continue;
+    const z = sizeForImage(a.w, a.h);
+    const doc: Doc = { ...d, width: z.w, height: z.h, nodes: [{ ...img, w: z.w, h: z.h, crop: null }] };
+    await readyDoc(doc);
+    let thumb: string | undefined; try { thumb = thumbnail(doc, p.brand, assets, 360, z.h / z.w); } catch { /* not decoded yet */ }
+    const stored = { ...p, desktop: doc, size: { id: z.id, label: z.label, w: z.w, h: z.h }, updatedAt: new Date().toISOString(), ...(thumb ? { thumb } : {}) };
+    await db.putProject(stored as typeof p); cloud.pushProjectSoon(stored as typeof p); n++;
+  }
+  if (n) await A.refreshProjects();
+  return n;
 }
 
 /** Images from a paste or a drop, added to a client's library. Returns the new asset ids. */

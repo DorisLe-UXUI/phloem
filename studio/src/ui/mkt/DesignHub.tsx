@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems } from '../../mkt/data';
-import { SIZES, addClientImages, clientImages, designFromImage, designPost, paintFullPost, pastPosts, sizeForRow, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, designPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
@@ -29,7 +29,11 @@ export function DesignHub({ client }: { client: Client }) {
   const [layout, setLayout] = useState<'table' | 'cards'>(() => { try { return (localStorage.getItem('phloem.mkt.designView') as 'table' | 'cards') || 'table'; } catch { return 'table'; } });
   useEffect(() => { try { localStorage.setItem('phloem.mkt.designView', layout); } catch { /* private mode */ } }, [layout]);
   const abort = useRef<AbortController | null>(null);
-  useEffect(() => { void A.refreshProjects(); }, []);
+  const [sizeId, setSizeId0] = useState<string>(() => { try { return localStorage.getItem(preferredSizeKey(client.id)) || 'auto'; } catch { return 'auto'; } });
+  const setSizeId = (v: string) => { setSizeId0(v); try { localStorage.setItem(preferredSizeKey(client.id), v); } catch { /* private mode */ } };
+  /** The frame for a post: the size picked above the sheet, or by channel and format. */
+  const sz = (r: Row | null) => (sizeId === 'auto' ? (r ? sizeForRow(r) : SIZES[1]) : preferredSize(client.id, r));
+  useEffect(() => { void A.refreshProjects().then(() => refitImported(client.id)).then((n) => { if (n) toast(`Đã sửa khổ ${n} ảnh bài cũ cho đúng tỉ lệ ảnh gốc (không còn bị cắt).`, 'ok'); }); }, [client.id]);
   const designs = s.projects.filter((p) => p.clientId === client.id && p.kind === 'design');
   const byId = new Map(designs.map((d) => [d.id, d]));
   const plans = (cachedItems(client.id) || []).filter((i) => i.kind === 'plan') as Item<Plan>[];
@@ -58,7 +62,7 @@ export function DesignHub({ client }: { client: Client }) {
     if (!pastPosts(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
     abort.current = new AbortController();
     setBusy({ label: 'AI đang vẽ cả bài…' });
-    try { await paintFullPost(client, sizeForRow(row), row, { onStage: (m) => setBusy({ label: m }), signal: abort.current.signal }); toast('Đã vẽ xong cả bài, đã gắn vào bài trong kế hoạch. Chữ là một phần của ảnh: muốn sửa chữ thì bấm AI vẽ lại hoặc Tự thiết kế.', 'ok'); }
+    try { await paintFullPost(client, sz(row), row, { onStage: (m) => setBusy({ label: m }), signal: abort.current.signal }); toast('Đã vẽ xong cả bài, đã gắn vào bài trong kế hoạch. Chữ là một phần của ảnh: muốn sửa chữ thì bấm AI vẽ lại hoặc Tự thiết kế.', 'ok'); }
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(null); }
   };
@@ -72,7 +76,7 @@ export function DesignHub({ client }: { client: Client }) {
       if (abort.current.signal.aborted) break;
       const r = week[i];
       setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic}`, done: i, total: week.length });
-      try { await designPost(client, sizeForRow(r), r, { ai: true, open: false, signal: abort.current.signal, onStage: (m) => setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic} · ${m}`, done: i, total: week.length }) }); ok++; }
+      try { await designPost(client, sz(r), r, { ai: true, open: false, signal: abort.current.signal, onStage: (m) => setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic} · ${m}`, done: i, total: week.length }) }); ok++; }
       catch (e) { if (abort.current.signal.aborted) break; toast(`${r.topic}: ${(e as Error).message}`, 'err'); }
     }
     setBusy(null);
@@ -87,6 +91,12 @@ export function DesignHub({ client }: { client: Client }) {
       <div class="row wrap" style={{ marginBottom: 12 }}>
         <div class="seg"><button class={layout === 'table' ? 'on' : ''} onClick={() => setLayout('table')}><Icon name="grid" size={13} /> Bảng</button><button class={layout === 'cards' ? 'on' : ''} onClick={() => setLayout('cards')}><Icon name="blocks" size={13} /> Thẻ</button></div>
         <div class="seg"><button class={scope === 'approved' ? 'on' : ''} onClick={() => setScope('approved')}>Bài đã duyệt</button><button class={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>Tất cả bài</button></div>
+        <label class="mk-sizesel" title="Khổ ảnh cho các thiết kế mới (AI thiết kế, AI vẽ cả bài, Tự thiết kế, Ảnh của bạn)"><Icon name="rect" size={13} /><span>Cỡ ảnh</span>
+          <select value={sizeId} onChange={(e) => setSizeId((e.target as HTMLSelectElement).value)}>
+            <option value="auto">Tự theo kênh & định dạng</option>
+            {SIZES.map((z) => <option key={z.id} value={z.id}>{z.label} · {z.w}×{z.h}</option>)}
+          </select>
+        </label>
         <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter(hasDesign).length} đã có ảnh</span>
       </div>
 
@@ -107,17 +117,18 @@ export function DesignHub({ client }: { client: Client }) {
                       <td class="mono"><div class="cv">{r.time}</div></td>
                       <td><div class="cv"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><br /><span class="dim small">{FORMATS.find((f) => f.id === r.format)?.label}</span></div></td>
                       <td class="c-img">
-                        <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sizeForRow(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
+                        <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sz(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
                           {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>{r.format === 'carousel' ? 'Carousel · chưa có' : 'Chưa có ảnh'}</em></span>}
                           {slidesOf(r).length > 1 && <i class="mk-slide-n">1/{slidesOf(r).length}</i>}
+                          {des?.size && <i class="mk-size-n" title={des.size.label}>{des.size.w}×{des.size.h}</i>}
                         </button>
                         {slidesOf(r).length > 1 && <div class="mk-slides">{slidesOf(r).slice(1).map((d, k) => <button key={d.id} title={`Slide ${k + 2}`} onClick={() => void A.openProject(d.id)}>{d.thumb ? <img src={d.thumb} alt={`Slide ${k + 2}`} loading="lazy" /> : k + 2}</button>)}</div>}
                         {write && <div class="mk-imgacts">
                           {des
-                            ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sizeForRow(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>
-                            : <button class="ai" onClick={() => void make(sizeForRow(r), r, true)} title="AI vẽ ảnh và dựng bố cục theo nội dung bài"><Icon name="sparkle" size={12} />AI thiết kế</button>}
+                            ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sz(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>
+                            : <button class="ai" onClick={() => void make(sz(r), r, true)} title="AI vẽ ảnh và dựng bố cục theo nội dung bài"><Icon name="sparkle" size={12} />AI thiết kế</button>}
                           <button class="ai" onClick={() => void full(r)} title="AI vẽ nguyên bài hoàn chỉnh, có sẵn toàn bộ chữ, giống phong cách các bài cũ của khách"><Icon name="image" size={12} />AI vẽ cả bài</button>
-                          <button onClick={() => (des ? void A.openProject(des.id) : void make(sizeForRow(r), r, false))} title={des ? 'Mở trang chỉnh sửa (layer, chữ, đồ hoạ)' : 'Dựng bố cục trống theo thương hiệu rồi tự chỉnh'}><Icon name="text" size={12} />Tự thiết kế</button>
+                          <button onClick={() => (des ? void A.openProject(des.id) : void make(sz(r), r, false))} title={des ? 'Mở trang chỉnh sửa (layer, chữ, đồ hoạ)' : 'Dựng bố cục trống theo thương hiệu rồi tự chỉnh'}><Icon name="text" size={12} />Tự thiết kế</button>
                           <button onClick={() => setOwn(r)} title="Dùng ảnh có sẵn: tải lên, dán, hoặc chọn từ kho"><Icon name="upload" size={12} />{des ? 'Đổi ảnh' : 'Ảnh của bạn'}</button>
                         </div>}
                       </td>
@@ -142,11 +153,11 @@ export function DesignHub({ client }: { client: Client }) {
               // the pinned design, else the newest design made for this post (older ones were made before pinning existed)
               const des = designOf(r);
               const c = channelOf(r.channel);
-              const z = des?.size || sizeForRow(r);
+              const z = des?.size || sz(r);
               return (
                 <article key={r.planId + r.id} class="mk-post">
                   <header class="row"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><span class="dim small">{r.time} · {FORMATS.find((f) => f.id === r.format)?.label}</span><span class="grow" /><StatusChip s={r.status} /></header>
-                  <div class={`pv ${des ? '' : 'empty'}`} style={{ aspectRatio: `${z.w} / ${z.h}` }} onClick={() => (des ? void A.openProject(des.id) : write && void make(sizeForRow(r), r, true))} role="button" tabIndex={0} title={des ? 'Bấm để chỉnh sửa' : 'Bấm để AI thiết kế bài này'}>
+                  <div class={`pv ${des ? '' : 'empty'}`} style={{ aspectRatio: `${z.w} / ${z.h}` }} onClick={() => (des ? void A.openProject(des.id) : write && void make(sz(r), r, true))} role="button" tabIndex={0} title={des ? 'Bấm để chỉnh sửa' : 'Bấm để AI thiết kế bài này'}>
                     {des?.thumb ? <img src={des.thumb} alt={`Ảnh bài ${r.topic}`} loading="lazy" /> : <div class="ph"><Icon name="image" size={22} /><span>{r.visual ? r.visual.slice(0, 90) : 'Chưa có ảnh'}</span></div>}
                   </div>
                   <b class="mk-clamp">{r.topic}</b>
@@ -154,10 +165,10 @@ export function DesignHub({ client }: { client: Client }) {
                   {write && <div class="row wrap">
                     {des ? <>
                       <Btn xs icon="text" onClick={() => void A.openProject(des.id)}>Chỉnh sửa</Btn>
-                      <Btn xs icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sizeForRow(r), r, true); }}>AI gen lại</Btn>
+                      <Btn xs icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sz(r), r, true); }}>AI gen lại</Btn>
                     </> : <>
-                      <Btn xs icon="sparkle" onClick={() => void make(sizeForRow(r), r, true)}>AI thiết kế</Btn>
-                      <Btn xs icon="rect" onClick={() => void make(sizeForRow(r), r, false)}>Tự thiết kế</Btn>
+                      <Btn xs icon="sparkle" onClick={() => void make(sz(r), r, true)}>AI thiết kế</Btn>
+                      <Btn xs icon="rect" onClick={() => void make(sz(r), r, false)}>Tự thiết kế</Btn>
                       <Btn xs kind="ghost" icon="upload" onClick={() => setOwn(r)}>Ảnh của bạn</Btn>
                       <Btn xs kind="ghost" onClick={() => setPicker(r)}>Khổ khác…</Btn>
                     </>}
@@ -228,7 +239,7 @@ function OwnImage({ client, row, onClose }: { client: Client; row: Row; onClose:
         </label>
         {lib.length > 0 && <><span class="small muted">Hoặc chọn từ kho ảnh của {client.name}</span>
           <div class="asset-grid mk-pick-grid">{lib.slice(0, 60).map((a) => <button key={a.id} class="asset" disabled={busy} onClick={() => void use(a.id)} title={`${a.name} · ${a.w}×${a.h}`}>{assets.url(a.id) ? <img src={assets.url(a.id)} alt={a.name} loading="lazy" /> : null}<div class="nm">{a.name}</div></button>)}</div></>}
-        <span class="dim small">Ảnh lấp đầy khung {sizeForRow(row).label} ({sizeForRow(row).w}×{sizeForRow(row).h}). Muốn thêm chữ, logo: bấm Chỉnh sửa sau khi gắn.</span>
+        <span class="dim small">Ảnh lấp đầy khung {preferredSize(client.id, row).label} ({preferredSize(client.id, row).w}×{preferredSize(client.id, row).h}), đổi ở ô Cỡ ảnh trên bảng. Muốn thêm chữ, logo: bấm Chỉnh sửa sau khi gắn.</span>
       </div>
     </Modal>
   );
