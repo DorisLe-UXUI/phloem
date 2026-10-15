@@ -3,8 +3,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from '../server/src/db.mjs';
@@ -25,6 +26,7 @@ async function mockS3() {
       if (req.method === 'PUT') { objects.set(key, Buffer.concat(parts)); res.statusCode = 200; return res.end(); }
       if (req.method === 'DELETE') { objects.delete(key); res.statusCode = 204; return res.end(); }
       if (req.method === 'GET') { const b = objects.get(key); res.statusCode = b ? 200 : 404; return res.end(b || 'NoSuchKey'); }
+      if (req.method === 'HEAD') { res.statusCode = objects.has(key) ? 200 : 404; return res.end(); }
       res.statusCode = 405; res.end();
     });
   });
@@ -85,8 +87,8 @@ test('asset store: put/get/replace/remove, and old in-row bytes migrate out with
     assert.equal(s3.objects.has(`phloem/assets/${firstKey}`), false, 'replacing deletes the old object');
 
     // a user replaces old2 while the migration has already read it: the replace must win
-    const batch = db.assets.inlineBatch;
-    db.assets.inlineBatch = (n) => { const rows = batch(n); db.assets.inlineBatch = batch; return rows; };
+    const next = db.assets.inlineNext;
+    db.assets.inlineNext = () => { db.assets.inlineNext = next; const r = db.raw.prepare("SELECT owner, id, data FROM assets WHERE id = 'old2'").get(); return { ...r, data: Buffer.from(r.data) }; };
     const migrating = store.migrate();
     await store.put('u1', { id: 'old2', name: 'old2', mime: 'image/png' }, Buffer.from('replaced'));
     await migrating;
@@ -193,5 +195,43 @@ test('relay: a client and an image created seconds before the container dies are
   } finally {
     relay?.kill('SIGKILL'); await s3.close();
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('relay: boot on a big legacy database (~120 MB of in-row images) stays well under 250 MB RSS and resumes after a crash', async () => {
+  const s3 = await mockS3();
+  const N = 120, SIZE = 1024 * 1024;
+  const legacy = tmp('legacy-');
+  const db = openDb(join(legacy, 'phloem.db'));
+  db.raw.exec("INSERT INTO users (id, name, email, password, created_at) VALUES ('u1', 'U', 'u@x.vn', 'h', '2026')");
+  for (let i = 0; i < N; i++) db.assets.put('u1', { id: `img${i}`, name: `img${i}.png`, mime: 'image/png' }, randomBytes(SIZE));
+  db.close();
+  s3.objects.set('phloem/phloem.db', readFileSync(join(legacy, 'phloem.db')));
+  assert.ok(s3.objects.get('phloem/phloem.db').length > N * SIZE);
+  const PORT = 22000 + Math.floor(Math.random() * 2000);
+  const BASE = `http://127.0.0.1:${PORT}`;
+  const env = { ...process.env, PORT: String(PORT), AUTH_SECRET: 'test-secret-0123456789', ANTHROPIC_API_KEY: '', RELAY_TOKEN: '', BACKUP_S3_ENDPOINT: s3.cfg.endpoint, BACKUP_S3_BUCKET: 'bucket', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', BACKUP_DEBOUNCE_SEC: '1' };
+  const health = async () => { try { return (await (await fetch(BASE + '/')).json()).backup; } catch { return null; } };
+  let peak = 0, relay = null;
+  const rss = () => { if (!relay?.pid) return; try { const kb = Number(execFileSync('ps', ['-o', 'rss=', '-p', String(relay.pid)]).toString().trim()); if (kb > peak) peak = kb; } catch { /* exited */ } };
+  const sampler = setInterval(rss, 50);
+  const boot = async (dir) => { relay = spawn(process.execPath, ['server/src/index.mjs'], { env: { ...env, DATA_DIR: dir + '/' }, stdio: 'ignore' }); await until(health, 20000); };
+  const dirs = [tmp('big-a-'), tmp('big-b-')];
+  try {
+    await boot(dirs[0]);
+    // crash half-way through the migration
+    await until(async () => { const h = await health(); return h && h.assetsInDb < N / 2; }, 60000);
+    relay.kill('SIGKILL'); await new Promise((r) => relay.once('exit', r));
+    await boot(dirs[1]);
+    const done = await until(async () => { const h = await health(); return h && h.assetsInDb === 0 && h.at && !h.pending && h.bytes < 2 * 1024 * 1024 ? h : null; }, 90000);
+    rss();
+    assert.ok(peak < 250 * 1024, `peak RSS ${Math.round(peak / 1024)} MB`);
+    const objs = [...s3.objects.keys()].filter((k) => k.startsWith('phloem/assets/'));
+    assert.equal(objs.length, N, 'every image exactly once in the bucket (the resumed run reused what the crashed one uploaded)');
+    assert.ok(s3.objects.get('phloem/phloem.db').length < 2 * 1024 * 1024, `snapshot ${s3.objects.get('phloem/phloem.db').length} B`);
+    console.log(`# big legacy DB: peak RSS ${Math.round(peak / 1024)} MB, final snapshot ${Math.round(done.bytes / 1024)} KB`);
+  } finally {
+    clearInterval(sampler); relay?.kill('SIGKILL'); await s3.close();
+    for (const d of [...dirs, legacy]) rmSync(d, { recursive: true, force: true });
   }
 });

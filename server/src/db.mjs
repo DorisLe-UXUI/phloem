@@ -176,7 +176,7 @@ export function openDb(file) {
     assetRow: q("SELECT id, owner, name, mime, w, h, bytes, meta, created_at, blob, CASE WHEN length(data) > 0 THEN data END AS inline FROM assets WHERE owner = ? AND id = ?"),
     assetPutBlob: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, meta, created_at, blob) VALUES (?, ?, ?, ?, ?, ?, ?, x'', ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime, w = excluded.w, h = excluded.h, bytes = excluded.bytes, data = x'', blob = excluded.blob, meta = COALESCE(excluded.meta, assets.meta) WHERE assets.owner = excluded.owner`),
-    assetInlineCount: q('SELECT COUNT(*) AS n FROM assets WHERE length(data) > 0'), assetInlineBatch: q('SELECT owner, id, data FROM assets WHERE length(data) > 0 LIMIT ?'),
+    assetInlineCount: q('SELECT COUNT(*) AS n FROM assets WHERE length(data) > 0'), assetInlineNext: q('SELECT owner, id, data FROM assets WHERE length(data) > 0 LIMIT 1'),
     assetDropInline: q("UPDATE assets SET data = x'', blob = ? WHERE owner = ? AND id = ? AND length(data) > 0"), assetKeys: q('SELECT blob FROM assets WHERE owner = ? AND blob IS NOT NULL'),
     assetDel: q('DELETE FROM assets WHERE owner = ? AND id = ?'), assetUsage: q('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes FROM assets WHERE owner = ?'),
     usageAll: q('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM assets) + (SELECT COALESCE(SUM(length(json)), 0) FROM projects) + (SELECT COALESCE(SUM(length(enc)), 0) FROM profiles) + (SELECT COALESCE(SUM(length(json)), 0) FROM kv) AS bytes'),
@@ -244,7 +244,7 @@ export function openDb(file) {
       /** Metadata + blob key (bytes already stored); null when the id belongs to another owner. */
       putBlob: (owner, m, bytes, key) => { const meta = m.meta ? JSON.stringify(m.meta) : null; const t = now(); const r = S.assetPutBlob.run(m.id, owner, String(m.name || 'image').slice(0, 200), m.mime || 'application/octet-stream', m.w | 0, m.h | 0, bytes, meta, t, key); return Number(r.changes) ? assetMeta({ ...m, meta, bytes, created_at: t }) : null; },
       inlineCount: () => Number(S.assetInlineCount.get().n),
-      inlineBatch: (n) => S.assetInlineBatch.all(n).map((r) => ({ owner: r.owner, id: r.id, data: Buffer.from(r.data) })),
+      inlineNext: () => { const r = S.assetInlineNext.get(); return r ? { owner: r.owner, id: r.id, data: Buffer.from(r.data.buffer, r.data.byteOffset, r.data.byteLength) } : null; },
       dropInline: (owner, id, key) => Number(S.assetDropInline.run(key, owner, id).changes) > 0,
       keysOf: (owner) => S.assetKeys.all(owner).map((r) => r.blob),
     },

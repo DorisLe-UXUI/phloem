@@ -31,6 +31,18 @@ export function createBlobStore({ cfg = null, dir, call = s3Call, log = console.
       }
       return k;
     },
+    /** Migration: stores `data` under a key derived from (owner, id, bytes), so a run that crashed half-way and starts over
+     *  finds what it already uploaded (HEAD) and skips it. Not cached on disk: the container's disk already holds the old DB. */
+    async putMigrated(owner, id, data) {
+      const k = createHash('sha256').update(`${owner}\0${id}\0`).update(data).digest('hex').slice(0, 40);
+      if (!cfg) { writeFileSync(file(k), data); return k; }
+      const h = await call(cfg, 'HEAD', objectKey(k));
+      if (h.status === 200) return k;
+      const r = await call(cfg, 'PUT', objectKey(k), data, { 'content-type': 'application/octet-stream' });
+      if (r.status < 200 || r.status >= 300) { stats.errors++; throw new Error(`PUT asset → HTTP ${r.status} ${r.body.toString('utf8').slice(0, 160)}`); }
+      stats.uploads++;
+      return k;
+    },
     async get(k) {
       if (!okKey(k)) return null;
       if (existsSync(file(k))) return readFileSync(file(k));
@@ -58,6 +70,8 @@ export function createBlobStore({ cfg = null, dir, call = s3Call, log = console.
 export function createAssetStore({ db, blobs, log = console.log }) {
   const A = db.assets;
   const migration = { pending: A.inlineCount(), moved: 0, running: false, error: null };
+  // Crash mid-migration is safe: a row is cleared only after its object is in the bucket, so any snapshot taken meanwhile
+  // (rows cleared or not) is self-consistent; the next boot restores it and carries on, skipping objects already uploaded.
   return {
     migration,
     list: (owner) => A.list(owner),
@@ -85,14 +99,12 @@ export function createAssetStore({ db, blobs, log = console.log }) {
       if (migration.running) return;
       migration.running = true; migration.error = null;
       try {
-        for (;;) {
-          const batch = A.inlineBatch(20); if (!batch.length) break;
-          for (const r of batch) {
-            const k = await blobs.put(r.data);
-            if (!A.dropInline(r.owner, r.id, k)) await blobs.remove(k); // replaced meanwhile: the new upload already has its own key
-            migration.moved++;
-          }
-          migration.pending = A.inlineCount();
+        // one row in memory at a time (the relay has 512 MB; the old database held ~140 MB of images)
+        for (let r = A.inlineNext(); r; r = A.inlineNext()) {
+          let k = await blobs.putMigrated(r.owner, r.id, r.data);
+          if (!A.dropInline(r.owner, r.id, k)) await blobs.remove(k); // replaced meanwhile: the new upload already has its own key
+          r = null; k = null;
+          migration.moved++; migration.pending = Math.max(0, migration.pending - 1);
         }
         migration.pending = 0;
         if (migration.moved) { log(`[blobs] moved ${migration.moved} asset(s) out of the database`); onDone?.(); }
