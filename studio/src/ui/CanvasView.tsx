@@ -12,7 +12,7 @@ import { Btn } from './components';
 import { Icon } from './icons';
 import { boardFrames, frameAt, framePicture, openFrame } from './board';
 
-type Mode = { kind: 'idle' } | { kind: 'pinch'; d0: number; z0: number; c0: { x: number; y: number }; pan0: { x: number; y: number } } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } }
+type Mode = { kind: 'idle' } | { kind: 'pinch'; d0: number; z0: number; c0: { x: number; y: number }; pan0: { x: number; y: number } } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } } | { kind: 'rotate'; id: string; base: Doc; cx: number; cy: number; pushed?: boolean }
   // dragging a pasteboard image; `inside` = pointer over the artboard, `over` = image layer that would be replaced
   | { kind: 'scrap'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; inside: boolean; over: string | null }
   // crop mode: dragging pans the photo inside its frame
@@ -33,6 +33,15 @@ function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, 
 }
 
 const HANDLE = 7;
+/** Screen px between the selection's top edge and the round rotate handle. */
+const ROT_GAP = 26;
+/** Snap an angle to 15° steps (Shift) or onto 0/90/180/270 when within 3°; kept in -180..180. */
+export function snapAngle(deg: number, step15: boolean): number {
+  let a = step15 ? Math.round(deg / 15) * 15 : deg;
+  for (const q of [-180, -90, 0, 90, 180]) if (Math.abs(a - q) < 3) a = q;
+  a = ((a + 180) % 360 + 360) % 360 - 180;
+  return Math.round(a * 10) / 10;
+}
 const CURSORS = ['nw-resize', 'n-resize', 'ne-resize', 'e-resize', 'se-resize', 'sw-resize', 's-resize', 'w-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize'];
 
 function handlesOf(r: ops.Rect): { x: number; y: number }[] {
@@ -174,6 +183,7 @@ export function CanvasView() {
       for (const id of st.selection) { const n = ops.findNode(doc, id); if (!n) continue; const r = rectOf(ops.bounds(n)); ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 1; ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w, r.h); }
       const r = rectOf(sel);
       if (st.selection.length > 1) { ctx.setLineDash([3, 3]); ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w, r.h); ctx.setLineDash([]); }
+      if (rotTarget()) { const hx = r.x + r.w / 2, hy = r.y - ROT_GAP; ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx, r.y); ctx.lineTo(hx, hy + 6); ctx.stroke(); ctx.fillStyle = '#060908'; ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(hx, hy, 2.5, -Math.PI * 0.9, Math.PI * 0.4); ctx.stroke(); }
       for (const hd of handlesOf(r)) { ctx.fillStyle = '#060908'; ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.rect(hd.x - HANDLE / 2, hd.y - HANDLE / 2, HANDLE, HANDLE); ctx.fill(); ctx.stroke(); }
       // size label
       const label = `${Math.round(sel.w)} × ${Math.round(sel.h)}`;
@@ -251,6 +261,16 @@ export function CanvasView() {
   }
 
   // ----- hit helpers -----
+  /** The one selected layer the rotate handle turns (groups have no rotation). */
+  function rotTarget(): Node | null {
+    const st = get(); if (st.selection.length !== 1 || st.editingText || st.cropping || st.cutting) return null;
+    const n = ops.findNode(docOf(), st.selection[0]); return n && n.type !== 'group' && !n.locked ? n : null;
+  }
+  function onRotHandle(x: number, y: number): boolean {
+    const n = rotTarget(); if (!n) return false;
+    const st = get(); const b = ops.bounds(n);
+    return Math.hypot(x - (b.x + b.w / 2), y - (b.y - ROT_GAP / st.zoom)) <= 9 / st.zoom;
+  }
   function handleAt(x: number, y: number): number {
     const st = get(); const sel = ops.selectionBounds(docOf(), st.selection);
     if (!sel || st.editingText) return -1;
@@ -307,6 +327,8 @@ export function CanvasView() {
     if (st.tool === 'rect') { mode.current = { kind: 'draw', sx: d.x, sy: d.y, cur: d }; return; }
     if (st.tool === 'text') { A.addText(Math.round(d.x), Math.round(d.y)); return; }
     if (st.tool === 'image') { pendingPoint.current = d; fileInput.current?.click(); set({ tool: 'select' }); return; }
+    // rotate handle above the selection
+    if (onRotHandle(d.x, d.y)) { const n = rotTarget()!; const b = ops.bounds(n); mode.current = { kind: 'rotate', id: n.id, base: docOf(), cx: b.x + b.w / 2, cy: b.y + b.h / 2 }; return; }
     // select tool (cut / crop drags win over the resize handles of the same image)
     const hIdx = st.cutting || st.cropping ? -1 : handleAt(d.x, d.y);
     if (hIdx >= 0) { const sel = ops.selectionBounds(docOf(), st.selection)!; mode.current = { kind: 'resize', handle: hIdx, base: docOf(), ids: st.selection.slice(), start: sel, sx: d.x, sy: d.y }; return; }
@@ -354,7 +376,7 @@ export function CanvasView() {
         const hIdx = handleAt(d.x, d.y);
         const fr = hIdx < 0 && !insideArtboard(d.x, d.y) && !hitScrap(d.x, d.y) ? frameAt(d.x, d.y) : null;
         if ((fr?.id ?? null) !== frameHover.current) { frameHover.current = fr?.id ?? null; set({}); }
-        wrap.current!.style.cursor = hIdx >= 0 ? CURSORS[hIdx] : hitScrap(d.x, d.y) ? 'grab' : fr ? 'pointer' : '';
+        wrap.current!.style.cursor = onRotHandle(d.x, d.y) ? 'grab' : hIdx >= 0 ? CURSORS[hIdx] : hitScrap(d.x, d.y) ? 'grab' : fr ? 'pointer' : '';
         const n = hit(d.x, d.y, e.metaKey || e.ctrlKey);
         const hv = n ? n.id : null;
         if (hv !== st.hover) set({ hover: hv });
@@ -399,6 +421,13 @@ export function CanvasView() {
       const moving = { x: sel.x + dx, y: sel.y + dy, w: sel.w, h: sel.h };
       const sn = e.altKey ? { dx: 0, dy: 0 } : snapDelta(moving, m.ids);
       A.commit(ops.moveBy(m.base, m.ids, Math.round(dx + sn.dx), Math.round(dy + sn.dy)), false);
+      return;
+    }
+    if (m.kind === 'rotate') {
+      const deg = snapAngle((Math.atan2(d.y - m.cy, d.x - m.cx) * 180) / Math.PI + 90, e.shiftKey);
+      if (!m.pushed) { m.pushed = true; history.push(m.base); }
+      A.commit(ops.updateNode(m.base, m.id, { rotate: deg || 0 } as Partial<Node>), false);
+      wrap.current!.style.cursor = 'grabbing';
       return;
     }
     if (m.kind === 'resize') {

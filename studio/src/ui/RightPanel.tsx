@@ -115,6 +115,21 @@ function AlignRow() {
   );
 }
 
+/** Rotation of any layer: 0–360° field, ±15° nudges, a quarter turn and reset (the canvas handle above the selection does the same). */
+function RotateRow({ deg, set }: { deg: number; set: (v: number) => void }) {
+  const norm = (a: number) => { const x = ((a + 180) % 360 + 360) % 360 - 180; return Math.round(x * 10) / 10 || 0; };
+  const shown = Math.round(((deg % 360) + 360) % 360 * 10) / 10;
+  return (
+    <div class="row" style={{ gap: 4 }}>
+      <div class="grow"><Num label="Xoay" value={shown} min={0} max={360} suffix="°" onChange={(v) => set(norm(v))} title="Xoay quanh tâm (0–360°). Trên canvas: kéo nút tròn phía trên khung chọn, giữ Shift để bước 15°" /></div>
+      <Btn xs kind="ghost" onClick={() => set(norm(deg - 15))} title="Xoay trái 15°">↺</Btn>
+      <Btn xs kind="ghost" onClick={() => set(norm(deg + 15))} title="Xoay phải 15°">↻</Btn>
+      <Btn xs kind="ghost" onClick={() => set(norm(deg + 90))} title="Xoay 90°">90°</Btn>
+      <Btn xs kind="ghost" onClick={() => set(0)} title="Về 0°">0</Btn>
+    </div>
+  );
+}
+
 function NodeProps({ n }: { n: Node }) {
   const bb = ops.bounds(n);
   const up = (patch: Partial<Node>) => A.updateNode(n.id, patch);
@@ -132,6 +147,7 @@ function NodeProps({ n }: { n: Node }) {
         <Num label="Mờ" value={Math.round(n.opacity * 100)} min={0} max={100} suffix="%" onChange={(v) => up({ opacity: v / 100 })} />
         {n.type === 'rect' || n.type === 'image' ? <Num label="Bo" value={n.radius} min={0} suffix="px" onChange={(v) => up({ radius: Math.round(v) } as Partial<Node>)} /> : <div />}
       </div>
+      {n.type !== 'group' && <RotateRow deg={(n as { rotate?: number }).rotate ?? 0} set={(v) => up({ rotate: v } as Partial<Node>)} />}
       <Eyebrow>Căn</Eyebrow>
       <AlignRow />
       {n.type === 'text' && <TextProps n={n} />}
@@ -319,7 +335,6 @@ function ImageProps({ n }: { n: ImageNode }) {
       <Eyebrow action={{ label: s.cropping === n.id ? 'Đang cắt · Esc' : 'Cắt ảnh', onClick: () => set({ cropping: s.cropping === n.id ? null : n.id }) }}>Khung & vị trí</Eyebrow>
       <div class="row">
         <div class="grow"><Num label="Zoom" value={Math.round((n.crop?.zoom ?? 1) * 100)} min={100} max={600} step={5} suffix="%" onChange={(v) => up({ crop: { zoom: Math.max(1, v / 100), fx: n.crop?.fx ?? 0.5, fy: n.crop?.fy ?? 0.5 } })} /></div>
-        <div class="grow"><Num label="Xoay" value={n.rotate ?? 0} min={-180} max={180} suffix="°" onChange={(v) => up({ rotate: v || 0 })} /></div>
       </div>
       <div class="row" style={{ gap: 6 }}>
         <div class="grid3" style={{ gap: 3, width: 78, flex: 'none' }}>
