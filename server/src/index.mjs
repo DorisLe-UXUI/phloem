@@ -763,7 +763,7 @@ async function shareRoute(url, req, res) {
   const review = DB.items.get(sh.owner, sh.clientId, 'review', reviewId)?.data || { rows: {}, comments: [], overall: null };
   if (req.method === 'GET' && !action) {
     const c = sh.client || {};
-    return json(res, 200, { client: { name: sh.clientName, logo: c.logo || '', color: c.color || '' }, kind: sh.kind, itemId: sh.itemId, data: item.data, updatedAt: item.updatedAt, review, expiresAt: sh.expiresAt });
+    return json(res, 200, { client: { name: sh.clientName, logo: c.logo || '', color: c.color || '', language: c.language || 'vi' }, kind: sh.kind, itemId: sh.itemId, data: item.data, updatedAt: item.updatedAt, review, expiresAt: sh.expiresAt });
   }
   if (req.method === 'POST' && action === 'review') {
     const p = await body(req);

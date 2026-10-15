@@ -153,7 +153,7 @@ export async function setMember(clientId: string, email: string, role: Role): Pr
 export async function removeMember(clientId: string, email: string): Promise<void> { await req(`/db/client/${enc(clientId)}/members/${enc(email)}`, { method: 'DELETE' }); }
 
 // ---------- public review (no account) ----------
-export interface SharedItem { client: { name: string; logo: string; color: string }; kind: ItemKind; itemId: string; data: any; updatedAt: string; review: any; expiresAt: string }
+export interface SharedItem { client: { name: string; logo: string; color: string; language?: string }; kind: ItemKind; itemId: string; data: any; updatedAt: string; review: any; expiresAt: string }
 function publicBase(): string { return (get().settings.relayUrl || '').replace(/\/$/, ''); }
 export async function openShare(token: string): Promise<SharedItem> {
   await wakeRelay(publicBase());

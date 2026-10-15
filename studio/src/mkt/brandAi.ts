@@ -35,6 +35,7 @@ export function coerceBrandBook(raw: any, base: Partial<BrandBook> = {}): BrandB
     examples: { do: list(r.examples?.do, 8), dont: list(r.examples?.dont, 8) },
     kit: { hashtags: list(r.kit?.hashtags ?? r.hashtags, 15, 40).map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '')), ctas: list(r.kit?.ctas ?? r.ctas, 8, 60) },
     emailBrand: base.emailBrand ?? null,
+    ...(base.siteRead !== undefined ? { siteRead: base.siteRead } : {}), ...(base.siteError ? { siteError: base.siteError } : {}),
     version: base.version || 1,
     versions: base.versions || [],
   };
@@ -86,18 +87,18 @@ const b64 = async (f: Blob) => { const buf = new Uint8Array(await f.arrayBuffer(
 export async function buildBrandBook(client: Client, input: BrandInput, onProgress: (p: BrandProgress) => void, signal?: AbortSignal): Promise<{ book: BrandBook; logo: string | null; notes: string[]; industry: string; brandName: string }> {
   const total = 4;
   const notes: string[] = [];
-  let site: SiteProfile | null = null, sheet = '';
+  let site: SiteProfile | null = null, sheet = '', siteError = '';
   let emailBrand: Record<string, unknown> | null = null, logoMain: string | undefined, logoLight: string | undefined, logoData: string | null = null;
   const mock = get().settings.anthropicKey.trim() === 'mock';
 
-  const siteOk = /^(https?:\/\/|www\.)|^[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(input.website.trim());
-  if (input.website.trim() && !siteOk) notes.push(`"${input.website.trim()}" không phải địa chỉ website, bỏ qua bước đọc web.`);
+  const siteOk = (() => { try { return /\.[a-z]{2,}$/i.test(new URL(/^https?:/i.test(input.website.trim()) ? input.website.trim() : `https://${input.website.trim()}`).hostname); } catch { return false; } })();
+  if (input.website.trim() && !siteOk) { notes.push(`"${input.website.trim()}" không phải địa chỉ website, bỏ qua bước đọc web.`); siteError = 'Địa chỉ website không hợp lệ'; }
   if (input.website.trim() && siteOk && !mock) {
     onProgress({ step: 1, total, label: 'Đọc website (màu, font, logo, nội dung, trang con)…' });
     try {
       site = await analyzeSite(input.website, (m) => onProgress({ step: 1, total, label: m }));
       emailBrand = { ...brandFromSite(site), links: linksFromSite(site), name: client.name };
-    } catch (e) { notes.push(`Không đọc được website: ${(e as Error).message}`); }
+    } catch (e) { notes.push(`Không đọc được website: ${(e as Error).message}`); siteError = (e as Error).message; }
   }
   if (input.sheet.trim() && !mock) {
     onProgress({ step: 2, total, label: 'Đọc Google Sheet…' });
@@ -144,7 +145,7 @@ export async function buildBrandBook(client: Client, input: BrandInput, onProgre
   const book = coerceBrandBook(raw, {
     title: `Brand book ${client.name}`,
     sources: { website: input.website.trim() || undefined, sheet: input.sheet.trim() || undefined, drive: input.drive.trim() || undefined, files: input.files.map((f) => f.name) },
-    logo: { main: logoMain, light: logoLight, rules: [] }, emailBrand,
+    logo: { main: logoMain, light: logoLight, rules: [] }, emailBrand, siteRead: site ? true : input.website.trim() ? false : undefined, siteError: siteError || undefined,
   });
   if (!book.palette.length && emailBrand) book.palette = [{ name: 'Chính', hex: String(emailBrand.primary), role: 'primary', ratio: 60 }, { name: 'Nhấn', hex: String(emailBrand.accent), role: 'accent', ratio: 10 }, { name: 'Chữ', hex: String(emailBrand.ink), role: 'neutral', ratio: 20 }, { name: 'Nền', hex: String(emailBrand.bg), role: 'neutral', ratio: 10 }].filter((c) => HEX.test(c.hex)) as PaletteColor[];
   const industry = typeof (raw as { industry?: unknown })?.industry === 'string' ? String((raw as { industry: string }).industry).trim().slice(0, 80) : '';

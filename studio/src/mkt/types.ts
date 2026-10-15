@@ -92,6 +92,9 @@ export interface BrandBook {
   emailBrand?: Record<string, unknown> | null;
   /** House style the AI read from the client's past posts and pictures (Nhập dữ liệu → AI học phong cách). */
   styleNotes?: string;
+  /** false = a website was given but could not be read (the book was written without it). */
+  siteRead?: boolean;
+  siteError?: string;
   version: number;
   versions?: { version: number; at: string; by: string; note: string }[];
   updatedBy?: string;

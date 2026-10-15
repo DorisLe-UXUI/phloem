@@ -2210,6 +2210,13 @@ select.in.mk-role {
   padding: 0;
   cursor: pointer;
 }
+.mk-sitefix {
+  flex-wrap: wrap;
+}
+.mk-sitefix .in {
+  width: 240px;
+  flex: none;
+}
 
 /* studio/styles.css */
 :root {

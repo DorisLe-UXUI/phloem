@@ -117,6 +117,7 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
   useEffect(() => { if (!edit) setD(book); }, [book, edit]);
   useEffect(() => { ensureFonts([book.fonts.heading, book.fonts.body]); }, [book.fonts.heading, book.fonts.body]);
   const logoUrl = book.logo.main ? assets.url(book.logo.main) : undefined;
+  const L = bbLabels(client.language);
 
   const save = async (next: BrandBook, note: string) => {
     const version = (book.version || 1) + 1;
@@ -138,6 +139,7 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
             {book.status !== 'approved' ? <Btn kind="primary" icon="check" onClick={() => setStatus('approved')}>Duyệt thương hiệu</Btn> : <Btn kind="ghost" onClick={() => setStatus('draft')}>Mở lại để sửa</Btn>}
           </>) : undefined} />
 
+      {write && (book.siteRead === false || (!!book.sources.website && !book.emailBrand && !book.logo.main)) && <SiteFix client={client} book={book} onRedo={onRedo} />}
       {review?.overall && <div class={`claim ${review.overall.status === 'changes' ? 'err' : ''}`}><Icon name={review.overall.status === 'approved' ? 'check' : 'warn'} /><span class="grow"><b>{review.overall.by}</b> {review.overall.status === 'approved' ? 'đã duyệt brand book' : 'muốn sửa brand book'} · {fmtTime(review.overall.at)}</span>{review.overall.status === 'approved' && book.status !== 'approved' && write && <Btn sm kind="primary" onClick={() => setStatus('approved')}>Áp dụng: Đã duyệt</Btn>}</div>}
       {comments.length > 0 && <section class="mk-card"><div class="mk-card-h"><b>Bình luận của khách</b></div>{comments.map((c, i) => <div key={i} class="mk-line static"><b>{c.by}</b><span class="grow">{c.text}</span><span class="dim small mono">{fmtTime(c.at)}</span></div>)}</section>}
 
@@ -149,77 +151,77 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
           <div class="bb-strip">{book.palette.map((c) => <i key={c.hex} style={{ background: c.hex, flex: Math.max(4, c.ratio) }} />)}</div>
         </header>
 
-        <Sec n="01" title="Sứ mệnh, tầm nhìn, giá trị">
+        <Sec n="01" title={L.s1}>
           <div class="bb-2">
-            <Txt label="Sứ mệnh" v={d.mission} edit={edit} on={(v) => setD({ ...d, mission: v })} />
-            <Txt label="Tầm nhìn" v={d.vision} edit={edit} on={(v) => setD({ ...d, vision: v })} />
+            <Txt label={L.mission} v={d.mission} edit={edit} on={(v) => setD({ ...d, mission: v })} />
+            <Txt label={L.vision} v={d.vision} edit={edit} on={(v) => setD({ ...d, vision: v })} />
           </div>
-          <Lst label="Giá trị cốt lõi" v={d.values} edit={edit} on={(v) => setD({ ...d, values: v })} chips />
+          <Lst label={L.values} v={d.values} edit={edit} on={(v) => setD({ ...d, values: v })} chips />
         </Sec>
 
-        <Sec n="02" title="Khách hàng mục tiêu">
+        <Sec n="02" title={L.s2}>
           <div class="bb-personas">
-            {d.personas.map((p, i) => <PersonaCard key={i} p={p} edit={edit} on={(np) => setD({ ...d, personas: d.personas.map((x, j) => (j === i ? np : x)) })} onDel={() => setD({ ...d, personas: d.personas.filter((_, j) => j !== i) })} />)}
+            {d.personas.map((p, i) => <PersonaCard key={i} L={L} p={p} edit={edit} on={(np) => setD({ ...d, personas: d.personas.map((x, j) => (j === i ? np : x)) })} onDel={() => setD({ ...d, personas: d.personas.filter((_, j) => j !== i) })} />)}
             {edit && d.personas.length < 4 && <button class="bb-add" onClick={() => setD({ ...d, personas: [...d.personas, { name: 'Persona mới', age: '', job: '', goals: '', pains: '', channels: '' }] })}><Icon name="plus" /> Thêm persona</button>}
           </div>
         </Sec>
 
-        <Sec n="03" title="Giọng nói">
-          <Lst label="Tính cách" v={d.voice.traits} edit={edit} on={(v) => setD({ ...d, voice: { ...d.voice, traits: v } })} chips />
+        <Sec n="03" title={L.s3}>
+          <Lst label={L.traits} v={d.voice.traits} edit={edit} on={(v) => setD({ ...d, voice: { ...d.voice, traits: v } })} chips />
           <div class="bb-2">
-            <Lst label="Nên" v={d.voice.do} edit={edit} on={(v) => setD({ ...d, voice: { ...d.voice, do: v } })} tone="ok" />
-            <Lst label="Không nên" v={d.voice.dont} edit={edit} on={(v) => setD({ ...d, voice: { ...d.voice, dont: v } })} tone="err" />
+            <Lst label={L.do} v={d.voice.do} edit={edit} on={(v) => setD({ ...d, voice: { ...d.voice, do: v } })} tone="ok" />
+            <Lst label={L.dont} v={d.voice.dont} edit={edit} on={(v) => setD({ ...d, voice: { ...d.voice, dont: v } })} tone="err" />
           </div>
         </Sec>
 
-        <Sec n="04" title="Thông điệp, USP, đối thủ">
+        <Sec n="04" title={L.s4}>
           <div class="bb-2">
-            <Lst label="Thông điệp chính" v={d.messages} edit={edit} on={(v) => setD({ ...d, messages: v })} />
-            <Lst label="Điểm khác biệt (USP)" v={d.usp} edit={edit} on={(v) => setD({ ...d, usp: v })} />
+            <Lst label={L.messages} v={d.messages} edit={edit} on={(v) => setD({ ...d, messages: v })} />
+            <Lst label={L.usp} v={d.usp} edit={edit} on={(v) => setD({ ...d, usp: v })} />
           </div>
-          <Lst label="Đối thủ" v={d.competitors.map((c) => `${c.name}: ${c.note}`)} edit={edit} on={(v) => setD({ ...d, competitors: v.map((x) => { const [n, ...r] = x.split(':'); return { name: n.trim(), note: r.join(':').trim() }; }) })} />
+          <Lst label={L.competitors} v={d.competitors.map((c) => `${c.name}: ${c.note}`)} edit={edit} on={(v) => setD({ ...d, competitors: v.map((x) => { const [n, ...r] = x.split(':'); return { name: n.trim(), note: r.join(':').trim() }; }) })} />
         </Sec>
 
-        <Sec n="05" title="Logo">
+        <Sec n="05" title={L.s5}>
           <div class="bb-logos">
-            <div class="bb-logo light">{logoUrl || client.logo ? <img src={logoUrl || client.logo} alt="Logo trên nền sáng" /> : <span class="dim">Chưa có logo</span>}<span>Nền sáng</span></div>
-            <div class="bb-logo dark">{book.logo.light ? <img src={assets.url(book.logo.light)} alt="Logo trên nền tối" /> : logoUrl || client.logo ? <img src={logoUrl || client.logo} alt="Logo trên nền tối" /> : <span class="dim">Chưa có logo</span>}<span>Nền tối</span></div>
+            <div class="bb-logo light">{logoUrl || client.logo ? <img src={logoUrl || client.logo} alt="Logo trên nền sáng" /> : <span class="dim">{L.noLogo}</span>}<span>{L.light}</span></div>
+            <div class="bb-logo dark">{book.logo.light ? <img src={assets.url(book.logo.light)} alt="Logo trên nền tối" /> : logoUrl || client.logo ? <img src={logoUrl || client.logo} alt="Logo trên nền tối" /> : <span class="dim">{L.noLogo}</span>}<span>{L.dark}</span></div>
           </div>
-          <Lst label="Quy tắc dùng logo" v={d.logo.rules} edit={edit} on={(v) => setD({ ...d, logo: { ...d.logo, rules: v } })} />
+          <Lst label={L.logoRules} v={d.logo.rules} edit={edit} on={(v) => setD({ ...d, logo: { ...d.logo, rules: v } })} />
         </Sec>
 
-        <Sec n="06" title="Bảng màu">
+        <Sec n="06" title={L.s6}>
           <div class="bb-palette">
-            {d.palette.map((c, i) => <Swatch key={i} c={c} edit={edit} on={(nc) => setD({ ...d, palette: d.palette.map((x, j) => (j === i ? nc : x)) })} onDel={() => setD({ ...d, palette: d.palette.filter((_, j) => j !== i) })} />)}
+            {d.palette.map((c, i) => <Swatch key={i} L={L} c={c} edit={edit} on={(nc) => setD({ ...d, palette: d.palette.map((x, j) => (j === i ? nc : x)) })} onDel={() => setD({ ...d, palette: d.palette.filter((_, j) => j !== i) })} />)}
             {edit && d.palette.length < 10 && <button class="bb-add" onClick={() => setD({ ...d, palette: [...d.palette, { name: 'Màu mới', hex: '#888888', role: 'neutral', ratio: 5 }] })}><Icon name="plus" /> Thêm màu</button>}
           </div>
         </Sec>
 
-        <Sec n="07" title="Chữ">
+        <Sec n="07" title={L.s7}>
           <div class="bb-type">
-            <div><span class="bb-l">Tiêu đề · {d.fonts.heading}</span>{edit ? <input class="in" value={d.fonts.heading} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, heading: (e.target as HTMLInputElement).value } })} /> : <div class="bb-h-demo">{book.tagline || client.name}</div>}</div>
-            <div><span class="bb-l">Nội dung · {d.fonts.body}</span>{edit ? <input class="in" value={d.fonts.body} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, body: (e.target as HTMLInputElement).value } })} /> : <div class="bb-b-demo">{book.mission ? book.mission.slice(0, 160) : client.name} · Tiếng Việt có dấu hiển thị đầy đủ: ă â đ ê ô ơ ư ạ ậ ể ữ.</div>}</div>
+            <div><span class="bb-l">{L.heading} · {d.fonts.heading}</span>{edit ? <input class="in" value={d.fonts.heading} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, heading: (e.target as HTMLInputElement).value } })} /> : <div class="bb-h-demo">{book.tagline || client.name}</div>}</div>
+            <div><span class="bb-l">{L.body} · {d.fonts.body}</span>{edit ? <input class="in" value={d.fonts.body} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, body: (e.target as HTMLInputElement).value } })} /> : <div class="bb-b-demo">{book.mission ? book.mission.slice(0, 160) : client.name} · Tiếng Việt có dấu hiển thị đầy đủ: ă â đ ê ô ơ ư ạ ậ ể ữ.</div>}</div>
           </div>
-          <Txt label="Cách dùng" v={d.fonts.note} edit={edit} on={(v) => setD({ ...d, fonts: { ...d.fonts, note: v } })} />
+          <Txt label={L.fontNote} v={d.fonts.note} edit={edit} on={(v) => setD({ ...d, fonts: { ...d.fonts, note: v } })} />
         </Sec>
 
-        <Sec n="08" title="Hình ảnh và bố cục">
+        <Sec n="08" title={L.s8}>
           <div class="bb-2">
-            <Lst label="Phong cách ảnh" v={d.imagery} edit={edit} on={(v) => setD({ ...d, imagery: v })} />
-            <Lst label="Quy tắc bố cục" v={d.layout} edit={edit} on={(v) => setD({ ...d, layout: v })} />
+            <Lst label={L.imagery} v={d.imagery} edit={edit} on={(v) => setD({ ...d, imagery: v })} />
+            <Lst label={L.layout} v={d.layout} edit={edit} on={(v) => setD({ ...d, layout: v })} />
           </div>
           <div class="bb-2">
-            <Lst label="Ví dụ đúng" v={d.examples.do} edit={edit} on={(v) => setD({ ...d, examples: { ...d.examples, do: v } })} tone="ok" />
-            <Lst label="Ví dụ sai" v={d.examples.dont} edit={edit} on={(v) => setD({ ...d, examples: { ...d.examples, dont: v } })} tone="err" />
+            <Lst label={L.exDo} v={d.examples.do} edit={edit} on={(v) => setD({ ...d, examples: { ...d.examples, do: v } })} tone="ok" />
+            <Lst label={L.exDont} v={d.examples.dont} edit={edit} on={(v) => setD({ ...d, examples: { ...d.examples, dont: v } })} tone="err" />
           </div>
         </Sec>
 
-        <Sec n="09" title="Brand kit">
+        <Sec n="09" title={L.s9}>
           <div class="bb-2">
             <Lst label="Hashtag" v={d.kit.hashtags} edit={edit} on={(v) => setD({ ...d, kit: { ...d.kit, hashtags: v } })} chips />
-            <Lst label="CTA mặc định" v={d.kit.ctas} edit={edit} on={(v) => setD({ ...d, kit: { ...d.kit, ctas: v } })} chips />
+            <Lst label={L.ctas} v={d.kit.ctas} edit={edit} on={(v) => setD({ ...d, kit: { ...d.kit, ctas: v } })} chips />
           </div>
-          <p class="bb-note">Đổi brand kit thì email và thiết kế mới của {client.name} tự theo màu, font, logo này.</p>
+          <p class="bb-note">{L.kitNote(client.name)}</p>
         </Sec>
       </article>
 
@@ -227,6 +229,25 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
         <div class="mk-card-h"><b>Lịch sử phiên bản</b><span class="dim small">nguồn: {[book.sources.website, book.sources.sheet && 'Google Sheet', book.sources.drive && 'Drive', ...(book.sources.files || [])].filter(Boolean).join(' · ') || 'ghi chú'}</span></div>
         {(book.versions || []).slice().reverse().map((v) => <div key={v.version} class="mk-line static"><span class="chip mono">v{v.version}</span><span class="grow">{v.note}</span><span class="dim small">{v.by} · {fmtTime(v.at)}</span></div>)}
       </section>
+    </div>
+  );
+}
+
+/** The website was given but never read (wrong address, site down): say so, let the user fix it and rewrite the book. */
+function SiteFix({ client, book, onRedo }: { client: Client; book: BrandBook; onRedo: () => void }) {
+  const [url, setUrl] = useState(looksLikeUrl(client.website || '') ? client.website || '' : '');
+  const go = async () => {
+    const u = cleanUrl(url);
+    if (!looksLikeUrl(u)) { toast('Nhập đúng địa chỉ website, dạng tencongty.com.', 'err'); return; }
+    await saveClient({ ...client, website: u });
+    onRedo();
+  };
+  return (
+    <div class="claim err mk-sitefix">
+      <Icon name="warn" />
+      <span class="grow">Brand book này viết <b>không có dữ liệu website</b>{book.sources.website ? <> (địa chỉ <span class="mono">{book.sources.website}</span> {book.siteError ? `lỗi: ${book.siteError}` : 'không đọc được'})</> : null}, nên thiếu logo, màu và ảnh thật. Nhập đúng website rồi soạn lại.</span>
+      <input class="in" value={url} placeholder="toolmarthou.com" onInput={(e) => setUrl((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === 'Enter') void go(); }} aria-label="Website của khách" />
+      <Btn sm icon="sparkle" onClick={() => void go()}>Lưu và soạn lại</Btn>
     </div>
   );
 }
@@ -245,16 +266,16 @@ function Lst({ label, v, edit, on, chips, tone }: { label: string; v: string[]; 
     </div>
   );
 }
-function PersonaCard({ p, edit, on, onDel }: { p: Persona; edit: boolean; on: (p: Persona) => void; onDel: () => void }) {
+function PersonaCard({ p, edit, on, onDel, L }: { p: Persona; edit: boolean; on: (p: Persona) => void; onDel: () => void; L: BBLabels }) {
   const f = (k: keyof Persona, label: string) => (edit ? <label class="bb-pf"><span>{label}</span><input class="in" value={p[k]} onInput={(e) => on({ ...p, [k]: (e.target as HTMLInputElement).value })} /></label> : p[k] ? <div class="bb-pf"><span>{label}</span><p>{p[k]}</p></div> : null);
   return (
     <div class="bb-persona">
       <div class="row"><span class="bb-pav">{p.name.trim().slice(0, 1).toUpperCase()}</span>{edit ? <input class="in grow" value={p.name} onInput={(e) => on({ ...p, name: (e.target as HTMLInputElement).value })} aria-label="Tên persona" /> : <b class="grow">{p.name}</b>}{edit && <Btn xs kind="ghost" icon="trash" title="Xoá persona" onClick={onDel} />}</div>
-      {f('age', 'Tuổi')}{f('job', 'Nghề')}{f('goals', 'Mong muốn')}{f('pains', 'Nỗi đau')}{f('channels', 'Kênh')}
+      {f('age', L.age)}{f('job', L.job)}{f('goals', L.goals)}{f('pains', L.pains)}{f('channels', L.channels)}
     </div>
   );
 }
-function Swatch({ c, edit, on, onDel }: { c: PaletteColor; edit: boolean; on: (c: PaletteColor) => void; onDel: () => void }) {
+function Swatch({ c, edit, on, onDel, L }: { c: PaletteColor; edit: boolean; on: (c: PaletteColor) => void; onDel: () => void; L: BBLabels }) {
   const copy = () => { void navigator.clipboard?.writeText(c.hex).then(() => toast(`Đã copy ${c.hex}`, 'ok')); };
   return (
     <div class="bb-sw">
@@ -262,7 +283,7 @@ function Swatch({ c, edit, on, onDel }: { c: PaletteColor; edit: boolean; on: (c
       {edit ? <>
         <input class="in" value={c.name} onInput={(e) => on({ ...c, name: (e.target as HTMLInputElement).value })} aria-label="Tên màu" />
         <div class="row"><select class="in" value={c.role} onChange={(e) => on({ ...c, role: (e.target as HTMLSelectElement).value as PaletteColor['role'] })} aria-label="Vai trò màu"><option value="primary">Chính</option><option value="accent">Nhấn</option><option value="neutral">Trung tính</option></select><input class="in" style={{ width: 56 }} type="number" min={0} max={100} value={c.ratio} onInput={(e) => on({ ...c, ratio: Number((e.target as HTMLInputElement).value) })} aria-label="Tỉ lệ %" /><Btn xs kind="ghost" icon="trash" title="Xoá màu" onClick={onDel} /></div>
-      </> : <><b>{c.name}</b><span class="mono">{c.hex} · {c.role === 'primary' ? 'Chính' : c.role === 'accent' ? 'Nhấn' : 'Trung tính'} · {c.ratio}%</span></>}
+      </> : <><b>{c.name}</b><span class="mono">{c.hex} · {c.role === 'primary' ? L.primary : c.role === 'accent' ? L.accent : L.neutral} · {c.ratio}%</span></>}
     </div>
   );
 }
@@ -270,3 +291,22 @@ function Swatch({ c, edit, on, onDel }: { c: PaletteColor; edit: boolean; on: (c
 export function NoBrandHint({ client }: { client: Client }) {
   return <Empty icon="palette" title="Chưa có thương hiệu">Lên brand book trước để AI viết đúng giọng của {client.name}.</Empty>;
 }
+
+/** Brand book labels in the client's language: the book is sent to the client for approval. Vietnamese or English
+ *  (other languages fall back to English); the agency UI around it stays Vietnamese. */
+export type BBLabels = typeof BB_VI;
+const BB_VI = {
+  s1: 'Sứ mệnh, tầm nhìn, giá trị', mission: 'Sứ mệnh', vision: 'Tầm nhìn', values: 'Giá trị cốt lõi', s2: 'Khách hàng mục tiêu', s3: 'Giọng nói', traits: 'Tính cách', do: 'Nên', dont: 'Không nên',
+  s4: 'Thông điệp, USP, đối thủ', messages: 'Thông điệp chính', usp: 'Điểm khác biệt (USP)', competitors: 'Đối thủ', s5: 'Logo', logoRules: 'Quy tắc dùng logo', noLogo: 'Chưa có logo', light: 'Nền sáng', dark: 'Nền tối',
+  s6: 'Bảng màu', primary: 'Chính', accent: 'Nhấn', neutral: 'Trung tính', s7: 'Chữ', heading: 'Tiêu đề', body: 'Nội dung', fontNote: 'Cách dùng', s8: 'Hình ảnh và bố cục', imagery: 'Phong cách ảnh', layout: 'Quy tắc bố cục',
+  exDo: 'Ví dụ đúng', exDont: 'Ví dụ sai', s9: 'Brand kit', ctas: 'CTA mặc định', age: 'Tuổi', job: 'Nghề', goals: 'Mong muốn', pains: 'Nỗi đau', channels: 'Kênh',
+  kitNote: (n: string) => `Đổi brand kit thì email và thiết kế mới của ${n} tự theo màu, font, logo này.`,
+};
+const BB_EN: BBLabels = {
+  s1: 'Mission, vision, values', mission: 'Mission', vision: 'Vision', values: 'Core values', s2: 'Target audience', s3: 'Voice', traits: 'Personality', do: 'Do', dont: "Don't",
+  s4: 'Messages, USP, competitors', messages: 'Key messages', usp: 'What sets us apart (USP)', competitors: 'Competitors', s5: 'Logo', logoRules: 'Logo usage', noLogo: 'No logo yet', light: 'On light', dark: 'On dark',
+  s6: 'Colour palette', primary: 'Primary', accent: 'Accent', neutral: 'Neutral', s7: 'Typography', heading: 'Headings', body: 'Body', fontNote: 'Usage', s8: 'Imagery and layout', imagery: 'Photo style', layout: 'Layout rules',
+  exDo: 'Do this', exDont: 'Not this', s9: 'Brand kit', ctas: 'Default CTAs', age: 'Age', job: 'Role', goals: 'Wants', pains: 'Pain points', channels: 'Channels',
+  kitNote: (n: string) => `New emails and designs for ${n} follow this kit's colours, fonts and logo.`,
+};
+export const bbLabels = (lang?: string): BBLabels => (!lang || lang === 'vi' ? BB_VI : BB_EN);

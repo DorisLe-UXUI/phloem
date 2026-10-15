@@ -246,15 +246,18 @@ const INDUSTRIES = ['F&B / Nhà hàng', 'Thời trang', 'Mỹ phẩm / Làm đ�
 const AUTO = '__auto', OTHER = '__other';
 const COLORS = ['#39ff14', '#6fb7ff', '#ff5fa2', '#ffc53d', '#25f4ee', '#ffa94d', '#b197fc', '#ff5c5c'];
 const CURRENCY: Record<string, string> = { 'Việt Nam': 'VND', 'Hoa Kỳ': 'USD', Canada: 'CAD', 'Úc': 'AUD', Anh: 'GBP', 'Châu Âu': 'EUR', 'Nhật Bản': 'JPY', 'Hàn Quốc': 'KRW', 'Trung Quốc': 'CNY', 'Đài Loan': 'TWD', Singapore: 'SGD', 'Thái Lan': 'THB', Malaysia: 'MYR', Indonesia: 'IDR', Philippines: 'PHP' };
-export const looksLikeUrl = (s: string) => /^(https?:\/\/|www\.)/i.test(s.trim()) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(s.trim());
+/** A real web address: a host name with a dot (toolmarthou.com, www.x.vn), with or without https://. "toolmart" is not. */
+export const looksLikeUrl = (s: string) => { const t = s.trim(); if (!t || /\s/.test(t)) return false; try { const h = new URL(/^https?:\/\//i.test(t) ? t : `https://${t}`).hostname; return /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(h); } catch { return false; } };
 /** "https://www.toolmarthou.com/?x" → "Toolmarthou" (a placeholder until the brand step reads the real name). */
 export function nameFromUrl(s: string): string { try { const h = new URL(/^https?:/i.test(s) ? s : `https://${s}`).hostname.replace(/^www\./, '').split('.')[0]; return h.charAt(0).toUpperCase() + h.slice(1); } catch { return ''; } }
 /** Drop tracking parameters people paste with a link (Google srsltid, utm_*, fbclid, gclid). */
 export function cleanUrl(raw: string): string {
   let site = raw.trim(); if (!site) return '';
+  if (!looksLikeUrl(site)) return site; // leave "toolmart" as typed so the form can say it is not a website
   if (!/^https?:\/\//i.test(site)) site = `https://${site}`;
   try { const u = new URL(site); for (const k of [...u.searchParams.keys()]) if (/^(utm_|srsltid$|fbclid$|gclid$|gbraid$|wbraid$|mc_|_hs)/i.test(k)) u.searchParams.delete(k); u.hash = ''; return u.toString().replace(/\?$/, ''); } catch { return site; }
 }
+
 
 export function CreateClient({ onClose, edit }: { onClose: () => void; edit?: Client }) {
   const [name, setName] = useState(edit?.name || '');
