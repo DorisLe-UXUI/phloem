@@ -109,6 +109,7 @@ const server = createServer(async (req, res) => {
         klaviyoRevision: KLAVIYO_REVISION,
         ai: !!anthropic,
         imageAi: IMAGE_PROVIDER || null,
+        imageModel: IMAGE_PROVIDER === 'google' ? (googleModel ? googleModel.name.replace('models/', '') : googleModel === null ? 'none' : 'auto') : IMAGE_PROVIDER === 'openai' ? (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1') : null,
         auth: true,
         db: true,
         site: true,
@@ -262,6 +263,31 @@ async function aiStream(p, req, res) {
 // {prompt, aspect: '1:1'|'3:4'|'4:3'|'9:16'|'16:9'} → {b64, mime, provider}. Google Imagen (Gemini API, model IMAGEN_MODEL)
 // or OpenAI (OPENAI_IMAGE_MODEL). The browser never sees a key; the same AI access gate as /ai applies.
 const ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
+/** The image model this Google key may use, found once via ListModels: IMAGEN_MODEL when set, else the newest Imagen
+ *  that supports predict, else a Gemini image model (generateContent with IMAGE output). Cached; cleared on a 404. */
+let googleModel; // undefined = not looked up yet, null = none
+async function googleImageModel() {
+  if (googleModel !== undefined) return googleModel;
+  if (process.env.IMAGEN_MODEL) return (googleModel = { name: `models/${process.env.IMAGEN_MODEL.replace(/^models\//, '')}`, method: /imagen/i.test(process.env.IMAGEN_MODEL) ? 'predict' : 'generateContent' });
+  const all = [];
+  try {
+    let page = '';
+    for (let i = 0; i < 5; i++) {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, { headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal: AbortSignal.timeout(20_000) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { console.log('[image] ListModels failed:', j?.error?.message || r.status); break; }
+      all.push(...(j.models || []));
+      if (!j.nextPageToken) break; page = j.nextPageToken;
+    }
+  } catch (e) { console.log('[image] ListModels error:', e?.message || e); return null; } // network: try again next time
+  const has = (m, x) => (m.supportedGenerationMethods || []).includes(x);
+  const ver = (n) => Number((/(\d+(?:\.\d+)?)/.exec(n) || [0, 0])[1]);
+  const imagen = all.filter((m) => /imagen/i.test(m.name) && has(m, 'predict')).sort((a, b) => ver(b.name) - ver(a.name) || (/fast/.test(a.name) ? 1 : 0) - (/fast/.test(b.name) ? 1 : 0));
+  const gem = all.filter((m) => /gemini.*image/i.test(m.name) && has(m, 'generateContent')).sort((a, b) => ver(b.name) - ver(a.name));
+  googleModel = imagen[0] ? { name: imagen[0].name, method: 'predict' } : gem[0] ? { name: gem[0].name, method: 'generateContent' } : null;
+  console.log(`[image] google model: ${googleModel ? googleModel.name : 'none'} (${all.length} models listed)`);
+  return googleModel;
+}
 async function aiImage(p, res) {
   const prompt = String(p?.prompt || '').trim().slice(0, 2000);
   const aspect = ASPECTS.has(p?.aspect) ? p.aspect : '1:1';
@@ -269,13 +295,20 @@ async function aiImage(p, res) {
   if (!IMAGE_PROVIDER) return json(res, 503, { error: 'Relay chưa có key tạo ảnh. Thêm GEMINI_API_KEY (Google Imagen) hoặc OPENAI_API_KEY trong Render → Environment.', code: 'no_image_key' });
   try {
     if (IMAGE_PROVIDER === 'google') {
-      const model = process.env.IMAGEN_MODEL || 'imagen-4.0-generate-001';
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:predict`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio: aspect } }), signal: AbortSignal.timeout(110_000) });
+      const pick = await googleImageModel();
+      if (!pick) return json(res, 502, { error: 'Key Google này không có model tạo ảnh nào (Imagen hoặc Gemini image). Bật Gemini API / Imagen cho project của key trong Google AI Studio, hoặc dùng OPENAI_API_KEY.' });
+      const base = `https://generativelanguage.googleapis.com/v1beta/${pick.name}`;
+      const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY };
+      const r = pick.method === 'predict'
+        ? await fetch(`${base}:predict`, { method: 'POST', headers, body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio: aspect } }), signal: AbortSignal.timeout(110_000) })
+        : await fetch(`${base}:generateContent`, { method: 'POST', headers, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nAspect ratio ${aspect}. Output one image only.` }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: aspect } } }), signal: AbortSignal.timeout(110_000) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) return json(res, r.status === 429 ? 429 : 502, { error: `Google Imagen: ${j?.error?.message || `HTTP ${r.status}`}` });
+      if (!r.ok) { if (r.status === 404) googleModel = undefined; return json(res, r.status === 429 ? 429 : 502, { error: `Google (${pick.name.replace('models/', '')}): ${j?.error?.message || `HTTP ${r.status}`}` }); }
       const pred = j?.predictions?.[0];
-      if (!pred?.bytesBase64Encoded) return json(res, 422, { error: 'Google không trả ảnh (có thể mô tả bị bộ lọc an toàn chặn). Đổi mô tả rồi thử lại.' });
-      return json(res, 200, { b64: pred.bytesBase64Encoded, mime: pred.mimeType || 'image/png', provider: 'google' });
+      const part = (j?.candidates?.[0]?.content?.parts || []).find((x) => x?.inlineData?.data || x?.inline_data?.data);
+      const b64 = pred?.bytesBase64Encoded || part?.inlineData?.data || part?.inline_data?.data;
+      if (!b64) return json(res, 422, { error: 'Google không trả ảnh (có thể mô tả bị bộ lọc an toàn chặn). Đổi mô tả rồi thử lại.' });
+      return json(res, 200, { b64, mime: pred?.mimeType || part?.inlineData?.mimeType || part?.inline_data?.mime_type || 'image/png', provider: 'google', model: pick.name.replace('models/', '') });
     }
     const size = aspect === '1:1' ? '1024x1024' : aspect === '9:16' || aspect === '3:4' ? '1024x1536' : '1536x1024';
     const r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` }, body: JSON.stringify({ model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', prompt, size, n: 1 }), signal: AbortSignal.timeout(110_000) });
