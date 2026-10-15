@@ -126,8 +126,10 @@ export interface PlanRow {
   hook: string; caption: string; cta: string; hashtags: string; visual: string; owner: string; status: Status;
   /** Review comments from the client link, newest last (copied in from the review record). */
   note?: string;
-  /** Phloem Design project made for this post. */
+  /** Phloem Design project made for this post (the cover slide of a carousel). */
   designId?: string;
+  /** Carousel: every slide's design, in order (slides[0] === designId). */
+  slides?: string[];
 }
 export interface PlanMonth { month: string; theme: string; campaigns: { name: string; goal: string; channels: string[]; budget: number; note: string }[]; kpi: Record<string, number>; budget: Record<string, number> }
 export interface PlanSetup { months: number; start: string; channels: Channel[]; goals: Goal[]; budget: number; currency: string; events: string; postsPerWeek: number; brief: string }

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems } from '../../mkt/data';
-import { SIZES, addClientImages, clientImages, designFromImage, newDesign, sizeForRow, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, designPost, sizeForRow, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
@@ -41,13 +41,15 @@ export function DesignHub({ client }: { client: Client }) {
   const hasDesign = (r: Row) => (r.designId && byId.has(r.designId)) || designs.some((d) => d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id);
   const week = shown.filter((r) => r.date < new Date(Date.now() + 7 * 86400e3).toISOString().slice(0, 10) && !hasDesign(r));
   const designOf = (r: Row) => (r.designId ? byId.get(r.designId) : undefined) || designs.find((d) => d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id);
+  /** A carousel's slide designs that still exist, in order (empty for a single-picture post). */
+  const slidesOf = (r: Row) => (r.slides || []).map((id) => byId.get(id)).filter(Boolean) as typeof designs;
   const loose = designs.filter((d) => !all.some((r) => r.designId === d.id || (d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id)));
 
   const make = async (size: DesignSize, row: Row | null, ai: boolean) => {
     setPicker(null);
     abort.current = new AbortController();
     setBusy({ label: ai ? 'AI đang thiết kế…' : 'Đang dựng bố cục…' });
-    try { await newDesign(client, size, row, { ai, onStage: (m) => setBusy({ label: m }), signal: abort.current.signal, askPhotos: (plan) => askPhotos(client, plan) }); }
+    try { await designPost(client, size, row, { ai, onStage: (m) => setBusy({ label: m }), signal: abort.current.signal, askPhotos: (plan) => askPhotos(client, plan) }); }
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(null); }
   };
@@ -61,7 +63,7 @@ export function DesignHub({ client }: { client: Client }) {
       if (abort.current.signal.aborted) break;
       const r = week[i];
       setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic}`, done: i, total: week.length });
-      try { await newDesign(client, sizeForRow(r), r, { ai: true, open: false, signal: abort.current.signal, onStage: (m) => setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic} · ${m}`, done: i, total: week.length }) }); ok++; }
+      try { await designPost(client, sizeForRow(r), r, { ai: true, open: false, signal: abort.current.signal, onStage: (m) => setBusy({ label: `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic} · ${m}`, done: i, total: week.length }) }); ok++; }
       catch (e) { if (abort.current.signal.aborted) break; toast(`${r.topic}: ${(e as Error).message}`, 'err'); }
     }
     setBusy(null);
@@ -97,8 +99,10 @@ export function DesignHub({ client }: { client: Client }) {
                       <td><div class="cv"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><br /><span class="dim small">{FORMATS.find((f) => f.id === r.format)?.label}</span></div></td>
                       <td class="c-img">
                         <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sizeForRow(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
-                          {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>Chưa có ảnh</em></span>}
+                          {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>{r.format === 'carousel' ? 'Carousel · chưa có' : 'Chưa có ảnh'}</em></span>}
+                          {slidesOf(r).length > 1 && <i class="mk-slide-n">1/{slidesOf(r).length}</i>}
                         </button>
+                        {slidesOf(r).length > 1 && <div class="mk-slides">{slidesOf(r).slice(1).map((d, k) => <button key={d.id} title={`Slide ${k + 2}`} onClick={() => void A.openProject(d.id)}>{d.thumb ? <img src={d.thumb} alt={`Slide ${k + 2}`} loading="lazy" /> : k + 2}</button>)}</div>}
                         {write && <div class="mk-imgacts">
                           {des
                             ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sizeForRow(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>

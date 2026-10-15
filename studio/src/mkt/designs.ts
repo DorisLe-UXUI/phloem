@@ -87,14 +87,14 @@ async function toDoc(html: string, size: DesignSize, brand: Brand, validIds: Set
 }
 
 /** Create a design for a client (optionally from a plan row) and open it in the editor. */
-export async function newDesign(client: Client, size: DesignSize, row?: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; open?: boolean; onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos } = {}) {
+export async function newDesign(client: Client, size: DesignSize, row?: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; open?: boolean; onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos; attach?: boolean; slide?: SlideCtx } = {}) {
   const brand = designBrand(client);
   const imgs = clientImages(client.id);
   const logo = (brand.logoAssetId && assets.get(brand.logoAssetId)) ? brand.logoAssetId : null;
   const photo = imgs.find((a) => a.id !== logo && a.src?.kind !== 'logo')?.id || null;
   const valid = new Set(imgs.map((a) => a.id).concat(logo ? [logo] : []));
   let doc: Doc;
-  if (opts.ai) doc = await aiDesign(client, brand, size, row || null, valid, opts.onStage, opts.signal, opts.askPhotos);
+  if (opts.ai) doc = await aiDesign(client, brand, size, row || null, valid, opts.onStage, opts.signal, opts.askPhotos, opts.slide);
   else doc = await toDoc(starterHtml(size, brand, row || null, photo, logo), size, brand, valid, opts.onStage);
   await readyDoc(doc);
   const now = new Date().toISOString();
@@ -116,12 +116,53 @@ export async function newDesign(client: Client, size: DesignSize, row?: (PlanRow
     set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [], scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null, leftTab: 'design', rightTab: 'design' });
     await A.saveProject();
   }
-  if (row) await attachDesign(client.id, row.planId, row.id, p.id);
+  if (row && opts.attach !== false) await attachDesign(client.id, row.planId, row.id, p.id);
   return p;
 }
 
+const CAROUSEL_PLAN = `You plan a social media carousel (swipeable slides) for a post. Decide the number of slides from the content: between 3 and 10; when the caption or visual idea lists items or says a count ("5 slides", "7 ảnh", "1. … 2. …"), follow it (cover + one slide per item + a closing CTA slide).
+Slide 1 is the cover (the hook). The last slide is the CTA. Every slide's text is short and in the post's language.
+Reply with JSON only: {"slides":[{"role":"cover|content|cta","headline":"…","body":"one or two short lines","visual":"what to show"}]}`;
+
+/** A carousel post designed slide by slide: the AI plans the slides, the cover paints the key visual, the other slides reuse it
+ *  so the set reads as one; all slides are pinned to the post in order. Returns the slide design ids. */
+export async function newCarousel(client: Client, size: DesignSize, row: PlanRow & { planId: string }, opts: { onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos } = {}): Promise<string[]> {
+  opts.onStage?.('AI đang lên dàn ý các slide carousel…');
+  let slides: { role: string; headline: string; body: string; visual: string }[] = [];
+  try {
+    const out = await askClaude({ system: CAROUSEL_PLAN, turns: [{ role: 'user', text: `${audienceLine(client)}\nBrand: ${client.name}.\nTopic: ${row.topic}\nHook: ${row.hook}\nCaption: ${row.caption}\nCTA: ${row.cta}\nVisual idea: ${row.visual}` }], maxTokens: 3000, effort: 'low' });
+    const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]);
+    slides = (Array.isArray(j.slides) ? j.slides : []).slice(0, 10).map((x: any) => ({ role: String(x?.role || 'content'), headline: String(x?.headline || '').slice(0, 140), body: String(x?.body || '').slice(0, 280), visual: String(x?.visual || '').slice(0, 300) })).filter((x: { headline: string }) => x.headline);
+  } catch (e) { if (opts.signal?.aborted) throw e; }
+  if (slides.length < 2) slides = [{ role: 'cover', headline: row.hook || row.topic, body: '', visual: row.visual }, { role: 'content', headline: row.topic, body: (row.caption || '').slice(0, 120), visual: row.visual }, { role: 'cta', headline: row.cta || client.name, body: '', visual: '' }];
+  const n = slides.length;
+  let hero: string | null = null;
+  const ids: string[] = [];
+  for (let i = 0; i < n; i++) {
+    if (opts.signal?.aborted) throw new Error('Đã huỷ.');
+    const s = slides[i];
+    const slideRow = { ...row, topic: s.headline, hook: s.body, visual: [s.visual, row.visual].filter(Boolean).join(' · ') };
+    const p = await newDesign(client, size, slideRow, {
+      ai: true, open: false, attach: false, signal: opts.signal, askPhotos: i === 0 ? opts.askPhotos : undefined,
+      onStage: (m) => opts.onStage?.(`Slide ${i + 1}/${n} · ${m}`),
+      slide: { i: i + 1, n, role: i === 0 ? 'cover' : i === n - 1 ? 'cta' : s.role, hero: i === 0 ? null : hero, onHero: (id) => { hero = id; } },
+    });
+    ids.push(p.id);
+  }
+  await attachMany(client.id, row.planId, { [row.id]: ids }, `Carousel ${n} slide`);
+  await A.refreshProjects();
+  return ids;
+}
+
+/** Design one post: a carousel gets all its slides, anything else one design. */
+export async function designPost(client: Client, size: DesignSize, row: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; open?: boolean; onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos } = {}) {
+  if (row && opts.ai && row.format === 'carousel') { const ids = await newCarousel(client, size, row, opts); if (opts.open !== false && ids[0]) await A.openProject(ids[0]); return ids; }
+  const p = await newDesign(client, size, row, opts);
+  return [p.id];
+}
+
 /** A post that uses the client's own picture: the photo fills the frame (cover), saved as a design and pinned to the post. */
-export async function designFromImage(client: Client, row: (PlanRow & { planId: string }) | null, assetId: string, open = false) {
+export async function designFromImage(client: Client, row: (PlanRow & { planId: string }) | null, assetId: string, open = false, opts: { attach?: boolean; refresh?: boolean } = {}) {
   const a = assets.get(assetId); if (!a) throw new Error('Không tìm thấy ảnh.');
   const size = row ? sizeForRow(row) : (() => { const r = a.w / a.h; return r > 1.5 ? sizeById('fb-link') : r > 1.1 ? sizeById('gbp') : r > 0.9 ? sizeById('square') : r > 0.7 ? sizeById('portrait') : sizeById('story'); })();
   const brand = designBrand(client);
@@ -136,8 +177,8 @@ export async function designFromImage(client: Client, row: (PlanRow & { planId: 
   let thumb: string | undefined; try { thumb = thumbnail(doc, brand, assets, 360, size.h / size.w); } catch { /* not decoded yet */ }
   const stored = { ...p, thumb, owner: get().user?.id || '' };
   await db.putProject(stored); cloud.pushProjectSoon(stored);
-  await A.refreshProjects();
-  if (row) await attachDesign(client.id, row.planId, row.id, p.id);
+  if (opts.refresh !== false) await A.refreshProjects();
+  if (row && opts.attach !== false) await attachDesign(client.id, row.planId, row.id, p.id);
   if (open) await A.openProject(p.id);
   return p;
 }
@@ -154,11 +195,16 @@ export async function addClientImages(clientId: string, files: (File | Blob)[], 
 
 /** Pin a design to its post in the plan (the post shows that picture everywhere: Thiết kế, Lịch đăng, the plan grid). */
 export async function attachDesign(clientId: string, planId: string, rowId: string, designId: string) {
+  await attachMany(clientId, planId, { [rowId]: [designId] }, 'Gắn thiết kế vào bài');
+}
+/** Pin designs to many posts in one plan write: rowId → design ids (several = carousel slides, in order). */
+export async function attachMany(clientId: string, planId: string, map: Record<string, string[]>, note = 'Gắn thiết kế vào bài') {
   const { cachedItems, putItem } = await import('./data');
   const it = cachedItems(clientId)?.find((i) => i.kind === 'plan' && i.id === planId); if (!it) return;
   const plan = it.data as import('./types').Plan;
   const version = (plan.version || 1) + 1;
-  await putItem(clientId, 'plan', planId, { ...plan, rows: plan.rows.map((r) => (r.id === rowId ? { ...r, designId } : r)), version, versions: [...(plan.versions || []), { version, at: new Date().toISOString(), by: get().user?.name || 'Bạn', note: 'Gắn thiết kế vào bài' }].slice(-40) });
+  const rows = plan.rows.map((r) => { const ids = map[r.id]; if (!ids?.length) return r; const { slides: _old, ...rest } = r; return ids.length > 1 ? { ...rest, designId: ids[0], slides: ids } : { ...rest, designId: ids[0] }; });
+  await putItem(clientId, 'plan', planId, { ...plan, rows, version, versions: [...(plan.versions || []), { version, at: new Date().toISOString(), by: get().user?.name || 'Bạn', note }].slice(-40) });
 }
 
 // ---------- Đổi cỡ thần kỳ ----------
@@ -267,14 +313,18 @@ function pickImages(clientId: string, logo: string | null, max = 9): string[] {
   return list.sort((a, b) => rank(a.src?.kind) - rank(b.src?.kind) || (b.at || '').localeCompare(a.at || '')).slice(0, max).map((a) => a.id);
 }
 
-async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: PlanRow | null, valid: Set<string>, onStage?: (m: string) => void, signal?: AbortSignal, askPhotos?: AskPhotos): Promise<Doc> {
+/** One slide of a carousel being designed: its place, its job, and the cover's painted picture to reuse. */
+export interface SlideCtx { i: number; n: number; role: string; hero?: string | null; onHero?: (id: string) => void }
+
+async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: PlanRow | null, valid: Set<string>, onStage?: (m: string) => void, signal?: AbortSignal, askPhotos?: AskPhotos, slide?: SlideCtx): Promise<Doc> {
   const book = brandBookOf(client.id);
   const logo = brand.logoAssetId && assets.get(brand.logoAssetId) ? brand.logoAssetId : null;
   // 1. a key visual painted for THIS post (Gemini / OpenAI through the relay), when the relay can draw
-  let hero: string | null = null;
-  if (await imageProvider()) {
+  let hero: string | null = slide?.hero && assets.get(slide.hero) ? slide.hero : null;
+  if (hero) valid.add(hero);
+  else if (await imageProvider()) {
     const idea = row ? `${channelOf(row.channel).label} post. Topic: ${row.topic}. Hook: ${row.hook}. Caption: ${(row.caption || '').slice(0, 400)}. Visual idea from the plan: ${row.visual || '(none)'}` : 'A hero image for the brand and its product.';
-    try { hero = await paintShot(client, idea, aspectFor(size), { headline: true, signal, askPhotos, onStage }); valid.add(hero); }
+    try { hero = await paintShot(client, idea, aspectFor(size), { headline: true, signal, askPhotos, onStage }); valid.add(hero); slide?.onHero?.(hero); }
     catch (e) { if (signal?.aborted || /Đã huỷ/.test((e as Error).message)) throw e; onStage?.(`Không vẽ được ảnh (${(e as Error).message.slice(0, 80)}), dùng ảnh trong kho…`); }
   }
   const ids = [...new Set([...(hero ? [hero] : []), ...(logo ? [logo] : []), ...pickImages(client.id, logo)])].filter((id) => assets.get(id));
@@ -292,6 +342,7 @@ async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: Pla
     book ? `Brand: tagline "${book.tagline}"; voice ${book.voice.traits.join(', ')}; colours ${book.palette.map((c) => `${c.name} ${c.hex} (${c.role})`).join(', ')}; fonts ${book.fonts.heading} / ${book.fonts.body}; imagery: ${book.imagery.join('; ')}` : `Brand colours: primary ${brand.primary}, accent ${brand.accent}, ink ${brand.ink}, bg ${brand.bg}; fonts ${brand.headingFamily} / ${brand.fontFamily}`,
     styleNotesOf(client.id) ? `HOUSE STYLE from the client's past posts (match it): ${styleNotesOf(client.id)}` : '',
     row ? `Post: ${channelOf(row.channel).label} ${row.format}, ${row.date}. Topic: ${row.topic}. Hook: ${row.hook}. CTA: ${row.cta}. Visual idea from the plan: ${row.visual}` : 'Post: a general brand post.',
+    slide ? `CAROUSEL: this is slide ${slide.i} of ${slide.n} (${slide.role}). All slides share ONE design system: same background treatment, type, colours, margins and logo spot, so they read as one swipeable set. Put a small "${slide.i}/${slide.n}" in a corner${slide.i < slide.n ? ' and a subtle swipe cue (arrow) on the right edge' : ''}. ${slide.role === 'cover' ? 'Cover: the hook, huge, plus the hero picture.' : slide.role === 'cta' ? 'Last slide: the call to action and the brand, calm and clear.' : 'Content slide: ONE point, a short headline and at most two short lines; reuse the hero picture smaller or cropped, or an icon / 3D object.'}` : '',
     'Graphics you may add: data-sticker 3D objects; data-icon colour sets (streamline-color:, streamline-plump-color:, icon-park:, twemoji:, noto:, fluent-emoji-flat:) and mono sets (ph:, game-icons:); data-gfx backgrounds. Use few, large, deliberate.',
   ].join('\n');
   const system = `${SOCIAL}\n\nTECHNICAL CONTRACT (Phloem converts the browser layout into editable layers)\nOUTPUT: one complete HTML document in a single \`\`\`html block. All CSS in one <style>.\nCANVAS: <body> holds exactly one <div id="email" data-email> of EXACTLY width:${size.w}px; height:${size.h}px; overflow:hidden; position:relative, containing ONE <section data-name="Post" style="position:relative;width:${size.w}px;height:${size.h}px">. Everything is positioned inside it; nothing may leave the frame.\n${TECH}\n${NEVER}\nAllowed fonts (exact): ${fonts}.`;

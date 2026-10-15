@@ -1,4 +1,4 @@
-// Public Google Drive links: ids from every link shape, folder view parsing, picture filtering, one level of sub-folders.
+// Public Google Drive links: ids from every link shape, folder view parsing, picture filtering, nested sub-folders with their path.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { driveFolderId, driveFileId, parseFolderView, listDrive } from '../server/src/drive.mjs';
@@ -18,17 +18,22 @@ test('folder view: entries, names unescaped, folders flagged', () => {
   assert.deepEqual(parseFolderView(html), [{ id: '1aaaaaaaaaaa', name: 'Post 01 & launch.jpg', folder: false }, { id: '1bbbbbbbbbbb', name: 'Archive', folder: true }]);
 });
 
-test('listDrive: pictures only, one level of sub-folders, thumbnails through Drive', async () => {
+test('listDrive: pictures only, nested sub-folders (Month/Week/…) with their path, thumbnails through Drive', async () => {
   const pages = {
     root: entry('1img00000001', 'a.jpg') + entry('1doc00000001', 'brief.pdf') + entry('1sub00000001', 'Tháng 9', true) + entry('1noext000001', 'Ảnh không đuôi'),
     '1sub00000001': entry('1img00000002', 'b.PNG') + entry('1sub00000002', 'deeper', true),
-    '1sub00000002': entry('1img00000003', 'c.jpg'),
+    '1sub00000002': entry('1img00000003', 'c.jpg') + entry('1sub00000003', 'W2', true),
+    '1sub00000003': entry('1img00000004', 'W2-Fri-1.png') + entry('1sub00000004', 'x', true),
+    '1sub00000004': entry('1sub00000005', 'y', true),
+    '1sub00000005': entry('1sub00000006', 'z', true),
+    '1sub00000006': entry('1img00000009', 'too-deep.png'),
   };
   const get = async (u) => pages[new URL(u).searchParams.get('id') === '1rootfolder01' ? 'root' : new URL(u).searchParams.get('id')] || '';
   const files = await listDrive('https://drive.google.com/drive/folders/1rootfolder01', get);
-  assert.deepEqual(files.map((f) => f.id).sort(), ['1img00000001', '1img00000002', '1noext000001']);
-  assert.ok(files.some((f) => f.id === '1img00000002'), 'sub-folder pictures included');
-  assert.ok(!files.some((f) => f.id === '1img00000003'), 'only one level deep');
+  assert.deepEqual(files.map((f) => f.id).sort(), ['1img00000001', '1img00000002', '1img00000003', '1img00000004', '1noext000001']);
+  assert.equal(files.find((f) => f.id === '1img00000004').path, 'Tháng 9/deeper/W2', 'folder path kept');
+  assert.equal(files.find((f) => f.id === '1img00000001').path, '');
+  assert.ok(!files.some((f) => f.id === '1img00000009'), 'stops 4 levels down');
   assert.ok(!files.some((f) => f.id === '1doc00000001'), 'documents skipped');
   assert.ok(files.every((f) => f.thumb.startsWith('https://drive.google.com/thumbnail?id=')));
   await assert.rejects(listDrive('https://drive.google.com/drive/folders/1privatefold', async () => '<html>Sign in</html>'), /Bất kỳ ai/);

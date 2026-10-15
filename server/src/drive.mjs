@@ -29,25 +29,26 @@ export const driveThumb = (id, w = 1600) => `https://drive.google.com/thumbnail?
 const IMAGE_NAME = /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp|tiff?)$/i;
 const OTHER_NAME = /\.(pdf|docx?|xlsx?|pptx?|txt|csv|zip|mp4|mov|psd|ai|fig)$/i;
 
-/** List the pictures behind a Drive link (folder: one level of sub-folders too). `get(url)` returns the page text. */
-export async function listDrive(url, get, max = 200) {
+/** List the pictures behind a Drive link, walking sub-folders up to 4 levels deep (agencies file posts as Month/Week/…).
+ *  Each picture carries `path`, the folder names below the shared folder ("APRIL 2026/W2"). `get(url)` returns the page text. */
+export async function listDrive(url, get, max = 1000) {
   const file = driveFileId(url);
-  if (file) return [{ id: file, name: '', thumb: driveThumb(file) }];
+  if (file) return [{ id: file, name: '', path: '', thumb: driveThumb(file) }];
   const folder = driveFolderId(url);
   if (!folder) throw Object.assign(new Error('Không nhận ra link Google Drive (cần link thư mục hoặc file).'), { status: 400 });
   const files = [];
-  const walk = async (id, depth) => {
+  const walk = async (id, depth, path) => {
     const html = await get(`https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(id)}`);
     const entries = parseFolderView(html);
     if (!entries.length && depth === 0 && !/flip-entry/.test(html)) throw Object.assign(new Error('Không mở được thư mục. Chia sẻ thư mục ở chế độ "Bất kỳ ai có đường liên kết".'), { status: 403 });
     for (const e of entries) {
       if (files.length >= max) return;
-      if (e.folder) { if (depth < 1) await walk(e.id, depth + 1); continue; }
+      if (e.folder) { if (depth < 4) await walk(e.id, depth + 1, path ? `${path}/${e.name}` : e.name); continue; }
       if (OTHER_NAME.test(e.name)) continue; // documents, videos, design files: not pictures
       if (e.name && !IMAGE_NAME.test(e.name) && /\.[a-z0-9]{2,4}$/i.test(e.name)) continue;
-      files.push({ id: e.id, name: e.name, thumb: driveThumb(e.id) });
+      files.push({ id: e.id, name: e.name, path, thumb: driveThumb(e.id) });
     }
   };
-  await walk(folder, 0);
+  await walk(folder, 0, '');
   return files;
 }
