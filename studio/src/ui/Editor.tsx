@@ -66,7 +66,7 @@ export function Editor() {
         <span>{Math.round(s.zoom * 100)}%</span>
         <span>{s.selection.length ? `${s.selection.length} layer đang chọn` : `${(s.variant === 'mobile' && p.mobile ? p.mobile : p.desktop).nodes.length} layer`}</span>
         <span class="grow" />
-        <span>Phloem không bao giờ tự gửi · bạn duyệt và bấm gửi trong {activeProfile() ? providerName(activeProfile()!.provider) : 'Mailchimp / Klaviyo'}</span>
+        <span>{p.kind === 'design' ? `Phloem Design · ${p.desktop.width}×${p.desktop.height} · không bao giờ tự đăng` : `Phloem không bao giờ tự gửi · bạn duyệt và bấm gửi trong ${activeProfile() ? providerName(activeProfile()!.provider) : 'Mailchimp / Klaviyo'}`}</span>
         <span style={{ cursor: 'pointer' }} onClick={() => set({ modal: 'shortcuts' })}>? phím tắt</span>
       </div>
     </div>
@@ -95,7 +95,7 @@ function TopBar() {
   return (
     <div class="topbar">
       <div class="l">
-        <Logo size={18} onClick={() => A.goHome()} />
+        <Logo size={18} mod={p.kind === 'design' ? 'design' : 'email'} onClick={() => A.goHome()} />
         <Btn kind="ghost" sm icon="home" title="Project" onClick={() => A.goHome()} />
         <input class="pname grow" value={p.name} onChange={(e) => A.renameProject((e.target as HTMLInputElement).value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} title="Tên project" />
       </div>
@@ -106,12 +106,13 @@ function TopBar() {
         <div class="variant" style={{ marginRight: 6 }}>
           <button class={s.playing ? 'on' : ''} title="Xem thử chuyển động (các layer có 'Chuyển động'); khi xuất, lát đó thành GIF động" onClick={() => set({ playing: !s.playing })}><Icon name="play" size={13} />{s.playing ? 'Đang phát' : 'Phát'}</button>
         </div>
-        <div class="variant">
+        {p.kind === 'design' ? <div class="variant"><button class="on" title="Khổ thiết kế. Đổi cỡ thần kỳ ở tab Xuất ảnh."><Icon name="fit" size={13} />{p.size?.label || 'Thiết kế'}<span class="k">{p.desktop.width}×{p.desktop.height}</span></button></div> : <div class="variant">
           <button class={s.variant === 'desktop' ? 'on' : ''} onClick={() => A.setVariant('desktop')}><Icon name="desktop" size={13} />Desktop<span class="k">{p.desktop.width}</span></button>
           {p.mobile ? <button class={s.variant === 'mobile' ? 'on' : ''} onClick={() => A.setVariant('mobile')}><Icon name="mobile" size={13} />Mobile<span class="k">{p.mobile.width}</span></button> : <button title="Tạo bản mobile 375px" onClick={() => A.createMobileVariant()}><Icon name="plus" size={13} />Mobile</button>}
-        </div>
+        </div>}
       </div>
       <div class="r">
+        {p.kind === 'design' ? <Btn kind="primary" sm icon="download" onClick={() => set({ rightTab: 'export', mobilePane: 'right' })}>Xuất ảnh</Btn> : <>
         <Btn kind="ghost" sm icon="sparkle" title="Trợ lý AI / dựng 3 phương án" onClick={() => set({ rightTab: 'ai', mobilePane: 'right' })}>AI</Btn>
         <Btn kind="ghost" sm icon="play" title="Xem trước" onClick={() => set({ modal: 'preview' })}>Xem trước</Btn>
         <label class="client-pill" title="Client đang dùng">
@@ -123,6 +124,7 @@ function TopBar() {
           </select>
         </label>
         <Btn kind="primary" sm icon="send" onClick={() => set({ rightTab: 'export', mobilePane: 'right' })}>Xuất</Btn>
+        </>}
         <Btn kind="ghost" sm icon="settings" title="Cài đặt" onClick={() => set({ modal: 'settings' })} />
       </div>
     </div>

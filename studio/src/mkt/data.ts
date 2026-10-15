@@ -21,7 +21,9 @@ async function req<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const s = relaySession(); if (!s) throw new Error('Cần đăng nhập tài khoản relay.');
   if (Date.now() - woke > 9 * 60_000) { await wakeRelay(base(), { Authorization: `Bearer ${s.token}` }); woke = Date.now(); }
   const headers: Record<string, string> = { Authorization: `Bearer ${s.token}`, ...(typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}) };
-  const r = await fetch(`${base()}${path}`, { ...init, headers, signal: AbortSignal.timeout(30_000) });
+  let r: Response;
+  try { r = await fetch(`${base()}${path}`, { ...init, headers, signal: AbortSignal.timeout(30_000) }); }
+  catch { woke = 0; throw new Error('Không kết nối được máy chủ Phloem (đang khởi động hoặc bảo trì). Đợi khoảng 1 phút rồi thử lại; dữ liệu đã lưu không mất.'); }
   if (r.status === 401) throw expired();
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j.error || `Relay trả HTTP ${r.status}`), { status: r.status, code: j.code });

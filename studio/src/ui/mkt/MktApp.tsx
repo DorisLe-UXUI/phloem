@@ -6,7 +6,7 @@ import * as A from '../../pipeline/actions';
 import { cachedItems, isRelay, listItems, loadClients, saveClient } from '../../mkt/data';
 import { digest } from '../../mkt/insights';
 import { go } from '../../mkt/router';
-import { CLIENT_TABS, channelOf, type Client } from '../../mkt/types';
+import { CLIENT_TABS, LANGUAGES, MARKETS, channelOf, type Client } from '../../mkt/types';
 import { Btn, Field, Modal } from '../components';
 import { Icon, Logo } from '../icons';
 import { ClientAvatar, Empty, PageHead, fmtDate } from './bits';
@@ -214,26 +214,43 @@ function ClientList({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-const INDUSTRIES = ['F&B / Nhà hàng', 'Thời trang', 'Mỹ phẩm / Làm đẹp', 'Bất động sản', 'Giáo dục', 'Y tế / Sức khoẻ', 'Công nghệ / SaaS', 'Du lịch / Khách sạn', 'Bán lẻ / TMĐT', 'Tài chính', 'Ô tô / Xe máy', 'Game / Giải trí', 'B2B / Dịch vụ', 'Khác'];
+const INDUSTRIES = ['F&B / Nhà hàng', 'Thời trang', 'Mỹ phẩm / Làm đẹp', 'Bất động sản', 'Giáo dục', 'Y tế / Sức khoẻ', 'Công nghệ / SaaS', 'Du lịch / Khách sạn', 'Bán lẻ / TMĐT', 'Dụng cụ / Công cụ / Phần cứng', 'Nội thất / Gia dụng', 'Tài chính', 'Ô tô / Xe máy', 'Game / Giải trí', 'B2B / Dịch vụ'];
+const AUTO = '__auto', OTHER = '__other';
 const COLORS = ['#39ff14', '#6fb7ff', '#ff5fa2', '#ffc53d', '#25f4ee', '#ffa94d', '#b197fc', '#ff5c5c'];
+const CURRENCY: Record<string, string> = { 'Việt Nam': 'VND', 'Hoa Kỳ': 'USD', Canada: 'CAD', 'Úc': 'AUD', Anh: 'GBP', 'Châu Âu': 'EUR', 'Nhật Bản': 'JPY', 'Hàn Quốc': 'KRW', 'Trung Quốc': 'CNY', 'Đài Loan': 'TWD', Singapore: 'SGD', 'Thái Lan': 'THB', Malaysia: 'MYR', Indonesia: 'IDR', Philippines: 'PHP' };
+/** Drop tracking parameters people paste with a link (Google srsltid, utm_*, fbclid, gclid). */
+export function cleanUrl(raw: string): string {
+  let site = raw.trim(); if (!site) return '';
+  if (!/^https?:\/\//i.test(site)) site = `https://${site}`;
+  try { const u = new URL(site); for (const k of [...u.searchParams.keys()]) if (/^(utm_|srsltid$|fbclid$|gclid$|gbraid$|wbraid$|mc_|_hs)/i.test(k)) u.searchParams.delete(k); u.hash = ''; return u.toString().replace(/\?$/, ''); } catch { return site; }
+}
 
 export function CreateClient({ onClose, edit }: { onClose: () => void; edit?: Client }) {
   const [name, setName] = useState(edit?.name || '');
   const [website, setWebsite] = useState(edit?.website || '');
-  const [industry, setIndustry] = useState(edit?.industry || '');
+  const known = (v?: string) => !!v && INDUSTRIES.includes(v);
+  const [industry, setIndustry] = useState(edit ? (known(edit.industry) ? edit.industry! : edit.industry ? OTHER : AUTO) : AUTO);
+  const [industryText, setIndustryText] = useState(edit && !known(edit.industry) ? edit.industry || '' : '');
+  const [language, setLanguage] = useState(edit?.language || 'vi');
+  const [market, setMarket] = useState(edit ? (MARKETS.includes(edit.market || 'Việt Nam') ? edit.market || 'Việt Nam' : OTHER) : 'Việt Nam');
+  const [marketText, setMarketText] = useState(edit && edit.market && !MARKETS.includes(edit.market) ? edit.market : '');
   const [busy, setBusy] = useState(false);
   const first = useRef<HTMLInputElement>(null);
   useEffect(() => first.current?.focus(), []);
   const submit = async (e?: Event) => {
     e?.preventDefault();
     if (!name.trim()) { toast('Nhập tên khách hàng.', 'err'); return; }
+    const ind = industry === AUTO ? '' : industry === OTHER ? industryText.trim() : industry;
+    const mk = market === OTHER ? marketText.trim() || 'Việt Nam' : market;
+    if (industry === AUTO && !website.trim()) { toast('Để AI tự nhận diện ngành, nhập website. Hoặc chọn ngành.', 'err'); return; }
     setBusy(true);
     try {
-      let site = website.trim(); if (site && !/^https?:\/\//i.test(site)) site = `https://${site}`;
+      const site = cleanUrl(website);
       const logo = edit?.logo; // the brand step reads the real logo from the website
-      const c = await saveClient({ ...(edit || {}), id: edit?.id, name: name.trim(), website: site, industry, logo, color: edit?.color || COLORS[Math.floor(Math.random() * COLORS.length)], status: edit?.status || 'active', timezone: edit?.timezone || 'Asia/Ho_Chi_Minh', currency: edit?.currency || 'VND' });
+      const currency = edit?.currency && edit.market === mk ? edit.currency : CURRENCY[mk] || (mk === 'Việt Nam' ? 'VND' : 'USD');
+      const c = await saveClient({ ...(edit || {}), id: edit?.id, name: name.trim(), website: site, industry: ind, language, market: mk, logo, color: edit?.color || COLORS[Math.floor(Math.random() * COLORS.length)], status: edit?.status || 'active', timezone: edit?.timezone || 'Asia/Ho_Chi_Minh', currency });
       onClose();
-      if (!edit) { toast(`Đã tạo workspace "${c.name}". Bước tiếp: lên thương hiệu.`, 'ok'); go({ view: 'client', id: c.id, tab: 'brand' }); }
+      if (!edit) { toast(`Đã tạo workspace "${c.name}". Bước tiếp: lên thương hiệu${ind ? '' : ' (AI tự nhận diện ngành từ website)'}.`, 'ok'); go({ view: 'client', id: c.id, tab: 'brand' }); }
       else toast('Đã lưu.', 'ok');
     } catch (err) { toast((err as Error).message, 'err'); }
     finally { setBusy(false); }
@@ -242,8 +259,25 @@ export function CreateClient({ onClose, edit }: { onClose: () => void; edit?: Cl
     <Modal title={edit ? 'Sửa khách hàng' : 'Tạo khách hàng'} icon="plus" narrow onClose={onClose} footer={<><Btn kind="ghost" onClick={onClose}>Huỷ</Btn><Btn kind="primary" disabled={busy} onClick={() => void submit()}>{busy ? 'Đang lưu…' : edit ? 'Lưu' : 'Tạo và lên thương hiệu'}</Btn></>}>
       <form class="col" onSubmit={submit} style={{ gap: 12 }}>
         <Field label="Tên khách hàng"><input ref={first} class="in" value={name} placeholder="VD: Cà phê Gió" onInput={(e) => setName((e.target as HTMLInputElement).value)} /></Field>
-        <Field label="Website" hint="để AI đọc thương hiệu"><input class="in" value={website} placeholder="caphegio.vn" inputMode="url" onInput={(e) => setWebsite((e.target as HTMLInputElement).value)} /></Field>
-        <Field label="Ngành"><select class="in" value={industry} onChange={(e) => setIndustry((e.target as HTMLSelectElement).value)}><option value="">Chọn ngành…</option>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}</select></Field>
+        <Field label="Website" hint="để AI đọc thương hiệu"><input class="in" value={website} placeholder="caphegio.vn" inputMode="url" onInput={(e) => setWebsite((e.target as HTMLInputElement).value)} onBlur={() => setWebsite(cleanUrl(website))} /></Field>
+        <Field label="Ngành">
+          <select class="in" value={industry} onChange={(e) => setIndustry((e.target as HTMLSelectElement).value)}>
+            <option value={AUTO}>✨ AI tự nhận diện từ website</option>
+            {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
+            <option value={OTHER}>Khác (tự điền)…</option>
+          </select>
+        </Field>
+        {industry === OTHER && <input class="in" value={industryText} placeholder="VD: dụng cụ cầm tay và máy công cụ cho thợ" onInput={(e) => setIndustryText((e.target as HTMLInputElement).value)} aria-label="Ngành (tự điền)" />}
+        <div class="grid2">
+          <Field label="Ngôn ngữ nội dung" hint="bài đăng, quảng cáo, email">
+            <select class="in" value={language} onChange={(e) => setLanguage((e.target as HTMLSelectElement).value)}>{LANGUAGES.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select>
+          </Field>
+          <Field label="Thị trường / quốc gia">
+            <select class="in" value={market} onChange={(e) => setMarket((e.target as HTMLSelectElement).value)}>{MARKETS.map((m) => <option key={m} value={m}>{m}</option>)}<option value={OTHER}>Khác (tự điền)…</option></select>
+          </Field>
+        </div>
+        {market === OTHER && <input class="in" value={marketText} placeholder="VD: Houston, Texas (Hoa Kỳ) · cộng đồng người Việt" onInput={(e) => setMarketText((e.target as HTMLInputElement).value)} aria-label="Thị trường (tự điền)" />}
+        <span class="dim small">Giao diện và brand book vẫn bằng tiếng Việt cho đội agency; nội dung đăng ra ngoài viết bằng ngôn ngữ đã chọn, theo văn hoá, ngày lễ và tiền tệ của thị trường đó.</span>
         <button type="submit" style={{ display: 'none' }} />
       </form>
     </Modal>

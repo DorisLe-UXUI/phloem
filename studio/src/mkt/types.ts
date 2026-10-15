@@ -10,9 +10,26 @@ export interface Client {
   /** Small data URL (≤ 160 px) so lists stay light. */
   logo?: string; industry?: string; website?: string; timezone?: string; currency?: string;
   status?: 'active' | 'paused' | 'archived'; lead?: string; color?: string; note?: string;
+  /** Language of the client's public content (posts, ads, emails), e.g. 'vi', 'en'. The team UI stays Vietnamese. */
+  language?: string;
+  /** Main market / country the client sells in (free text, e.g. 'Việt Nam', 'Hoa Kỳ', 'Đông Nam Á'). */
+  market?: string;
   createdAt: string; updatedAt: string;
   /** The caller's role in this workspace (set by the relay). */
   role?: Role; shared?: boolean;
+}
+
+export const LANGUAGES: { id: string; label: string; ai: string }[] = [
+  { id: 'vi', label: 'Tiếng Việt', ai: 'Vietnamese (tiếng Việt có dấu, tự nhiên)' }, { id: 'en', label: 'English', ai: 'English' },
+  { id: 'zh', label: '中文 (Trung)', ai: 'Simplified Chinese' }, { id: 'ja', label: '日本語 (Nhật)', ai: 'Japanese' }, { id: 'ko', label: '한국어 (Hàn)', ai: 'Korean' },
+  { id: 'th', label: 'ไทย (Thái)', ai: 'Thai' }, { id: 'id', label: 'Bahasa Indonesia', ai: 'Indonesian' }, { id: 'ms', label: 'Bahasa Melayu', ai: 'Malay' },
+  { id: 'fr', label: 'Français', ai: 'French' }, { id: 'de', label: 'Deutsch', ai: 'German' }, { id: 'es', label: 'Español', ai: 'Spanish' },
+];
+export const MARKETS = ['Việt Nam', 'Hoa Kỳ', 'Canada', 'Úc', 'Anh', 'Châu Âu', 'Nhật Bản', 'Hàn Quốc', 'Trung Quốc', 'Đài Loan', 'Singapore', 'Thái Lan', 'Malaysia', 'Indonesia', 'Philippines', 'Đông Nam Á', 'Toàn cầu'];
+/** One line for AI prompts: which language the public copy is written in and for which market. */
+export function audienceLine(c: Pick<Client, 'language' | 'market'>): string {
+  const lang = LANGUAGES.find((l) => l.id === (c.language || 'vi'))?.ai || c.language || 'Vietnamese';
+  return `Public copy language: ${lang}. Target market: ${c.market || 'Việt Nam'} (use that market's culture, holidays, currency, units and platforms).`;
 }
 
 export type ItemKind = 'brand' | 'plan' | 'review' | 'post' | 'campaign' | 'report' | 'note';
@@ -104,6 +121,8 @@ export interface PlanRow {
   hook: string; caption: string; cta: string; hashtags: string; visual: string; owner: string; status: Status;
   /** Review comments from the client link, newest last (copied in from the review record). */
   note?: string;
+  /** Phloem Design project made for this post. */
+  designId?: string;
 }
 export interface PlanMonth { month: string; theme: string; campaigns: { name: string; goal: string; channels: string[]; budget: number; note: string }[]; kpi: Record<string, number>; budget: Record<string, number> }
 export interface PlanSetup { months: number; start: string; channels: Channel[]; goals: Goal[]; budget: number; currency: string; events: string; postsPerWeek: number; brief: string }

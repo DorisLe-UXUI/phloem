@@ -93,7 +93,7 @@ export async function saveProject(): Promise<void> {
   const cid = !s.project.clientId && s.activeClientId ? s.activeClientId : s.project.clientId;
   const p: Project = { ...s.project, ...(cid ? { clientId: cid } : {}), updatedAt: new Date().toISOString() };
   let thumb: string | undefined, thumbMobile: string | undefined;
-  try { thumb = thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); }
+  try { thumb = p.kind === 'design' ? thumbnail(p.desktop, p.brand, assets, 360, p.desktop.height / p.desktop.width) : thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); }
   catch { try { const old = await db.getProject(p.id); thumb = old?.thumb; thumbMobile = old?.thumbMobile; } catch { /* no previous thumb */ } } // fonts/images not ready: keep the last good thumbnail
   const provider = (Object.values(p.drafts || {})[0] as DraftRecord | undefined)?.provider;
   try {
@@ -903,6 +903,7 @@ export async function openProject(id: string) {
     // Parked images never rest on the artboard: anything overlapping it (older data) is moved to the right margin.
     const scraps = loadScraps(id).map((sc) => (sc.x + sc.w > 0 && sc.x < project.desktop.width && sc.y + sc.h > 0 && sc.y < project.desktop.height ? { ...sc, x: project.desktop.width + 48 } : sc));
     assets.context.project = id;
+    assets.context.client = project.clientId || get().activeClientId || null;
     set({ route: { name: 'editor', projectId: id }, project, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: false, savedAt: project.updatedAt, result: null, log: [], scraps, scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null });
   } catch (e) { toast(`Không mở được: ${(e as Error).message}`, 'err'); }
 }
@@ -914,6 +915,7 @@ export async function newProject(kind: TemplateKind, brandOverride?: Partial<Bra
   await document.fonts.ready;
   const t = makeTemplate(kind, b);
   ensureFonts([t.brand.fontFamily, t.brand.headingFamily]);
+  assets.context.client = get().activeClientId; // Phloem MKT: images added while editing go to this client's library
   const now = new Date().toISOString();
   const p: Project = { id: uid('p'), name: name || t.name, createdAt: now, updatedAt: now, brand: t.brand, fields: t.fields, desktop: t.doc, mobile: null, drafts: {}, clientId: currentClientId() };
   history.clear();
@@ -977,7 +979,7 @@ export async function duplicateProject(id: string) {
   await refreshProjects();
 }
 export function renameProject(name: string) { patchProject({ name: name.trim() || 'Email' }); }
-export async function goHome() { if (get().dirty) await saveProject(); assets.context.project = null; set({ route: { name: 'home' }, project: null, selection: [], modal: null, scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null, playing: false }); await refreshProjects(); }
+export async function goHome() { if (get().dirty) await saveProject(); assets.context.project = null; assets.context.client = null; set({ route: { name: 'home' }, project: null, selection: [], modal: null, scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null, playing: false }); await refreshProjects(); }
 
 export function exportProjectJson() {
   const p = get().project; if (!p) return;

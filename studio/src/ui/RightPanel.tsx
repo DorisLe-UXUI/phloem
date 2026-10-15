@@ -1,4 +1,5 @@
 import { MAX_RECIPIENTS, clearQueue, connectGmail, defaultCap, disconnectGmail, downloadEml, gmailAccount, loadQueue, parseRecipients, pauseQueue, queueRunning, runQueue, sendTest, sentToday, startQueue } from '../pipeline/mailSend';
+import { DesignExport } from './mkt/DesignExport';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Check, Suggestion } from '../../../src/shared/types';
 import type { AnimKind, ImageNode, Node, RectNode, TextNode, GroupNode } from '../model/types';
@@ -8,7 +9,7 @@ import { GEN_PALETTES, genSvg } from '../design/generators';
 import { colorChoices } from '../design/elements';
 import * as ops from '../model/ops';
 import { assets } from '../storage/assets';
-import { set, useStore, toast } from '../store';
+import { get, set, useStore, toast } from '../store';
 import * as A from '../pipeline/actions';
 import { activeProfile, providerName, runExport } from '../pipeline/exportFlow';
 import { ensureFont } from '../render/fonts';
@@ -25,6 +26,13 @@ export function RightPanel() {
   const issues = a ? a.checks.filter((c) => c.level !== 'info').length : 0;
   return (
     <div class={`panel right ${s.mobilePane === 'right' ? 'open' : ''}`}>
+      {s.project?.kind === 'design' ? <>
+        <div class="ptabs">
+          <button class={`ptab ${s.rightTab !== 'export' ? 'on' : ''}`} onClick={() => set({ rightTab: 'design' })}>Thiết kế</button>
+          <button class={`ptab ${s.rightTab === 'export' ? 'on' : ''}`} onClick={() => set({ rightTab: 'export' })}><Icon name="download" size={13} />Xuất ảnh</button>
+        </div>
+        <div class="pbody">{s.rightTab === 'export' ? <DesignExport /> : <DesignTab />}</div>
+      </> : <>
       <div class="ptabs">
         <button class={`ptab ${s.rightTab === 'design' ? 'on' : ''}`} onClick={() => set({ rightTab: 'design' })}>Thiết kế</button>
         <button class={`ptab ${s.rightTab === 'email' ? 'on' : ''}`} onClick={() => set({ rightTab: 'email' })}>Email{issues ? <span class="n">{issues}</span> : null}</button>
@@ -32,6 +40,7 @@ export function RightPanel() {
         <button class={`ptab ${s.rightTab === 'ai' ? 'on' : ''}`} onClick={() => set({ rightTab: 'ai' })} title="Trợ lý AI và dựng 3 phương án"><Icon name="sparkle" size={13} />AI</button>
       </div>
       <div class="pbody">{s.rightTab === 'design' ? <DesignTab /> : s.rightTab === 'email' ? <EmailTab /> : s.rightTab === 'export' ? <ExportTab /> : <AiPanel />}</div>
+      </>}
     </div>
   );
 }
@@ -55,7 +64,7 @@ function ArtboardProps() {
         <Num label="H" value={d.height} min={100} max={10000} onChange={(v) => A.setDocProps({ height: Math.round(v) })} suffix="px" />
       </div>
       <Field label="Nền"><ColorInput value={d.bg} brand={b} onChange={(c) => A.setDocProps({ bg: c || '#ffffff' })} /></Field>
-      <div class="row"><Btn sm icon="fit" onClick={() => A.setDocHeightToContent()}>Khớp nội dung</Btn><Btn sm icon="reflow" onClick={() => A.reflow()}>Xếp lại block</Btn></div>
+      {get().project?.kind !== 'design' && <div class="row"><Btn sm icon="fit" onClick={() => A.setDocHeightToContent()}>Khớp nội dung</Btn><Btn sm icon="reflow" onClick={() => A.reflow()}>Xếp lại block</Btn></div>}
       <Eyebrow action={{ label: 'Chỉnh', onClick: () => set({ modal: 'brand' }) }}>Brand kit</Eyebrow>
       <div class="row wrap">
         {(['primary', 'ink', 'muted', 'bg', 'soft', 'line'] as const).map((t) => <span key={t} class="chip" title={t} style={{ gap: 6 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: b[t], display: 'inline-block', border: '1px solid rgba(255,255,255,.15)' }} />{t}</span>)}

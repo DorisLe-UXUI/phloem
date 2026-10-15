@@ -185,6 +185,12 @@ export interface Project {
   drafts: Record<string, unknown>;
   /** Phloem MKT: the client workspace this email belongs to (none = a plain Phloem Email project). */
   clientId?: string;
+  /** Phloem MKT: 'design' = a social/ads design at a fixed channel size (no email export); default email. */
+  kind?: 'email' | 'design';
+  /** Design size preset (Phloem Design), e.g. { id: 'ig-portrait', w: 1080, h: 1350 }. */
+  size?: { id: string; label: string; w: number; h: number };
+  /** The plan row this design was made for (Kế hoạch → Thiết kế). */
+  rowRef?: { planId: string; rowId: string };
   /** Free-form AI design source: the HTML the layers were converted from, and a hash of the converted desktop doc
    *  (unchanged doc → "AI tự chỉnh" can revise the HTML and convert again without losing hand edits). */
   design?: { html: string; hash: string; name?: string; at: string; /** the art direction (design.ts Direction) */ dir?: unknown } | null;
@@ -202,6 +208,8 @@ export interface Asset {
   src?: AssetSrc;
   /** Project the image belongs to (set when added inside a project or when an AI variant is applied). */
   project?: string | null;
+  /** Phloem MKT: the client workspace whose image library holds it. */
+  client?: string | null;
   /** ISO time it was added. */
   at?: string;
 }

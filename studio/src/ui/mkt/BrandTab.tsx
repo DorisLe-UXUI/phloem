@@ -43,14 +43,19 @@ function BrandIntake({ client, existing, onCancel, onDone }: { client: Client; e
     const t0 = Date.now();
     setStarted(t0); setProg({ step: 0, total: 4, label: 'Bắt đầu…' });
     try {
-      const { book, logo, notes: warn } = await buildBrandBook(client, { website, sheet, drive, notes, files }, setProg, abort.current.signal);
+      const { book, logo, notes: warn, industry } = await buildBrandBook(client, { website, sheet, drive, notes, files }, setProg, abort.current.signal);
       const by = get().user?.name || 'Bạn';
       const version = (existing?.version || 0) + 1;
       book.version = version;
       book.versions = [...(existing?.versions || []), { version, at: new Date().toISOString(), by, note: existing ? 'AI soạn lại' : 'AI soạn bản đầu' }].slice(-30);
       await putItem(client.id, 'brand', 'main', book);
-      if (logo && !client.logo) await saveClient({ ...client, logo });
-      if (website.trim() && !client.website) await saveClient({ ...client, website: /^https?:/.test(website) ? website.trim() : `https://${website.trim()}`, ...(logo && !client.logo ? { logo } : {}) });
+      // fill what the client form left open: logo, website, and the industry the AI recognised
+      const patch: Partial<Client> = {};
+      if (logo && !client.logo) patch.logo = logo;
+      if (website.trim() && !client.website) patch.website = /^https?:/.test(website) ? website.trim() : `https://${website.trim()}`;
+      if (industry && !client.industry) patch.industry = industry;
+      if (Object.keys(patch).length) await saveClient({ ...client, ...patch });
+      if (patch.industry) toast(`AI nhận diện ngành: ${patch.industry}`, 'info');
       for (const w of warn) toast(w, 'info');
       toast(`Xong brand book sau ${Math.round((Date.now() - t0) / 1000) || 1} giây. Xem lại rồi gửi khách duyệt.`, 'ok');
       onDone();

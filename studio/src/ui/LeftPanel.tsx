@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { ClientLibrary } from './mkt/ClientLibrary';
 import type { Node } from '../model/types';
 import * as ops from '../model/ops';
 import { BLOCKS } from '../model/templates';
@@ -20,10 +21,10 @@ export function LeftPanel() {
       <div class="ptabs">
         <button class={`ptab ${s.leftTab === 'design' ? 'on' : ''}`} onClick={() => set({ leftTab: 'design' })} title="Hình khối, đồ hoạ, icon, sticker 3D, chữ, ảnh, hoạt ảnh"><Icon name="shapes" size={13} />Thiết kế</button>
         <button class={`ptab ${s.leftTab === 'layers' ? 'on' : ''}`} onClick={() => set({ leftTab: 'layers' })}><Icon name="layers" size={13} />Layer</button>
-        <button class={`ptab ${s.leftTab === 'blocks' ? 'on' : ''}`} onClick={() => set({ leftTab: 'blocks' })}><Icon name="blocks" size={13} />Block</button>
+        {s.project?.kind !== 'design' && <button class={`ptab ${s.leftTab === 'blocks' ? 'on' : ''}`} onClick={() => set({ leftTab: 'blocks' })}><Icon name="blocks" size={13} />Block</button>}
         <button class={`ptab ${s.leftTab === 'assets' ? 'on' : ''}`} onClick={() => set({ leftTab: 'assets' })}><Icon name="image" size={13} />Ảnh</button>
       </div>
-      <div class="pbody">{s.leftTab === 'design' ? <DesignPanel /> : s.leftTab === 'layers' ? <Layers /> : s.leftTab === 'blocks' ? <Blocks /> : <Assets />}</div>
+      <div class="pbody">{s.leftTab === 'design' ? <DesignPanel /> : s.leftTab === 'layers' ? <Layers /> : s.leftTab === 'blocks' && s.project?.kind !== 'design' ? <Blocks /> : <Assets />}</div>
     </div>
   );
 }
@@ -154,6 +155,7 @@ function Assets() {
     const sel = A.selectedNodes();
     const img = sel.find((n) => n.type === 'image');
     if (img) { A.setImageAsset(img.id, id); toast('Đã thay ảnh cho layer đang chọn.', 'ok'); }
+    else if (s.project?.kind === 'design') { const a = assets.get(id)!; const d = A.doc(); const k = Math.min(1, (d.width * 0.7) / a.w, (d.height * 0.7) / a.h); const w = Math.round(a.w * k), h = Math.round(a.h * k); A.commit(ops.insertNodes(d, [{ id: `n_${Date.now().toString(36)}`, type: 'image', name: a.name, x: Math.round((d.width - w) / 2), y: Math.round((d.height - h) / 2), w, h, visible: true, locked: false, opacity: 1, link: null, alt: a.name, assetId: id, fit: 'cover', radius: 0, fill: null, overlay: null }])); }
     else { const a = assets.get(id)!; const d = A.doc(); const w = Math.min(d.width, a.w); const h = Math.round(w * (a.h / a.w)); A.commit({ ...ops.insertNodes(d, [{ id: `n_${Date.now().toString(36)}`, type: 'image', name: a.name, x: Math.round((d.width - w) / 2), y: ops.contentHeight(d), w, h, visible: true, locked: false, opacity: 1, link: null, alt: a.name, assetId: id, fit: 'cover', radius: 0, fill: null, overlay: null }]), height: Math.max(d.height, ops.contentHeight(d) + h) }); }
   };
   return (
@@ -161,6 +163,7 @@ function Assets() {
       <div class={`dropzone ${over ? 'over' : ''}`} onClick={() => input.current?.click()} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); if (e.dataTransfer?.files) void upload(e.dataTransfer.files); }}>
         <Icon name="upload" /> <div>Thả ảnh vào đây hoặc bấm để chọn</div><div class="dim small">PNG, JPG, WebP, GIF · lưu trong trình duyệt</div>
       </div>
+      {s.project?.clientId && <ClientLibrary clientId={s.project.clientId} onUse={use} />}
       <input ref={input} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) void upload(f); (e.target as HTMLInputElement).value = ''; }} />
       <div class="seg block" style={{ height: 26 }}><button class={scope === 'project' ? 'on' : ''} onClick={() => setScope('project')} title="Ảnh đang dùng, ảnh của dự án này và web đã đọc cho nó" style={{ whiteSpace: 'nowrap' }}>Dự án này</button><button class={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')} style={{ whiteSpace: 'nowrap' }}>Tất cả ({list.length})</button></div>
       <input class="in" style={{ height: 26 }} placeholder="Tìm theo tên, website, trang…" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.stopPropagation()} />

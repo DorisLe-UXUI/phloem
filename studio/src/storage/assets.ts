@@ -29,7 +29,7 @@ export class AssetStore implements ImageSource {
   private emit() { for (const l of this.listeners) l(); }
 
   /** Project currently open in the editor: new assets are tagged with it. */
-  context: { project: string | null } = { project: null };
+  context: { project: string | null; client: string | null } = { project: null, client: null };
 
   /** Assets made for a preview (AI design variants not chosen yet): in memory only, hidden from the library until persist(). */
   private temp = new Set<string>();
@@ -37,9 +37,9 @@ export class AssetStore implements ImageSource {
   all(): Asset[] { return [...this.meta.values()].filter((a) => !this.temp.has(a.id)).sort((a, b) => (b.at || '').localeCompare(a.at || '') || a.name.localeCompare(b.name)); }
   get(id: string): Asset | undefined { return this.meta.get(id); }
 
-  async add(file: File | Blob, name = (file as File).name || 'image', extra: { src?: Asset['src']; project?: string | null; temp?: boolean } = {}): Promise<Asset> {
+  async add(file: File | Blob, name = (file as File).name || 'image', extra: { src?: Asset['src']; project?: string | null; client?: string | null; temp?: boolean } = {}): Promise<Asset> {
     const bmp = await createImageBitmap(file);
-    const a: Asset = { id: uid('a'), name, mime: file.type || 'image/png', w: bmp.width, h: bmp.height, bytes: file.size, src: extra.src ?? { kind: 'upload' }, project: extra.project === undefined ? this.context.project : extra.project, at: new Date().toISOString() };
+    const a: Asset = { id: uid('a'), name, mime: file.type || 'image/png', w: bmp.width, h: bmp.height, bytes: file.size, src: extra.src ?? { kind: 'upload' }, project: extra.project === undefined ? this.context.project : extra.project, client: extra.client === undefined ? this.context.client : extra.client, at: new Date().toISOString() };
     bmp.close();
     this.meta.set(a.id, a);
     this.blobs.set(a.id, file);
@@ -65,12 +65,12 @@ export class AssetStore implements ImageSource {
   isTemp(id: string) { return this.temp.has(id); }
 
   /** Update library tags (project / source) on existing assets; persisted locally and mirrored to the relay. */
-  tag(ids: string[], patch: { project?: string | null; src?: Asset['src'] }) {
+  tag(ids: string[], patch: { project?: string | null; client?: string | null; src?: Asset['src'] }) {
     let changed = 0;
     for (const id of ids) {
       const a = this.meta.get(id); if (!a) continue;
-      const next: Asset = { ...a, ...(patch.project !== undefined ? { project: patch.project } : {}), ...(patch.src ? { src: patch.src } : {}) };
-      if (next.project === a.project && next.src === a.src) continue;
+      const next: Asset = { ...a, ...(patch.project !== undefined ? { project: patch.project } : {}), ...(patch.client !== undefined ? { client: patch.client } : {}), ...(patch.src ? { src: patch.src } : {}) };
+      if (next.project === a.project && next.client === a.client && next.src === a.src) continue;
       this.meta.set(id, next); changed++;
       void db.putAssetMeta(next).catch(() => { /* keep in memory */ });
       void cloud.pushAssetMeta(next).catch(() => { /* offline */ });
@@ -97,8 +97,9 @@ export class AssetStore implements ImageSource {
     let added = 0;
     for (const r of list) {
       const cur = this.meta.get(r.id);
-      if (!cur) { this.meta.set(r.id, { id: r.id, name: r.name, mime: r.mime, w: r.w, h: r.h, bytes: r.bytes, src: r.src, project: r.project ?? null, at: r.at || r.createdAt }); added++; }
-      else if ((r.src || r.project) && !cur.src && !cur.project) { this.meta.set(r.id, { ...cur, src: r.src, project: r.project ?? null, at: cur.at || r.at || r.createdAt }); added++; }
+      if (!cur) { this.meta.set(r.id, { id: r.id, name: r.name, mime: r.mime, w: r.w, h: r.h, bytes: r.bytes, src: r.src, project: r.project ?? null, client: r.client ?? null, at: r.at || r.createdAt }); added++; }
+      else if ((r.src || r.project) && !cur.src && !cur.project) { this.meta.set(r.id, { ...cur, src: r.src, project: r.project ?? null, client: cur.client ?? r.client ?? null, at: cur.at || r.at || r.createdAt }); added++; }
+      else if (r.client && !cur.client) { this.meta.set(r.id, { ...cur, client: r.client }); added++; }
     }
     if (added) this.emit();
   }

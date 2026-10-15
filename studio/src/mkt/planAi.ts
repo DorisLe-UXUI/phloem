@@ -4,7 +4,7 @@ import { extractJson, streamClaude } from '../ai/client';
 import { planBudget, planEnd, planMonths as coveredMonths, scheduleSlots, vnMarketingDates } from '../../../src/shared/mkt';
 import { get } from '../store';
 import { newId } from './data';
-import { CHANNELS, FORMATS, type BrandBook, type Channel, type Client, type Format, type Plan, type PlanMonth, type PlanRow, type PlanSetup } from './types';
+import { CHANNELS, FORMATS, audienceLine, type BrandBook, type Channel, type Client, type Format, type Plan, type PlanMonth, type PlanRow, type PlanSetup } from './types';
 
 export interface PlanProgress { label: string; done: number; total: number; chars?: number }
 
@@ -22,7 +22,7 @@ function brandBrief(b: BrandBook | null): string {
   ].join('\n');
 }
 
-const STRATEGY_SYSTEM = `Bạn là trưởng bộ phận chiến lược của một agency marketing Việt Nam. Lập KẾ HOẠCH MARKETING theo tháng cho khách hàng, bằng tiếng Việt, cụ thể và làm được, bám mùa vụ/sự kiện Việt Nam.
+const STRATEGY_SYSTEM = `Bạn là trưởng bộ phận chiến lược của một agency marketing Việt Nam. Lập KẾ HOẠCH MARKETING theo tháng cho khách hàng, viết tiếng Việt cho đội agency, cụ thể và làm được, bám mùa vụ/sự kiện của THỊ TRƯỜNG khách bán hàng (Việt Nam hoặc nước khác, xem dòng Target market).
 Trả lời CHỈ bằng JSON đúng schema, không markdown:
 {"title": "Kế hoạch ... ", "strategy": "3-6 câu: mục tiêu, cách tiếp cận, thông điệp xuyên suốt",
  "pillars": [{"name": "Trụ cột", "share": 30, "desc": "nội dung gì, vì sao"}],
@@ -32,7 +32,7 @@ Trả lời CHỈ bằng JSON đúng schema, không markdown:
    "channelWeights": {"facebook": 2, "tiktok": 1}, "kpi": {"Tiếp cận": 120000}}]}
 Quy tắc: 3-5 trụ cột, tổng share = 100; mỗi tháng 1-3 campaign; "weight" là độ nặng ngân sách tháng (1 = bình thường, tháng cao điểm như Tết/11.11 có thể 1.5-2); "channelWeights" chỉ dùng các kênh được giao; KPI là số nguyên thực tế cho thị trường Việt Nam với ngân sách đã cho, đừng phóng đại.`;
 
-const POSTS_SYSTEM = `Bạn là content lead của agency marketing Việt Nam. Viết LỊCH NỘI DUNG cho đúng các ô (slot) được giao: mỗi slot một bài, giữ nguyên "slot" id. Tiếng Việt tự nhiên, đúng giọng thương hiệu, hook mạnh trong 1-2 giây đầu, caption nháp ngắn gọn có xuống dòng, CTA rõ.
+const POSTS_SYSTEM = `Bạn là content lead của agency marketing Việt Nam. Viết LỊCH NỘI DUNG cho đúng các ô (slot) được giao: mỗi slot một bài, giữ nguyên "slot" id. "topic" và "visual" viết tiếng Việt cho đội agency; "hook", "caption", "cta", "hashtags" viết bằng NGÔN NGỮ NỘI DUNG của khách (dòng Public copy language), tự nhiên như người bản xứ của thị trường đó, đúng giọng thương hiệu, hook mạnh trong 1-2 giây đầu, caption nháp ngắn gọn có xuống dòng, CTA rõ.
 Trả lời CHỈ bằng JSON: {"posts": [{"slot": "s1", "format": "image|carousel|reel|video|story|article", "pillar": "tên trụ cột", "topic": "chủ đề", "hook": "câu mở", "caption": "caption nháp", "cta": "CTA", "hashtags": "#a #b", "visual": "ý tưởng hình ảnh/video cụ thể"}]}
 Quy tắc: TikTok/YouTube ưu tiên reel/video; LinkedIn ưu tiên article/image; xen kẽ trụ cột theo tỉ lệ; bám sự kiện trong tháng; không trùng chủ đề.`;
 
@@ -49,11 +49,12 @@ export async function buildPlan(client: Client, brand: BrandBook | null, setup: 
 
   const ctx = [
     `Khách hàng: ${client.name}${client.industry ? ` · ngành ${client.industry}` : ''}${client.website ? ` · ${client.website}` : ''}`,
+    audienceLine(client),
     `Thời gian: ${setup.months} tháng, từ ${setup.start} đến ${end} (các tháng: ${months.join(', ')})`,
     `Kênh: ${setup.channels.map((c) => CHANNELS.find((x) => x.id === c)?.label || c).join(', ')}`,
     `Mục tiêu: ${setup.goals.join(', ')}`, `Ngân sách tổng: ${setup.budget.toLocaleString('vi-VN')} ${setup.currency}`,
     `Tần suất: ${setup.postsPerWeek} bài/tuần mỗi kênh tự nhiên`,
-    `Sự kiện trong kỳ: ${events.map((e) => `${e.date} ${e.name}`).join('; ') || 'không có'}`,
+    !client.market || client.market === 'Việt Nam' ? `Sự kiện trong kỳ: ${events.map((e) => `${e.date} ${e.name}`).join('; ') || 'không có'}` : `Sự kiện: tự xác định các ngày lễ, mùa mua sắm và dịp quan trọng của thị trường ${client.market} trong kỳ này (không dùng ngày lễ Việt Nam trừ khi khách nhắm cộng đồng người Việt).`,
     setup.events.trim() ? `Sự kiện riêng của khách: ${setup.events.trim()}` : '',
     setup.brief.trim() ? `Brief thêm: ${setup.brief.trim()}` : '',
     `THƯƠNG HIỆU\n${brandBrief(brand)}`,

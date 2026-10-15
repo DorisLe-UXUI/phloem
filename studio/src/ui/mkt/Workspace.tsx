@@ -7,7 +7,7 @@ import { makeZip } from '../../../../src/shared/zip';
 import { cachedItems, createShare, deleteClient, exportClient, isRelay, listAudit, listItems, listMembers, listShares, logoDataUrl, removeMember, reviewUrl, revokeShare, saveClient, setMember } from '../../mkt/data';
 import { digest } from '../../mkt/insights';
 import { go } from '../../mkt/router';
-import { CLIENT_TABS, ROLE_LABEL, STATUS, canManage, canWrite, channelOf, type Status, type AuditRow, type Client, type ClientTab, type Member, type Role, type ShareLink } from '../../mkt/types';
+import { CLIENT_TABS, LANGUAGES, ROLE_LABEL, STATUS, canManage, canWrite, channelOf, type Status, type AuditRow, type Client, type ClientTab, type Member, type Role, type ShareLink } from '../../mkt/types';
 import { Btn, Field, Modal } from '../components';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
@@ -15,6 +15,7 @@ import { ClientAvatar, Empty, PageHead, StatusChip, actionLabel, fmtDate, fmtTim
 import { Bar, CreateClient, Kpi } from './MktApp';
 import { BrandTab } from './BrandTab';
 import { PlanTab, ApprovedWork } from './PlanTab';
+import { DesignHub } from './DesignHub';
 
 export function Workspace({ client, tab }: { client: Client; tab: ClientTab }) {
   const s = useStore();
@@ -28,7 +29,7 @@ export function Workspace({ client, tab }: { client: Client; tab: ClientTab }) {
         <ClientAvatar c={client} size={34} />
         <div class="grow" style={{ minWidth: 0 }}>
           <div class="row" style={{ gap: 8 }}><b class="mk-ws-name">{client.name}</b>{client.status === 'archived' && <span class="chip">Lưu trữ</span>}{client.shared && <span class="chip">{ROLE_LABEL[client.role as Role] || client.role}</span>}</div>
-          <span class="dim small mono mk-ell">{[client.industry, client.website?.replace(/^https?:\/\//, '')].filter(Boolean).join(' · ')}</span>
+          <span class="dim small mono mk-ell">{[client.industry, client.market, LANGUAGES.find((l) => l.id === (client.language || 'vi'))?.label, client.website?.replace(/^https?:\/\//, '').replace(/\/$/, '')].filter(Boolean).join(' · ')}</span>
         </div>
       </div>
       <div class="mk-tabs" role="tablist">
@@ -47,7 +48,7 @@ export function Workspace({ client, tab }: { client: Client; tab: ClientTab }) {
             {tab === 'overview' && <ClientOverview client={client} />}
             {tab === 'brand' && <BrandTab client={client} />}
             {tab === 'plan' && <PlanTab client={client} />}
-            {tab === 'design' && <ApprovedWork client={client} mode="design" />}
+            {tab === 'design' && <DesignHub client={client} />}
             {tab === 'calendar' && <ApprovedWork client={client} mode="calendar" />}
             {tab === 'ads' && <Soon title="Quảng cáo" phase={5} text="Thu thập quảng cáo đối thủ (Meta Ad Library), so sánh, AI đề xuất campaign và bảng mô phỏng ngân sách có thanh kéo. Campaign đẩy sang nền tảng luôn ở trạng thái tạm dừng." />}
             {tab === 'email' && <EmailTab client={client} />}
@@ -68,7 +69,7 @@ function Soon({ title, phase, text }: { title: string; phase: number; text: stri
 function ClientOverview({ client }: { client: Client }) {
   const s = useStore();
   const d = useMemo(() => digest(cachedItems(client.id)), [client.id, s.clientsAt]);
-  const emails = s.projects.filter((p) => p.clientId === client.id);
+  const emails = s.projects.filter((p) => p.clientId === client.id && p.kind !== 'design');
   const week = useMemo(() => { const out: { date: string; label: string }[] = []; for (let i = 0; i < 7; i++) { const t = new Date(Date.now() + i * 86400e3); out.push({ date: t.toISOString().slice(0, 10), label: t.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }) }); } return out; }, []);
   const next = !d.brand ? { label: 'Lên thương hiệu', tab: 'brand' as const } : !d.plan ? { label: 'Soạn kế hoạch', tab: 'plan' as const } : { label: 'Mở kế hoạch', tab: 'plan' as const };
   return (
@@ -104,7 +105,7 @@ function ClientOverview({ client }: { client: Client }) {
 function EmailTab({ client }: { client: Client }) {
   const s = useStore();
   useEffect(() => { void A.refreshProjects(); }, []);
-  const list = s.projects.filter((p) => p.clientId === client.id);
+  const list = s.projects.filter((p) => p.clientId === client.id && p.kind !== 'design');
   const write = canWrite(client.role);
   const own = !client.shared;
   const hasBrand = !!cachedItems(client.id)?.some((i) => i.kind === 'brand');
@@ -174,6 +175,8 @@ function Settings({ client }: { client: Client }) {
             <span>Tên</span><b>{client.name}</b>
             <span>Ngành</span><span>{client.industry || '—'}</span>
             <span>Website</span><span class="mk-ell">{client.website ? <a href={client.website} target="_blank" rel="noopener">{client.website}</a> : '—'}</span>
+            <span>Ngôn ngữ</span><span>{LANGUAGES.find((l) => l.id === (client.language || 'vi'))?.label}</span>
+            <span>Thị trường</span><span>{client.market || 'Việt Nam'}</span>
             <span>Múi giờ</span><span>{client.timezone || 'Asia/Ho_Chi_Minh'}</span>
             <span>Tiền tệ</span><span>{client.currency || 'VND'}</span>
             <span>Tạo lúc</span><span>{fmtDate(client.createdAt)}</span>

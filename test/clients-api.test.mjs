@@ -88,6 +88,14 @@ test('clients API: isolation, roles, review links, delete', async () => {
   assert.equal((await call(`/db/client/cB/share/${links[0].id}`, { token: B, method: 'DELETE' })).body.ok, true);
   assert.equal((await call(`/share/${share.body.token}`)).status, 404);
 
+  // Phloem Design: images carry the client tag; AI images answer clearly when the relay has no image key
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex');
+  const up = await fetch(`${BASE}/db/assets/a_lib1`, { method: 'PUT', headers: { Authorization: `Bearer ${A}`, 'Content-Type': 'image/png', 'X-Asset-Name': 'logo.png', 'X-Asset-W': '1', 'X-Asset-H': '1', 'X-Asset-Meta': encodeURIComponent(JSON.stringify({ src: { kind: 'upload' }, client: 'cA', project: null })) }, body: png });
+  assert.equal(up.status, 200);
+  assert.equal((await call('/db/assets', { token: A })).body.assets.find((x) => x.id === 'a_lib1').client, 'cA');
+  const img = await call('/ai/image', { token: A, method: 'POST', body: { prompt: 'một ly cà phê' } });
+  assert.ok([403, 503].includes(img.status), `ai image without key/access → ${img.status}`);
+
   // export carries the client's data only; delete needs the typed name
   const ex = (await call('/db/client/cA/export', { token: A })).body;
   assert.equal(ex.client.id, 'cA');

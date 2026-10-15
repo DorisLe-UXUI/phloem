@@ -5,7 +5,7 @@ import { sheetCsvUrl } from '../catalog/catalog';
 import { assets } from '../storage/assets';
 import { getSession } from '../auth/core';
 import { get } from '../store';
-import type { BrandBook, Client, PaletteColor, Persona } from './types';
+import { audienceLine, type BrandBook, type Client, type PaletteColor, type Persona } from './types';
 
 export interface BrandInput { website: string; sheet: string; drive: string; notes: string; files: File[] }
 export interface BrandProgress { step: number; total: number; label: string; chars?: number }
@@ -41,8 +41,9 @@ export function coerceBrandBook(raw: any, base: Partial<BrandBook> = {}): BrandB
 }
 
 const SYSTEM = `Bạn là giám đốc chiến lược thương hiệu của một agency marketing Việt Nam. Từ dữ liệu website, bảng tính và tài liệu của khách, viết BRAND BOOK bằng tiếng Việt: cụ thể, dựa trên bằng chứng trong dữ liệu, không sáo rỗng, không bịa số liệu. Khi dữ liệu thiếu, suy luận hợp lý từ ngành và ghi rõ "(đề xuất)".
+Các phần dành cho đội agency (sứ mệnh, persona, quy tắc, ghi chú) viết tiếng Việt; các câu đăng ra ngoài (tagline, thông điệp, CTA, hashtag, ví dụ câu chữ) viết bằng NGÔN NGỮ NỘI DUNG của khách và hợp văn hoá THỊ TRƯỜNG của khách (xem dòng "Public copy language / Target market").
 Trả lời CHỈ bằng một object JSON đúng schema sau, không markdown, không giải thích:
-{"title": "Brand book <tên>", "tagline": "...", "mission": "...", "vision": "...", "values": ["..."],
+{"title": "Brand book <tên>", "industry": "ngành ngắn gọn bằng tiếng Việt, cụ thể (VD: Dụng cụ cầm tay và máy công cụ)", "tagline": "...", "mission": "...", "vision": "...", "values": ["..."],
  "personas": [{"name": "Tên gợi nhớ", "age": "25-34", "job": "...", "goals": "...", "pains": "...", "channels": "Facebook, TikTok..."}],
  "voice": {"traits": ["3-5 tính từ"], "do": ["nên viết..."], "dont": ["không viết..."]},
  "messages": ["thông điệp chính"], "usp": ["điểm khác biệt"], "competitors": [{"name": "...", "note": "khác gì"}],
@@ -82,7 +83,7 @@ async function readSheet(link: string): Promise<string> {
 const b64 = async (f: Blob) => { const buf = new Uint8Array(await f.arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000)); return btoa(s); };
 
 /** Read every source, ask Claude, return the book + the email brand + the client logo (small data URL). */
-export async function buildBrandBook(client: Client, input: BrandInput, onProgress: (p: BrandProgress) => void, signal?: AbortSignal): Promise<{ book: BrandBook; logo: string | null; notes: string[] }> {
+export async function buildBrandBook(client: Client, input: BrandInput, onProgress: (p: BrandProgress) => void, signal?: AbortSignal): Promise<{ book: BrandBook; logo: string | null; notes: string[]; industry: string }> {
   const total = 4;
   const notes: string[] = [];
   let site: SiteProfile | null = null, sheet = '';
@@ -103,7 +104,8 @@ export async function buildBrandBook(client: Client, input: BrandInput, onProgre
   if (site && !mock) {
     onProgress({ step: 2, total, label: 'Lấy logo và ảnh thương hiệu vào kho…' });
     try {
-      const imp = await importSiteImages(site, 24);
+      const prevClient = assets.context.client; assets.context.client = client.id; // the website's logo and photos land in this client's library
+      const imp = await importSiteImages(site, 24).finally(() => { assets.context.client = prevClient; });
       if (imp.logoId) { logoMain = imp.logoId; logoLight = imp.logoLightId || undefined; emailBrand = { ...emailBrand, logoAssetId: imp.logoId, logoLightAssetId: imp.logoLightId }; const blob = await assets.blob(imp.logoId); if (blob) { const { logoDataUrl } = await import('./data'); logoData = await logoDataUrl(blob); } }
     } catch { /* logo is optional */ }
   }
@@ -119,7 +121,8 @@ export async function buildBrandBook(client: Client, input: BrandInput, onProgre
 
   onProgress({ step: 3, total, label: 'AI đang viết brand book…', chars: 0 });
   const ask = [
-    `Khách hàng: ${client.name}${client.industry ? ` · ngành ${client.industry}` : ''}`,
+    `Khách hàng: ${client.name}${client.industry ? ` · ngành ${client.industry}` : ' · ngành: chưa rõ, hãy nhận diện từ dữ liệu'}`,
+    audienceLine(client),
     input.notes.trim() ? `Ghi chú / brief của agency:\n${input.notes.trim().slice(0, 4000)}` : '',
     site ? `DỮ LIỆU WEBSITE\n${siteDigest(site)}` : input.website ? `Website: ${input.website} (không đọc được, suy luận từ ngành)` : '',
     emailBrand ? `Màu thương hiệu đã đo từ logo/website: primary ${emailBrand.primary}, accent ${emailBrand.accent}, chữ ${emailBrand.ink}, nền ${emailBrand.bg}. Font: ${emailBrand.headingFamily || '?'} / ${emailBrand.fontFamily || '?'}.` : '',
@@ -142,7 +145,8 @@ export async function buildBrandBook(client: Client, input: BrandInput, onProgre
     logo: { main: logoMain, light: logoLight, rules: [] }, emailBrand,
   });
   if (!book.palette.length && emailBrand) book.palette = [{ name: 'Chính', hex: String(emailBrand.primary), role: 'primary', ratio: 60 }, { name: 'Nhấn', hex: String(emailBrand.accent), role: 'accent', ratio: 10 }, { name: 'Chữ', hex: String(emailBrand.ink), role: 'neutral', ratio: 20 }, { name: 'Nền', hex: String(emailBrand.bg), role: 'neutral', ratio: 10 }].filter((c) => HEX.test(c.hex)) as PaletteColor[];
-  return { book, logo: logoData, notes };
+  const industry = typeof (raw as { industry?: unknown })?.industry === 'string' ? String((raw as { industry: string }).industry).trim().slice(0, 80) : '';
+  return { book, logo: logoData, notes, industry };
 }
 
 function mockBook(c: Client) {

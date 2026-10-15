@@ -8,7 +8,7 @@ import { get, set, history, type State } from '../store';
 import { normalizeProject } from '../pipeline/actions';
 
 export interface RemoteProjectMeta { id: string; name: string; updatedAt: string; createdAt: string; thumb?: string; thumbMobile?: string; provider?: string; size?: number }
-export interface RemoteAsset { id: string; name: string; mime: string; w: number; h: number; bytes: number; createdAt: string; src?: Asset['src']; project?: string | null; at?: string }
+export interface RemoteAsset { id: string; name: string; mime: string; w: number; h: number; bytes: number; createdAt: string; src?: Asset['src']; project?: string | null; client?: string | null; at?: string }
 export interface SyncState { state: 'off' | 'idle' | 'syncing' | 'error'; at?: string; msg?: string }
 
 const pending = new Map<string, { t: ReturnType<typeof setTimeout>; p: StoredProject }>();
@@ -83,13 +83,13 @@ export const cloud = {
   async listAssets(): Promise<RemoteAsset[]> { return (await req<{ assets: RemoteAsset[] }>('/db/assets')).assets; },
   async pushAsset(a: Asset, blob: Blob): Promise<void> {
     if (!this.active()) return;
-    const r = await fetch(`${base()}/db/assets/${encodeURIComponent(a.id)}`, { method: 'PUT', headers: headers({ 'Content-Type': a.mime || 'application/octet-stream', 'X-Asset-Name': encodeURIComponent(a.name), 'X-Asset-W': String(a.w), 'X-Asset-H': String(a.h), 'X-Asset-Meta': encodeURIComponent(JSON.stringify({ src: a.src, project: a.project ?? null, at: a.at })) }), body: blob });
+    const r = await fetch(`${base()}/db/assets/${encodeURIComponent(a.id)}`, { method: 'PUT', headers: headers({ 'Content-Type': a.mime || 'application/octet-stream', 'X-Asset-Name': encodeURIComponent(a.name), 'X-Asset-W': String(a.w), 'X-Asset-H': String(a.h), 'X-Asset-Meta': encodeURIComponent(JSON.stringify({ src: a.src, project: a.project ?? null, client: a.client ?? null, at: a.at })) }), body: blob });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
   },
   /** Tags only (project / source) for an asset the relay already has. */
   async pushAssetMeta(a: Asset): Promise<void> {
     if (!this.active()) return;
-    await req(`/db/assets/${encodeURIComponent(a.id)}`, { method: 'PATCH', body: JSON.stringify({ meta: { src: a.src, project: a.project ?? null, at: a.at } }) });
+    await req(`/db/assets/${encodeURIComponent(a.id)}`, { method: 'PATCH', body: JSON.stringify({ meta: { src: a.src, project: a.project ?? null, client: a.client ?? null, at: a.at } }) });
   },
   async fetchAssetBlob(id: string): Promise<Blob | null> {
     if (!this.active()) return null;

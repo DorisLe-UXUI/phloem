@@ -27,6 +27,10 @@ const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 const KLAVIYO_REVISION = process.env.KLAVIYO_REVISION || '2025-07-15';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+// Image generation (Phloem Design): Google Imagen through the Gemini API, or OpenAI images. Keys stay on the relay.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const IMAGE_PROVIDER = (process.env.IMAGE_PROVIDER || (GEMINI_API_KEY ? 'google' : OPENAI_API_KEY ? 'openai' : '')).toLowerCase();
 const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', import.meta.url).pathname);
 // Ephemeral hosts: pull the last database snapshot from the backup bucket before opening it (no-op without BACKUP_S3_*).
 const BACKUP = backupConfig();
@@ -99,6 +103,7 @@ const server = createServer(async (req, res) => {
         tokenRequired: !!RELAY_TOKEN,
         klaviyoRevision: KLAVIYO_REVISION,
         ai: !!anthropic,
+        imageAi: IMAGE_PROVIDER || null,
         auth: true,
         db: true,
         site: true,
@@ -125,6 +130,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/proxy' && req.method === 'POST') { if (!RELAY_TOKEN && !AUTH.me(bearer(req)) && throttled(`proxy:${ipOf(req)}`, 400, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều request qua relay. Đăng nhập tài khoản relay để không bị giới hạn.' }); return await proxy(await body(req), res); }
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
     if (url.pathname === '/ai' && req.method === 'POST') { if (!aiGate(req, res)) return; return await ai(await body(req), res); }
+    if (url.pathname === '/ai/image' && req.method === 'POST') { if (!aiGate(req, res)) return; if (throttled(`img:${ipOf(req)}`, 30, 10 * 60_000)) return json(res, 429, { error: 'Tạo ảnh quá nhiều trong 10 phút. Đợi một chút.' }); return await aiImage(await body(req), res); }
     if (url.pathname === '/ai/stream' && req.method === 'POST') { if (!aiGate(req, res)) return; return await aiStream(await body(req), req, res); }
     if (url.pathname.startsWith('/aiaccess')) return await aiAccessRoute(url.pathname.slice('/aiaccess'.length) || '/', req, res);
     if (url.pathname.startsWith('/admin/')) return await adminRoute(url.pathname.slice('/admin'.length), req, res);
@@ -241,6 +247,35 @@ async function aiStream(p, req, res) {
     clearInterval(ping);
     try { res.end(); } catch { /* gone */ }
   }
+}
+
+// ---------- AI images ----------
+// {prompt, aspect: '1:1'|'3:4'|'4:3'|'9:16'|'16:9'} → {b64, mime, provider}. Google Imagen (Gemini API, model IMAGEN_MODEL)
+// or OpenAI (OPENAI_IMAGE_MODEL). The browser never sees a key; the same AI access gate as /ai applies.
+const ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
+async function aiImage(p, res) {
+  const prompt = String(p?.prompt || '').trim().slice(0, 2000);
+  const aspect = ASPECTS.has(p?.aspect) ? p.aspect : '1:1';
+  if (!prompt) return json(res, 400, { error: 'Thiếu mô tả ảnh.' });
+  if (!IMAGE_PROVIDER) return json(res, 503, { error: 'Relay chưa có key tạo ảnh. Thêm GEMINI_API_KEY (Google Imagen) hoặc OPENAI_API_KEY trong Render → Environment.', code: 'no_image_key' });
+  try {
+    if (IMAGE_PROVIDER === 'google') {
+      const model = process.env.IMAGEN_MODEL || 'imagen-4.0-generate-001';
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:predict`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio: aspect } }), signal: AbortSignal.timeout(110_000) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return json(res, r.status === 429 ? 429 : 502, { error: `Google Imagen: ${j?.error?.message || `HTTP ${r.status}`}` });
+      const pred = j?.predictions?.[0];
+      if (!pred?.bytesBase64Encoded) return json(res, 422, { error: 'Google không trả ảnh (có thể mô tả bị bộ lọc an toàn chặn). Đổi mô tả rồi thử lại.' });
+      return json(res, 200, { b64: pred.bytesBase64Encoded, mime: pred.mimeType || 'image/png', provider: 'google' });
+    }
+    const size = aspect === '1:1' ? '1024x1024' : aspect === '9:16' || aspect === '3:4' ? '1024x1536' : '1536x1024';
+    const r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` }, body: JSON.stringify({ model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1', prompt, size, n: 1 }), signal: AbortSignal.timeout(110_000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return json(res, r.status === 429 ? 429 : 502, { error: `OpenAI: ${j?.error?.message || `HTTP ${r.status}`}` });
+    const b64 = j?.data?.[0]?.b64_json;
+    if (!b64) return json(res, 422, { error: 'OpenAI không trả ảnh. Đổi mô tả rồi thử lại.' });
+    return json(res, 200, { b64, mime: 'image/png', provider: 'openai' });
+  } catch (e) { return json(res, 502, { error: `Không tạo được ảnh: ${e?.message || e}` }); }
 }
 
 // ---------- AI access codes ----------
@@ -570,7 +605,7 @@ const ROLE_CAN = {
   client_viewer: new Set(['read']),
 };
 const can = (acc, what) => !!acc && !!ROLE_CAN[acc.role]?.has(what);
-const CLIENT_FIELDS = ['logo', 'industry', 'website', 'timezone', 'currency', 'status', 'lead', 'color', 'note'];
+const CLIENT_FIELDS = ['logo', 'industry', 'website', 'timezone', 'currency', 'status', 'lead', 'color', 'note', 'language', 'market'];
 function cleanClient(p, id) {
   const out = { id, name: String(p?.name || '').trim().slice(0, 120) || 'Khách hàng' };
   for (const k of CLIENT_FIELDS) if (typeof p?.[k] === 'string') out[k] = p[k].slice(0, k === 'logo' ? 200_000 : 600);
@@ -718,6 +753,7 @@ function assetTagsObj(j) {
   const out = {};
   if (j.src && typeof j.src === 'object') { const k = str(j.src.kind, 16); if (k) out.src = { kind: k, host: str(j.src.host, 120), url: str(j.src.url, 600), page: str(j.src.page, 200) }; }
   if (j.project === null || typeof j.project === 'string') out.project = j.project === null ? null : j.project.slice(0, 64);
+  if (j.client === null || typeof j.client === 'string') out.client = j.client === null ? null : j.client.slice(0, 64); // Phloem MKT: which client's library
   if (typeof j.at === 'string') out.at = j.at.slice(0, 40);
   return Object.keys(out).length ? out : null;
 }
