@@ -26,7 +26,8 @@ export function BrandTab({ client }: { client: Client }) {
 
 // ---------- intake ----------
 function BrandIntake({ client, existing, onCancel, onDone }: { client: Client; existing?: BrandBook; onCancel?: () => void; onDone: () => void }) {
-  const [website, setWebsite] = useState(existing?.sources.website || (looksLikeUrl(client.website || '') ? client.website! : looksLikeUrl(client.name) ? cleanUrl(client.name) : client.website || ''));
+  // the client's saved website wins (it is what the user fixed last); then the book's source, then a link typed as the name
+  const [website, setWebsite] = useState([client.website, existing?.sources.website, client.name].find((u) => looksLikeUrl(u || '')) ? cleanUrl([client.website, existing?.sources.website, client.name].find((u) => looksLikeUrl(u || ''))!) : client.website || existing?.sources.website || '');
   const [sheet, setSheet] = useState(existing?.sources.sheet || '');
   const [drive, setDrive] = useState(existing?.sources.drive || '');
   const [notes, setNotes] = useState('');
@@ -54,7 +55,8 @@ function BrandIntake({ client, existing, onCancel, onDone }: { client: Client; e
       const patch: Partial<Client> = {};
       if (logo && !client.logo) patch.logo = logo;
       if (website.trim() && !client.website) patch.website = /^https?:/.test(website) ? website.trim() : `https://${website.trim()}`;
-      if (industry && !client.industry) patch.industry = industry;
+      // fill the industry, or replace one the AI only guessed earlier (written without the website)
+      if (industry && (!client.industry || (/suy luận|đề xuất|guess/i.test(client.industry) && industry !== client.industry))) patch.industry = industry;
       // a client created from a link gets its real name from the website
       if (brandName && (looksLikeUrl(client.name) || client.name === nameFromUrl(client.website || ''))) patch.name = brandName;
       if (Object.keys(patch).length) await saveClient({ ...client, ...patch });
