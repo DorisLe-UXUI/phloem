@@ -5,7 +5,7 @@ import type { Brand, Doc, Node, Project } from '../model/types';
 import { DEFAULT_BRAND, FONTS, uid } from '../model/types';
 import { htmlToDoc, extractHtml, tokenize } from '../ai/htmlToDoc';
 import { DESIGN_TECH, readyDoc } from '../ai/design';
-import { streamClaude, relayAuth, wakeRelay, type AiImage } from '../ai/client';
+import { askClaude, streamClaude, relayAuth, wakeRelay, type AiImage } from '../ai/client';
 import { renderToCanvas } from '../render/renderer';
 import { ensureFonts } from '../render/fonts';
 import { assets } from '../storage/assets';
@@ -274,14 +274,10 @@ async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: Pla
   let hero: string | null = null;
   if (await imageProvider()) {
     onStage?.('AI đang vẽ ảnh chính cho bài (10–30 giây)…');
-    const style = [book?.imagery?.join('; '), styleNotesOf(client.id)].filter(Boolean).join('. ');
-    const prompt = [
-      `Key visual for a ${channelOf(row?.channel || 'facebook').label} post by ${client.name}${client.industry ? ` (${client.industry})` : ''}.`,
-      row ? `Subject: ${row.topic}. Visual idea: ${row.visual || row.hook}.` : 'Subject: the brand and its product.',
-      style ? `Brand image style: ${style}.` : '',
-      `Colours that fit the brand: ${[brand.primary, brand.accent].join(', ')}.`,
-      'High-end advertising quality, one clear focal subject, depth and soft light, clean area at the top for a headline. Absolutely no text, letters, numbers, watermarks or logos in the image.',
-    ].filter(Boolean).join(' ');
+    const idea = row ? `${channelOf(row.channel).label} post. Topic: ${row.topic}. Hook: ${row.hook}. Visual idea from the plan: ${row.visual || '(none)'}` : 'A hero image for the brand and its product.';
+    onStage?.('Art director đang viết prompt ảnh…');
+    const prompt = await artDirect(client, idea, aspectFor(size), { headline: true, signal });
+    onStage?.('AI đang vẽ ảnh chính cho bài (10–30 giây)…');
     try { hero = await generateImage(client.id, prompt, aspectFor(size)); valid.add(hero); }
     catch (e) { onStage?.(`Không vẽ được ảnh (${(e as Error).message.slice(0, 80)}), dùng ảnh trong kho…`); }
   }
@@ -321,6 +317,42 @@ async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: Pla
     if (/<(div|section)[\s>]/i.test(h2)) { onStage?.('Đang chuyển bản đã chỉnh thành layer…'); doc = await toDoc(h2, size, brand, valid, onStage); html = h2; }
   } catch (e) { if (signal?.aborted) throw e; /* keep the first draft */ }
   return doc;
+}
+
+// ---------- AI image prompts: an art director turns a rough idea into a full shot description ----------
+const ART_DIRECTOR = `You are the art director of a top advertising agency, briefing an image model (FLUX / Gemini image) for a premium campaign visual.
+Write ONE image prompt in English, a single paragraph of 90–150 words, nothing else (no title, no quotes, no list).
+Cover, in this order: the hero subject and what is happening (specific, tangible, appetising or aspirational, never generic stock); the setting and props that tell the story; composition for the given aspect ratio (where the focal point sits, the angle, how the frame breathes); camera (lens in mm, aperture, depth of field) for photography, or the exact render style when a 3D, illustration or flat-lay look suits the brand and topic better; lighting (direction, quality, time of day, rim or practical lights); colour grading that weaves the brand colours in through objects, light and surfaces (name the colours in words, never hex codes); materials and textures; the emotion the viewer should feel.
+People, places, food and objects must look native to the target market (for Viet Nam: Vietnamese people, streets, homes, products) unless the brief says otherwise.
+Aim for the scroll-stopping "wow" of an award-winning campaign: bold idea, striking light, rich detail, cinematic depth, clean and uncluttered.
+End with: "No text, letters, numbers, logos or watermarks anywhere in the image."`;
+
+/** A detailed, brand-aware image prompt from a rough idea (Vietnamese or English). Falls back to a plain template when the AI is unreachable. */
+export async function artDirect(client: Client, idea: string, aspect: string, opts: { headline?: boolean; signal?: AbortSignal } = {}): Promise<string> {
+  const book = brandBookOf(client.id);
+  const brand = designBrand(client);
+  const style = [book?.imagery?.join('; '), styleNotesOf(client.id)].filter(Boolean).join('. ');
+  const colours = book ? book.palette.map((c) => `${c.name} ${c.hex} (${c.role})`).join(', ') : `${brand.primary}, ${brand.accent}`;
+  const brief = [
+    `Brand: ${client.name}${client.industry ? ` (${client.industry})` : ''}. ${audienceLine(client)}`,
+    book ? `Tagline: "${book.tagline}". Personality: ${book.voice.traits.join(', ')}.` : '',
+    `Brand colours: ${colours}.`,
+    style ? `Brand image style (follow it): ${style}.` : '',
+    `Aspect ratio: ${aspect}.${opts.headline ? ' Keep a calm, uncluttered area (sky, wall, soft gradient or shallow-focus background) in the top third for a headline added later.' : ''}`,
+    `Brief: ${idea}`,
+  ].filter(Boolean).join('\n');
+  try {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const out = (await askClaude({ system: ART_DIRECTOR, turns: [{ role: 'user', text: brief }], maxTokens: 1200, effort: 'low' })).trim().replace(/^["'`]+|["'`]+$/g, '');
+    if (out.length > 60) return out.slice(0, 1900);
+  } catch (e) { if (opts.signal?.aborted) throw e; }
+  return [
+    `Premium advertising key visual for ${client.name}${client.industry ? ` (${client.industry})` : ''}. ${idea}.`,
+    style ? `Style: ${style}.` : '',
+    `Colour grading with the brand colours ${colours}. One clear hero subject, cinematic soft light, rich texture, shallow depth of field, aspect ${aspect}.`,
+    opts.headline ? 'Calm empty area in the top third for a headline.' : '',
+    'No text, letters, numbers, logos or watermarks anywhere in the image.',
+  ].filter(Boolean).join(' ');
 }
 
 // ---------- AI image (Google Imagen / OpenAI through the relay; the keys never reach the browser) ----------

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { assets } from '../../storage/assets';
 import { get, toast } from '../../store';
-import { clientImages, generateImage } from '../../mkt/designs';
+import { artDirect, clientImages, generateImage } from '../../mkt/designs';
 import { Btn } from '../components';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
@@ -21,6 +21,7 @@ export function ClientLibrary({ clientId, onUse, big }: { clientId: string; onUs
   const [busy, setBusy] = useState('');
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState<'1:1' | '3:4' | '9:16' | '16:9'>('1:1');
+  const [pro, setPro] = useState(true);
   const [provider, setProvider] = useState<string | null | undefined>(imageAi);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { void relayImageAi().then(setProvider); }, []);
@@ -32,8 +33,12 @@ export function ClientLibrary({ clientId, onUse, big }: { clientId: string; onUs
   };
   const gen = async () => {
     if (!prompt.trim()) { toast('Mô tả ảnh cần tạo.', 'err'); return; }
-    setBusy('AI đang vẽ ảnh (10–40 giây)…');
-    try { const id = await generateImage(clientId, prompt.trim(), aspect); toast('Đã tạo ảnh, nằm đầu kho ảnh.', 'ok'); setPrompt(''); onUse && !big && onUse(id); }
+    try {
+      const client = pro ? get().clients.find((c) => c.id === clientId) || null : null;
+      if (client) setBusy('Art director đang viết prompt…');
+      const p = client ? await artDirect(client, prompt.trim(), aspect) : prompt.trim();
+      setBusy('AI đang vẽ ảnh (10–40 giây)…');
+      const id = await generateImage(clientId, p, aspect); toast('Đã tạo ảnh, nằm đầu kho ảnh.', 'ok'); setPrompt(''); onUse && !big && onUse(id); }
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(''); }
   };
@@ -49,6 +54,7 @@ export function ClientLibrary({ clientId, onUse, big }: { clientId: string; onUs
         <div class="row" style={{ gap: 6 }}>
           <div class="seg">{(['1:1', '3:4', '9:16', '16:9'] as const).map((a) => <button key={a} class={aspect === a ? 'on' : ''} onClick={() => setAspect(a)}>{a}</button>)}</div>
           <span class="grow" />
+          <button class={`chip ${pro ? 'on' : ''}`} style={{ cursor: 'pointer' }} onClick={() => setPro(!pro)} title="AI viết lại mô tả thành prompt chuẩn quảng cáo: bố cục, ánh sáng, ống kính, màu thương hiệu">{pro ? '✓ ' : ''}Prompt xịn</button>
           <Btn sm icon="sparkle" disabled={!!busy || !provider} onClick={() => void gen()} title={provider ? 'Tạo ảnh, lưu vào kho của khách' : 'Relay chưa có key tạo ảnh'}>Tạo ảnh</Btn>
         </div>
       </div>
