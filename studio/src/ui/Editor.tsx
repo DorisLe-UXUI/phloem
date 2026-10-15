@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { get, isMobile, set, toast, useStore, type Tool } from '../store';
 import * as ops from '../model/ops';
 import * as A from '../pipeline/actions';
@@ -46,6 +46,10 @@ export function Editor() {
     window.addEventListener('paste', h);
     return () => window.removeEventListener('paste', h);
   }, []);
+  // side panels can be put away (remembered) for a bigger canvas; ⌘\ toggles both, like Figma's hide UI
+  const [hide, setHide] = useState<{ left: boolean; right: boolean }>(() => { try { return JSON.parse(localStorage.getItem('phloem.panels') || '') || { left: false, right: false }; } catch { return { left: false, right: false }; } });
+  const toggle = (side: 'left' | 'right' | 'both') => setHide((h) => { const n = side === 'both' ? (h.left || h.right ? { left: false, right: false } : { left: true, right: true }) : { ...h, [side]: !h[side] }; try { localStorage.setItem('phloem.panels', JSON.stringify(n)); } catch { /* private mode */ } return n; });
+  useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === '\\') { e.preventDefault(); toggle('both'); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, []);
   // phone: asking for a right-panel tab (Xuất, AI, Email…) also slides that sheet up
   const firstTab = useRef(true);
   useEffect(() => { if (firstTab.current) { firstTab.current = false; return; } if (isMobile()) set({ mobilePane: 'right' }); }, [s.rightTab]);
@@ -54,10 +58,12 @@ export function Editor() {
   return (
     <div class="app">
       <TopBar />
-      <div class="workspace">
+      <div class={`workspace ${hide.left ? 'hide-left' : ''} ${hide.right ? 'hide-right' : ''}`}>
         <LeftPanel />
         <CanvasView />
         <RightPanel />
+        <button class="ws-tog l" onClick={() => toggle('left')} title={hide.left ? 'Mở panel trái (⌘\\ ẩn/hiện cả hai)' : 'Cất panel trái'} aria-label={hide.left ? 'Mở panel trái' : 'Cất panel trái'}>{hide.left ? '›' : '‹'}</button>
+        <button class="ws-tog r" onClick={() => toggle('right')} title={hide.right ? 'Mở panel phải' : 'Cất panel phải'} aria-label={hide.right ? 'Mở panel phải' : 'Cất panel phải'}>{hide.right ? '‹' : '›'}</button>
       </div>
       <MobileBar />
       <div class="statusbar">
@@ -102,7 +108,7 @@ function TopBar() {
       <div class="c">
         <div class="tools">{tools.map((t) => <button key={t.t} class={`tool ${s.tool === t.t ? 'on' : ''}`} title={t.title} onClick={() => set({ tool: t.t })}><Icon name={t.icon} /><span class="k">{t.k}</span></button>)}</div>
         <div class="row" style={{ gap: 2 }}><Btn kind="ghost" sm icon="undo" title="Hoàn tác (⌘Z)" onClick={() => A.undo()} /><Btn kind="ghost" sm icon="redo" title="Làm lại (⇧⌘Z)" onClick={() => A.redo()} /></div>
-        <div class="zoomc"><button class="tool" title="Thu nhỏ (⌘−)" onClick={() => zoomEvt('out')}><Icon name="zoomOut" /></button><span class="z" title="100% (⌘0)" onClick={() => zoomEvt('reset')}>{Math.round(s.zoom * 100)}%</span><button class="tool" title="Phóng to (⌘+)" onClick={() => zoomEvt('in')}><Icon name="zoomIn" /></button><button class="tool" title="Vừa màn hình (⌘1)" onClick={() => zoomEvt('fit')}><Icon name="fit" /></button></div>
+        <div class="zoomc"><button class="tool" title="Thu nhỏ (⌘−)" onClick={() => zoomEvt('out')}><Icon name="zoomOut" /></button><span class="z" title="100% (⌘0)" onClick={() => zoomEvt('reset')}>{Math.round(s.zoom * 100)}%</span><button class="tool" title="Phóng to (⌘+)" onClick={() => zoomEvt('in')}><Icon name="zoomIn" /></button><button class="tool" title="Vừa màn hình (⌘1)" onClick={() => zoomEvt('fit')}><Icon name="fit" /></button><button class="tool" title="Xem tất cả: mọi khung và ảnh nháp (⇧1)" onClick={() => zoomEvt('all')}><Icon name="grid" /></button></div>
         <div class="variant" style={{ marginRight: 6 }}>
           <button class={s.playing ? 'on' : ''} title="Xem thử chuyển động (các layer có 'Chuyển động'); khi xuất, lát đó thành GIF động" onClick={() => set({ playing: !s.playing })}><Icon name="play" size={13} />{s.playing ? 'Đang phát' : 'Phát'}</button>
         </div>
@@ -156,6 +162,7 @@ function keys(e: KeyboardEvent) {
   if (mod && k === '-') { stop(); zoomEvt('out'); return; }
   if (mod && k === '0') { stop(); zoomEvt('reset'); return; }
   if (mod && k === '1') { stop(); zoomEvt('fit'); return; }
+  if (!mod && e.shiftKey && (e.code === 'Digit1' || k === '!')) { stop(); zoomEvt('all'); return; }
   if (mod && k === 'enter') { stop(); set({ rightTab: 'export' }); return; }
   if (mod) return;
   if (k === 'delete' || k === 'backspace') { stop(); A.deleteSelection(); return; }

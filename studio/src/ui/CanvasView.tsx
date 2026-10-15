@@ -239,16 +239,28 @@ export function CanvasView() {
     set({ zoom: Math.round(z * 100) / 100, pan: { x: Math.round((cw - doc.width * z) / 2), y: Math.round(Math.max(30, (ch - doc.height * z) / 2)) } });
   }
 
+  /** Figma's "zoom to fit all": this design, the client's other frames beside it and the parked images, all in view. */
+  function zoomFitAll() {
+    const w = wrap.current; if (!w) return;
+    const doc = docOf(); const st = get();
+    const boxes = [{ x: 0, y: 0, w: doc.width, h: Math.max(doc.height, ops.contentHeight(doc)) }, ...boardFrames().map((f) => ({ x: f.x, y: (f as { y?: number }).y ?? 0, w: f.w, h: f.h })), ...st.scraps.map((sc) => ({ x: sc.x, y: sc.y, w: sc.w, h: sc.h }))];
+    const x0 = Math.min(...boxes.map((b) => b.x)), y0 = Math.min(...boxes.map((b) => b.y)), x1 = Math.max(...boxes.map((b) => b.x + b.w)), y1 = Math.max(...boxes.map((b) => b.y + b.h));
+    const cw = w.clientWidth, ch = w.clientHeight;
+    const z = Math.min(1.5, Math.max(0.02, Math.min((cw - 80) / (x1 - x0), (ch - 100) / (y1 - y0))));
+    set({ zoom: Math.round(z * 1000) / 1000, pan: { x: Math.round((cw - (x1 - x0) * z) / 2 - x0 * z), y: Math.round(Math.max(40, (ch - (y1 - y0) * z) / 2) - y0 * z) } });
+  }
+
   // expose zoom helpers to the topbar through the store (small hack: window event)
   useEffect(() => {
     const h = (e: Event) => {
-      const d = (e as CustomEvent).detail as { kind: 'fit' | 'in' | 'out' | 'reset' | 'set'; value?: number };
+      const d = (e as CustomEvent).detail as { kind: 'fit' | 'all' | 'in' | 'out' | 'reset' | 'set'; value?: number };
       const w = wrap.current; if (!w) return;
       const cw = w.clientWidth, ch = w.clientHeight;
       const st = get();
       if (d.kind === 'fit') return zoomFit();
+      if (d.kind === 'all') return zoomFitAll();
       const target = d.kind === 'in' ? st.zoom * 1.25 : d.kind === 'out' ? st.zoom / 1.25 : d.kind === 'reset' ? 1 : d.value!;
-      zoomAt(Math.min(8, Math.max(0.1, target)), cw / 2, ch / 2);
+      zoomAt(Math.min(8, Math.max(0.02, target)), cw / 2, ch / 2);
     };
     window.addEventListener('phloem-zoom', h);
     return () => window.removeEventListener('phloem-zoom', h);
@@ -366,7 +378,7 @@ export function CanvasView() {
       if (touches.current.size < 2) return;
       const [a, b] = [...touches.current.values()];
       const d1 = Math.max(10, Math.hypot(b.x - a.x, b.y - a.y)); const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      const z = Math.min(8, Math.max(0.1, (m.z0 * d1) / m.d0));
+      const z = Math.min(8, Math.max(0.02, (m.z0 * d1) / m.d0));
       set({ zoom: Math.round(z * 1000) / 1000, pan: { x: c.x - ((m.c0.x - m.pan0.x) / m.z0) * z, y: c.y - ((m.c0.y - m.pan0.y) / m.z0) * z } });
       return;
     }
@@ -499,7 +511,7 @@ export function CanvasView() {
     e.preventDefault();
     const st = get(); const p = local(e);
     if (st.cropping && !(e.ctrlKey || e.metaKey)) { A.zoomCrop(st.cropping, Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.0012)); return; }
-    if (e.ctrlKey || e.metaKey) { const z = Math.min(8, Math.max(0.1, st.zoom * Math.exp(-e.deltaY * 0.0022))); zoomAt(z, p.x, p.y); }
+    if (e.ctrlKey || e.metaKey) { const z = Math.min(8, Math.max(0.02, st.zoom * Math.exp(-e.deltaY * 0.0022))); zoomAt(z, p.x, p.y); }
     else set({ pan: { x: st.pan.x - e.deltaX, y: st.pan.y - e.deltaY } });
   };
 
