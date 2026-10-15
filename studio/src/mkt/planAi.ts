@@ -87,6 +87,7 @@ export async function buildPlan(client: Client, brand: BrandBook | null, setup: 
   const byMonth = months.map((m) => ({ m, slots: slots.filter((s) => s.month === m) }));
   const pillarList = pillars.map((p: { name: string; share: number }) => `${p.name} (${p.share}%)`).join(', ');
   let next = 0;
+  const streamed = new Map<string, number>(); // chars written per month, shown while the months stream in parallel
   const worker = async () => {
     while (next < byMonth.length) {
       if (signal?.aborted) throw new Error('Đã huỷ.');
@@ -99,7 +100,7 @@ export async function buildPlan(client: Client, brand: BrandBook | null, setup: 
       let text = '';
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          text = mock ? JSON.stringify(mockPosts(ms, pillars)) : await streamClaude({ system: POSTS_SYSTEM, turns: [{ role: 'user', text: ask }], maxTokens: Math.min(32000, 1200 + ms.length * 420), effort: 'low' }, () => {}, signal);
+          text = mock ? JSON.stringify(mockPosts(ms, pillars)) : await streamClaude({ system: POSTS_SYSTEM, turns: [{ role: 'user', text: ask }], maxTokens: Math.min(32000, 1200 + ms.length * 420), effort: 'low' }, (t) => { streamed.set(m, t.length); onProgress({ label: `AI đang viết bài từng tháng… (${done - 1}/${months.length} tháng)`, done, total: steps, chars: [...streamed.values()].reduce((a, b) => a + b, 0) }); }, signal);
           const j: any = extractJson(text);
           const got = new Map<string, any>((Array.isArray(j?.posts) ? j.posts : []).map((p: any) => [str(p?.slot, 10), p]));
           ms.forEach((s, i) => {

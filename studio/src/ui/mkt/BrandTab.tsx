@@ -135,7 +135,7 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
 
       <article class="mk-bb" style={{ ['--bb-h' as string]: `'${book.fonts.heading}', serif`, ['--bb-b' as string]: `'${book.fonts.body}', sans-serif`, ['--bb-p' as string]: book.palette.find((c) => c.role === 'primary')?.hex || '#39ff14', ['--bb-a' as string]: book.palette.find((c) => c.role === 'accent')?.hex || '#ffc53d' }}>
         <header class="bb-cover">
-          {logoUrl ? <img src={logoUrl} alt={`Logo ${client.name}`} /> : client.logo ? <img src={client.logo} alt={`Logo ${client.name}`} /> : null}
+          {client.logo ? <img src={client.logo} alt={`Logo ${client.name}`} /> : logoUrl ? <img src={logoUrl} alt={`Logo ${client.name}`} /> : null}
           <h2>{client.name}</h2>
           {edit ? <input class="in" value={d.tagline} onInput={(e) => setD({ ...d, tagline: (e.target as HTMLInputElement).value })} aria-label="Tagline" /> : <p>{book.tagline}</p>}
           <div class="bb-strip">{book.palette.map((c) => <i key={c.hex} style={{ background: c.hex, flex: Math.max(4, c.ratio) }} />)}</div>
@@ -189,8 +189,8 @@ function BrandBookView({ client, book, review, write, onRedo }: { client: Client
 
         <Sec n="07" title="Chữ">
           <div class="bb-type">
-            <div><span class="bb-l">Tiêu đề · {d.fonts.heading}</span>{edit ? <input class="in" value={d.fonts.heading} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, heading: (e.target as HTMLInputElement).value } })} /> : <div class="bb-h-demo">Ăn sáng ngon, ngày dài vui</div>}</div>
-            <div><span class="bb-l">Nội dung · {d.fonts.body}</span>{edit ? <input class="in" value={d.fonts.body} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, body: (e.target as HTMLInputElement).value } })} /> : <div class="bb-b-demo">Đường phố Sài Gòn sáng sớm, ly cà phê đầu tiên và những câu chuyện chưa kể. Tiếng Việt có dấu hiển thị đầy đủ: ă â đ ê ô ơ ư ạ ậ ể ữ.</div>}</div>
+            <div><span class="bb-l">Tiêu đề · {d.fonts.heading}</span>{edit ? <input class="in" value={d.fonts.heading} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, heading: (e.target as HTMLInputElement).value } })} /> : <div class="bb-h-demo">{book.tagline || client.name}</div>}</div>
+            <div><span class="bb-l">Nội dung · {d.fonts.body}</span>{edit ? <input class="in" value={d.fonts.body} onInput={(e) => setD({ ...d, fonts: { ...d.fonts, body: (e.target as HTMLInputElement).value } })} /> : <div class="bb-b-demo">{book.mission ? book.mission.slice(0, 160) : client.name} · Tiếng Việt có dấu hiển thị đầy đủ: ă â đ ê ô ơ ư ạ ậ ể ữ.</div>}</div>
           </div>
           <Txt label="Cách dùng" v={d.fonts.note} edit={edit} on={(v) => setD({ ...d, fonts: { ...d.fonts, note: v } })} />
         </Sec>

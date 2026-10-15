@@ -930,13 +930,12 @@ select.in.mk-role {
   gap: 10px;
 }
 .bb-cover img {
-  height: 56px;
+  height: 64px;
   max-width: 220px;
   object-fit: contain;
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 8px 12px;
-  border-radius: 10px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.5);
 }
 .bb-cover h2 {
   font-family: var(--bb-h);

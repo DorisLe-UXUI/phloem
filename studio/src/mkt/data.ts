@@ -175,7 +175,19 @@ export async function logoDataUrl(src: Blob | string, max = 160): Promise<string
     await img.decode();
     const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    const g = c.getContext('2d')!;
+    g.drawImage(img, 0, 0, c.width, c.height);
+    // a white logo on a transparent background vanishes on white avatars and cards: put it on a dark tile instead
+    try {
+      const px = g.getImageData(0, 0, c.width, c.height).data;
+      let lum = 0, n = 0, clear = 0;
+      for (let i = 0; i < px.length; i += 4) { if (px[i + 3] < 40) { clear++; continue; } lum += (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255; n++; }
+      if (n && clear > px.length / 4 * 0.2 && lum / n > 0.72) {
+        const o = document.createElement('canvas'); o.width = c.width; o.height = c.height;
+        const og = o.getContext('2d')!; og.fillStyle = '#16211a'; og.fillRect(0, 0, o.width, o.height); og.drawImage(c, 0, 0);
+        return o.toDataURL('image/png');
+      }
+    } catch { /* tainted canvas: keep as is */ }
     return c.toDataURL('image/png');
   } finally { if (typeof src !== 'string') URL.revokeObjectURL(url); }
 }

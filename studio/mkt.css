@@ -164,7 +164,7 @@ select.in.mk-role { width: auto; min-width: 150px; flex: none; }
 .mk-bb .in { background: #fff; color: #111; border-color: #d9d9d4; }
 .mk-bb .dim { color: #8b8f94; }
 .bb-cover { padding: 48px 48px 0; background: radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--bb-a) 22%, transparent), transparent 60%), var(--bb-p); color: #fff; display: flex; flex-direction: column; gap: 10px; }
-.bb-cover img { height: 56px; max-width: 220px; object-fit: contain; align-self: flex-start; background: rgba(255, 255, 255, 0.92); padding: 8px 12px; border-radius: 10px; }
+.bb-cover img { height: 64px; max-width: 220px; object-fit: contain; align-self: flex-start; border-radius: 12px; box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.5); }
 .bb-cover h2 { font-family: var(--bb-h); font-size: 42px; line-height: 1.05; margin: 8px 0 0; letter-spacing: -0.5px; }
 .bb-cover p { margin: 0; font-size: 17px; opacity: 0.92; max-width: 640px; }
 .bb-strip { display: flex; height: 14px; margin: 26px -48px 0; }

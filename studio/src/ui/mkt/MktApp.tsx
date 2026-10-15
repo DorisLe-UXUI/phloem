@@ -86,7 +86,7 @@ export function MktApp() {
 }
 
 function NavItem({ icon, label, on, count, onClick, sm }: { icon: string; label: string; on?: boolean; count?: number; onClick: () => void; sm?: boolean }) {
-  return <button class={`mk-nav-i ${on ? 'on' : ''} ${sm ? 'mk-only-sm' : ''}`} onClick={onClick}><Icon name={icon} size={15} /><span class="grow">{label}</span>{count != null && <span class="mono dim">{count}</span>}</button>;
+  return <button class={`mk-nav-i ${on ? 'on' : ''} ${sm ? 'mk-only-sm' : ''}`} onClick={onClick} aria-label={label} aria-current={on ? 'page' : undefined}><Icon name={icon} size={15} /><span class="grow">{label}</span>{count != null && <span class="mono dim">{count}</span>}</button>;
 }
 
 function Gate() {
