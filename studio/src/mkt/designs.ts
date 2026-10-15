@@ -79,7 +79,10 @@ async function toDoc(html: string, size: DesignSize, brand: Brand, validIds: Set
   const r = await htmlToDoc(html, { width: size.w, validIds, onStage, temp: false });
   const doc = tokenize(r.doc, { primary: brand.primary, accent: brand.accent, ink: brand.ink, muted: brand.muted, bg: brand.bg, soft: brand.soft, line: brand.line, onPrimary: brand.onPrimary });
   // one section wrapping everything → its children become top-level layers (select and move each one directly)
-  const nodes = doc.nodes.length === 1 && doc.nodes[0].type === 'group' ? doc.nodes[0].children : doc.nodes;
+  const flat = doc.nodes.length === 1 && doc.nodes[0].type === 'group' ? doc.nodes[0].children : doc.nodes;
+  // emoji typed into text cannot be drawn by the web fonts (they render as boxes): drop them, stickers carry that job
+  const noEmoji = (list: Node[]): Node[] => list.map((n) => (n.type === 'text' ? { ...n, text: n.text.replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}][\u{FE0F}\u{200D}\p{Extended_Pictographic}]*/gu, '').replace(/[ \t]+$/gm, '') } : n.type === 'group' ? { ...n, children: noEmoji(n.children) } : n));
+  const nodes = noEmoji(flat);
   return { ...doc, nodes, width: size.w, height: size.h, autoHeight: false };
 }
 
@@ -176,7 +179,7 @@ export async function exportDesign(format: 'png' | 'jpg', scale = 1) {
 // ---------- AI ----------
 const TECH = DESIGN_TECH.slice(DESIGN_TECH.indexOf('CONVERTS (use freely):'), DESIGN_TECH.indexOf('- Links:')).trim();
 const NEVER = DESIGN_TECH.slice(DESIGN_TECH.indexOf('NEVER'), DESIGN_TECH.indexOf('MOBILE:')).trim();
-const SOCIAL = `You are the art director of a top Vietnamese creative studio. Design ONE social media / ads visual that stops the scroll: a finished poster, not a template. Bold hierarchy (one huge headline, at most one short supporting line, an optional CTA pill), deliberate composition with depth (overlapping planes, a photo or 3D object used boldly, a glow or pattern behind), generous margins, the brand's colours and fonts. Text must be legible on a phone at feed size: headline ≥ 7% of the frame height, nothing under 2.5%. Keep text short, in the client's public copy language (given in the brief), natural for that market. Never put text over a busy part of a photo without a scrim or a card.`;
+const SOCIAL = `You are the art director of a top Vietnamese creative studio. Design ONE social media / ads visual that stops the scroll: a finished poster, not a template. Bold hierarchy (one huge headline, at most one short supporting line, an optional CTA pill), deliberate composition with depth (overlapping planes, a photo or 3D object used boldly, a glow or pattern behind), generous margins, the brand's colours and fonts. Text must be legible on a phone at feed size: headline ≥ 7% of the frame height, nothing under 2.5%. Keep text short, in the client's public copy language (given in the brief), natural for that market. Never put text over a busy part of a photo without a scrim or a card. NO emoji characters inside text (fonts cannot draw them, they show as boxes): use data-sticker / data-icon images instead.`;
 
 async function thumbB64(id: string): Promise<AiImage | null> {
   try {
