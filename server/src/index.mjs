@@ -295,10 +295,11 @@ async function googleImageModel() {
   return googleModel;
 }
 /** FLUX on Cloudflare Workers AI → { b64, mime } or { error, status }. A used-up daily allowance rests it until 00:00 UTC. */
-async function cloudflareImage(prompt, aspect) {
+async function cloudflareImage(prompt, aspect, refs = []) {
   const [width, height] = fluxSize(aspect);
   const form = new FormData();
   form.set('prompt', prompt); form.set('width', String(width)); form.set('height', String(height));
+  refs.forEach((r, i) => form.set(`input_image_${i}`, new Blob([Buffer.from(r.b64, 'base64')], { type: r.mime }), `ref${i}.${r.mime === 'image/png' ? 'png' : 'jpg'}`));
   const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/ai/run/${CF_IMAGE_MODEL}`, { method: 'POST', headers: { Authorization: `Bearer ${CF_AI_TOKEN}` }, body: form, signal: AbortSignal.timeout(90_000) });
   const j = await r.json().catch(() => ({}));
   const b64 = j?.result?.image;
@@ -312,10 +313,14 @@ async function aiImage(p, res) {
   const prompt = String(p?.prompt || '').trim().slice(0, 2000);
   const aspect = ASPECTS.has(p?.aspect) ? p.aspect : '1:1';
   if (!prompt) return json(res, 400, { error: 'Thiếu mô tả ảnh.' });
+  // reference pictures (the client's real product, place, characters) the model must keep: up to 4, JPEG/PNG/WebP, ≤ 3 MB each
+  const refs = (Array.isArray(p?.refs) ? p.refs : []).slice(0, 4)
+    .map((r) => ({ b64: String(r?.b64 || '').replace(/^data:[^,]+,/, ''), mime: /^image\/(png|jpeg|webp)$/.test(r?.mime) ? r.mime : 'image/jpeg' }))
+    .filter((r) => r.b64.length > 100 && r.b64.length < 4_000_000);
   if (!IMAGE_AI) return json(res, 503, { error: 'Relay chưa có key tạo ảnh. Thêm CF_AI_TOKEN (Cloudflare, miễn phí theo ngày) hoặc GEMINI_API_KEY trong Render → Environment.', code: 'no_image_key' });
   let cfError = '';
   if (CF_ACCOUNT && cfResting <= Date.now()) {
-    const out = await cloudflareImage(prompt, aspect).catch((e) => ({ error: String(e?.message || e) }));
+    const out = await cloudflareImage(prompt, aspect, refs).catch((e) => ({ error: String(e?.message || e) }));
     if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_IMAGE_MODEL.split('/').pop() });
     cfError = out.error;
     if (!IMAGE_PROVIDER) return json(res, out.status || 502, { error: out.error });
@@ -328,7 +333,7 @@ async function aiImage(p, res) {
       const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY };
       const r = pick.method === 'predict'
         ? await fetch(`${base}:predict`, { method: 'POST', headers, body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio: aspect } }), signal: AbortSignal.timeout(110_000) })
-        : await fetch(`${base}:generateContent`, { method: 'POST', headers, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nAspect ratio ${aspect}. Output one image only.` }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: aspect } } }), signal: AbortSignal.timeout(110_000) });
+        : await fetch(`${base}:generateContent`, { method: 'POST', headers, body: JSON.stringify({ contents: [{ role: 'user', parts: [...refs.map((r) => ({ inlineData: { mimeType: r.mime, data: r.b64 } })), { text: `${refs.length ? `The ${refs.length} attached picture(s) are the brand's REAL references: keep their subjects, characters, products and art style faithful.\n\n` : ''}${prompt}\n\nAspect ratio ${aspect}. Output one image only.` }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: aspect } } }), signal: AbortSignal.timeout(110_000) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         if (r.status === 404) googleModel = undefined;

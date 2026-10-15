@@ -3144,6 +3144,118 @@ select.in.mk-role {
 .bs-cover-logo .card .bs-wordmark {
   color: var(--ink);
 }
+.mk-needs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mk-need {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.mk-need.on {
+  border-color: var(--neon);
+  box-shadow: var(--glow);
+}
+.mk-need b {
+  display: block;
+  font-size: 13.5px;
+  margin-bottom: 2px;
+}
+.mk-need-slot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border: 1.5px dashed var(--line-3, var(--line-2));
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--dim);
+  cursor: pointer;
+  overflow: hidden;
+}
+.mk-need-slot:hover {
+  color: var(--neon);
+  border-color: var(--neon);
+}
+.mk-need-slot.full {
+  border-style: solid;
+}
+.mk-need-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mk-need-slot span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.mk-need-slot em {
+  font-style: normal;
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+.mk-need .mk-link {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.mk-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mk-ref {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.mk-ref img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mk-ref > button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .65);
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+}
+.mk-refs.pick .mk-ref {
+  width: 52px;
+  height: 52px;
+  cursor: pointer;
+}
+.mk-refs.pick .mk-ref:hover {
+  border-color: var(--neon);
+}
 
 /* studio/styles.css */
 :root {

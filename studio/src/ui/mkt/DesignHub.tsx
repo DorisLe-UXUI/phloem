@@ -9,6 +9,7 @@ import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
 import { Btn, Modal } from '../components';
+import { askPhotos } from './NeedPhotos';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
 import { Empty, PageHead, StatusChip, fmtDate } from './bits';
@@ -46,7 +47,7 @@ export function DesignHub({ client }: { client: Client }) {
     setPicker(null);
     abort.current = new AbortController();
     setBusy({ label: ai ? 'AI đang thiết kế…' : 'Đang dựng bố cục…' });
-    try { await newDesign(client, size, row, { ai, onStage: (m) => setBusy({ label: m }), signal: abort.current.signal }); }
+    try { await newDesign(client, size, row, { ai, onStage: (m) => setBusy({ label: m }), signal: abort.current.signal, askPhotos: (plan) => askPhotos(client, plan) }); }
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(null); }
   };

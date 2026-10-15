@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { assets } from '../../storage/assets';
 import { get, toast } from '../../store';
-import { artDirect, clientImages, generateImage } from '../../mkt/designs';
+import { clientImages, generateImage, paintShot } from '../../mkt/designs';
+import { askPhotos } from './NeedPhotos';
 import { Btn } from '../components';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
@@ -35,10 +36,11 @@ export function ClientLibrary({ clientId, onUse, big }: { clientId: string; onUs
     if (!prompt.trim()) { toast('Mô tả ảnh cần tạo.', 'err'); return; }
     try {
       const client = pro ? get().clients.find((c) => c.id === clientId) || null : null;
-      if (client) setBusy('Art director đang viết prompt…');
-      const p = client ? await artDirect(client, prompt.trim(), aspect) : prompt.trim();
-      setBusy('AI đang vẽ ảnh (10–40 giây)…');
-      const id = await generateImage(clientId, p, aspect); toast('Đã tạo ảnh, nằm đầu kho ảnh.', 'ok'); setPrompt(''); onUse && !big && onUse(id); }
+      if (!client) setBusy('AI đang vẽ ảnh (10–40 giây)…');
+      const id = client
+        ? await paintShot(client, prompt.trim(), aspect, { askPhotos: (plan) => askPhotos(client, plan), onStage: setBusy })
+        : await generateImage(clientId, prompt.trim(), aspect);
+      toast('Đã tạo ảnh, nằm đầu kho ảnh.', 'ok'); setPrompt(''); onUse && !big && onUse(id); }
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(''); }
   };
