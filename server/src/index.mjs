@@ -10,6 +10,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { createAuth } from './auth.mjs';
 import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
+import { createAssetStore, createBlobStore } from './blobs.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
 import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
 import { createMail } from './mail.mjs';
@@ -29,13 +30,19 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const DATA_DIR = process.env.DATA_DIR || decodeURIComponent(new URL('../data/', import.meta.url).pathname);
 // Ephemeral hosts: pull the last database snapshot from the backup bucket before opening it (no-op without BACKUP_S3_*).
 const BACKUP = backupConfig();
-if (BACKUP) { const { mkdirSync } = await import('node:fs'); mkdirSync(DATA_DIR, { recursive: true }); await restoreBackup(BACKUP, DATA_DIR); }
+let RESTORED = 'off';
+if (BACKUP) { const { mkdirSync } = await import('node:fs'); mkdirSync(DATA_DIR, { recursive: true }); RESTORED = await restoreBackup(BACKUP, DATA_DIR); }
 const ADMIN_EMAILS = String(process.env.ADMIN_EMAILS || 'vankhanh.le@sentryxp.com').toLowerCase().split(/[\s,;]+/).filter(Boolean);
 const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || '', adminEmails: ADMIN_EMAILS, adminNeedsGoogle: process.env.ADMIN_REQUIRE_GOOGLE !== '0' });
 const STARTED_AT = new Date().toISOString();
 const RESEND_API_KEY = process.env.RESEND_API_KEY || ''; // optional: e-mail the admin when someone asks for AI access
 const DB = AUTH.db;
-const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR);
+const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR, console.log, { paused: RESTORED === 'failed' });
+// Asset bytes: files under DATA_DIR/blobs + one object each in the backup bucket; rows from before 2026-10-15 move out in the background
+const ASSETS = createAssetStore({ db: DB, blobs: createBlobStore({ cfg: BACKUP, dir: join(DATA_DIR, 'blobs') }) });
+if (!BACKUPS.paused) setTimeout(() => { void ASSETS.migrate(() => { try { DB.raw.exec('VACUUM'); } catch { /* busy: next boot */ } void BACKUPS.now?.('assets moved out'); }); }, 5_000).unref();
+/** What health and the admin page show about durability. */
+const backupInfo = () => BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), bytes: BACKUPS.bytes, ms: BACKUPS.ms, pending: BACKUPS.dirty, restore: RESTORED, error: BACKUPS.error, assetsInDb: ASSETS.migration.pending } : null;
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 // Unsubscribe + suppression list, open/click tracking, hosted email images, sending accounts and the server-side queue.
 const MAIL = createMail({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_URL, json, body, rawBody: raw, requireUser, throttled });
@@ -96,7 +103,7 @@ const server = createServer(async (req, res) => {
         db: true,
         site: true,
         google: GOOGLE_CLIENT_ID,
-        backup: BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), error: BACKUPS.error } : null,
+        backup: backupInfo(),
         commit: String(process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '').slice(0, 7), // which build answers (Render sets RENDER_GIT_COMMIT)
         users: AUTH.count(),
         mail: MAIL.health(),
@@ -307,7 +314,7 @@ async function adminRoute(sub, req, res) {
       const size = (f) => { try { return statSync(f).size; } catch { return 0; } };
       return json(res, 200, {
         totals: { ...DB.admin.totals(), dbBytes: size(DB.file) + size(DB.file + '-wal') },
-        backup: BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), error: BACKUPS.error, bucket: BACKUP?.bucket || '', every: BACKUP?.every || 0 } : null,
+        backup: BACKUPS.enabled ? { ...backupInfo(), bucket: BACKUP?.bucket || '', every: BACKUP?.every || 0 } : null,
         relay: { commit: String(process.env.RENDER_GIT_COMMIT || '').slice(0, 7), startedAt: STARTED_AT, ai: !!anthropic, google: !!GOOGLE_CLIENT_ID, admins: ADMIN_EMAILS },
         users: DB.admin.users(), projects: DB.admin.projects(), assets: DB.admin.assets(),
       });
@@ -315,7 +322,7 @@ async function adminRoute(sub, req, res) {
     if (sub === '/backup' && req.method === 'POST') {
       if (!BACKUPS.enabled) return json(res, 400, { error: 'Chưa cấu hình sao lưu (BACKUP_S3_*).' });
       await BACKUPS.now('manual');
-      return json(res, 200, { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), error: BACKUPS.error });
+      return json(res, 200, backupInfo());
     }
     if (sub === '/db/export' && req.method === 'GET') {
       // a consistent copy of the whole database (VACUUM INTO), for the owner to keep or inspect with any SQLite tool
@@ -327,7 +334,10 @@ async function adminRoute(sub, req, res) {
     if (sub === '/user/delete' && req.method === 'POST') {
       const p = await body(req); const id = String(p?.userId || '');
       if (id === row.id) return json(res, 400, { error: 'Không tự xoá tài khoản admin đang dùng.' });
-      return DB.admin.deleteUser(id) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'không có người dùng này' });
+      const keys = ASSETS.keysOf(id); // rows cascade away with the user; their bytes are separate objects
+      if (!DB.admin.deleteUser(id)) return json(res, 404, { error: 'không có người dùng này' });
+      await ASSETS.removeKeys(keys);
+      return json(res, 200, { ok: true });
     }
     return json(res, 404, { error: 'không có route admin này' });
   } catch (e) { return json(res, e.status || 500, { error: e.message }); }
@@ -513,17 +523,18 @@ async function dbRoute(url, req, res) {
       if (m === 'DELETE' && id) { DB.projects.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'assets') {
-      if (m === 'GET' && !id) return json(res, 200, { assets: DB.assets.list(u.id) });
-      if (m === 'GET') { const a = DB.assets.get(u.id, id); if (!a) return json(res, 404, { error: 'không có ảnh này' }); res.statusCode = 200; res.setHeader('Content-Type', a.mime); res.setHeader('Content-Length', a.data.length); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable'); return res.end(a.data); }
+      if (m === 'GET' && !id) return json(res, 200, { assets: ASSETS.list(u.id) });
+      if (m === 'GET') { const a = await ASSETS.get(u.id, id); if (!a) return json(res, 404, { error: 'không có ảnh này' }); res.statusCode = 200; res.setHeader('Content-Type', a.mime); res.setHeader('Content-Length', a.data.length); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable'); return res.end(a.data); }
       if (m === 'PUT' && id) {
         const data = await raw(req, 15 * 1024 * 1024);
         const meta = { id, name: decodeURIComponent(String(req.headers['x-asset-name'] || 'image')), mime: String(req.headers['content-type'] || 'application/octet-stream').split(';')[0], w: Number(req.headers['x-asset-w'] || 0), h: Number(req.headers['x-asset-h'] || 0), meta: assetTags(req.headers['x-asset-meta']) };
         if (!meta.mime.startsWith('image/')) return json(res, 415, { error: 'chỉ nhận ảnh' });
         if (!checkQuota(res, u.id, data.length - (DB.assets.meta(u.id, id)?.bytes || 0))) return;
-        return json(res, 200, { asset: DB.assets.put(u.id, meta, data) });
+        const a = await ASSETS.put(u.id, meta, data);
+        return a ? json(res, 200, { asset: a }) : json(res, 409, { error: 'id ảnh đã được dùng' });
       }
-      if (m === 'PATCH' && id) { const p = await body(req); const tags = assetTagsObj(p?.meta); if (p?.meta && !tags) return json(res, 400, { error: 'meta không hợp lệ' }); const a = DB.assets.patch(u.id, id, tags, p?.name); return a ? json(res, 200, { asset: a }) : json(res, 404, { error: 'không có ảnh này' }); }
-      if (m === 'DELETE' && id) { DB.assets.remove(u.id, id); return json(res, 200, { ok: true }); }
+      if (m === 'PATCH' && id) { const p = await body(req); const tags = assetTagsObj(p?.meta); if (p?.meta && !tags) return json(res, 400, { error: 'meta không hợp lệ' }); const a = ASSETS.patch(u.id, id, tags, p?.name); return a ? json(res, 200, { asset: a }) : json(res, 404, { error: 'không có ảnh này' }); }
+      if (m === 'DELETE' && id) { await ASSETS.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'profiles') {
       if (m === 'GET') return json(res, 200, DB.profiles.get(u.id, AUTH.secret));

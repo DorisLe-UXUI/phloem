@@ -21,6 +21,15 @@ Prompt gốc và lộ trình: [PROMPT-PHLOEM-MKT.md](PROMPT-PHLOEM-MKT.md).
 - Tài khoản local (không có relay): khách hàng lưu trong trình duyệt theo tài khoản; chưa có link duyệt, thành viên.
 - Test: `test/clients.test.mjs` (lớp db), `test/clients-api.test.mjs` (HTTP thật: A không đọc/ghi/xuất/xoá được khách của B, vai trò chặn ghi, link duyệt chỉ ghi vào đúng khách), `test/mkt-plan.test.mjs` (phân bổ ngân sách cộng đúng tổng, lịch đăng, ngày lễ Việt Nam, CSV/XLSX).
 
+## Độ bền dữ liệu trên Render (2026-10-15)
+
+Render free không có ổ đĩa bền: relay tải `phloem.db` từ R2 lúc khởi động và đẩy snapshot lên. Ngày 2026-10-15 một lần khởi động lại đã mất một client vừa tạo vài phút, vì DB nặng 138 MB (bytes ảnh nằm trong bảng `assets`), snapshot chỉ chạy mỗi 10 phút và lần đẩy lúc SIGTERM không xong kịp. Đã sửa:
+
+- Bytes ảnh nằm ngoài SQLite (`server/src/blobs.mjs`): một object `assets/<khoá>` trong bucket mỗi ảnh, đẩy xong rồi mới ghi dòng metadata; container mới tải ảnh khi có người mở lần đầu. Ảnh cũ tự chuyển ra lúc khởi động (`backup.assetsInDb` về 0), sau đó DB chỉ còn vài trăm KB.
+- Snapshot ~30 giây sau mỗi lần ghi (clients, client_items, audit, members, kv, users, sessions…), không chỉ mỗi 10 phút; thêm bản theo ngày `snapshots/YYYY-MM-DD.db`; log thời gian đẩy lúc tắt.
+- Khởi động mà không tải được snapshot → không đẩy gì lên (khỏi ghi đè bản tốt bằng DB rỗng); health báo `backup.restore = "failed"`.
+- Health `GET /` báo `backup.bytes` (kích thước snapshot), `ms`, `pending`, `restore`. Test: `test/backup.test.mjs` (S3 giả trong bộ nhớ, kể cả kill -9 relay rồi khởi động container trống).
+
 ## API relay
 
 ```
@@ -51,7 +60,7 @@ Trong Cài đặt của Studio, `API key = mock` chạy AI giả lập để th�
 
 ## Còn lại / việc cần làm tay
 
-- Relay trên Render: bấm **Manual Deploy** sau khi merge (route mới và bảng mới nằm ở relay).
+- Relay trên Render: bấm **Manual Deploy** sau khi merge (route mới và bảng mới nằm ở relay). Lần deploy đầu sau bản sửa độ bền: lần tắt cuối của bản cũ vẫn có thể không đẩy kịp 138 MB — tạo lại dữ liệu nhập trong vài phút trước deploy nếu thiếu; sau khi `backup.assetsInDb` về 0 và `backup.kb` nhỏ là xong.
 - Google Drive riêng tư và xuất thẳng Google Sheets cần thêm scope Google (`drive.readonly`, `spreadsheets`) vào OAuth app `phloem-studio` và Google duyệt; hiện tại tải file Drive lên tay, xuất XLSX rồi mở bằng Google Sheets.
 - Thành viên chỉ thêm được người đã có tài khoản Phloem; email của khách vẫn nằm trong tài khoản chủ workspace (thành viên chưa sửa được email).
 - Giai đoạn 3–7 (Phloem Design, đăng qua API, Quảng cáo, Video, Báo cáo + cổng khách) chưa làm.

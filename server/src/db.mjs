@@ -1,5 +1,5 @@
 // The app database: SQLite via node:sqlite (Node ≥ 22.13), one file, WAL mode, zero dependencies.
-// Tables: users, sessions, projects, assets (bytes in-row), profiles (client credentials, encrypted at rest).
+// Tables: users, sessions, projects, assets (metadata + blob key; bytes live in blobs.mjs), profiles (client credentials, encrypted at rest).
 import { DatabaseSync } from 'node:sqlite';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
@@ -96,6 +96,8 @@ export function openDb(file) {
   db.exec(SCHEMA);
   // Migrations (idempotent): asset meta (source website / project tags) added 2026-10.
   try { db.exec('ALTER TABLE assets ADD COLUMN meta TEXT'); } catch { /* column exists */ }
+  // 2026-10-15: asset bytes moved out of the row (data = x'') to the blob store; `blob` is their key there
+  try { db.exec('ALTER TABLE assets ADD COLUMN blob TEXT'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE users ADD COLUMN ai_access INTEGER NOT NULL DEFAULT 0'); } catch { /* column exists */ }
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users(google_sub) WHERE google_sub IS NOT NULL'); } catch { /* exists */ }
@@ -171,6 +173,11 @@ export function openDb(file) {
     assetPut: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime, w = excluded.w, h = excluded.h, bytes = excluded.bytes, data = excluded.data, meta = COALESCE(excluded.meta, assets.meta) WHERE assets.owner = excluded.owner`),
     assetPatch: q('UPDATE assets SET meta = ?, name = COALESCE(?, name) WHERE owner = ? AND id = ?'),
+    assetRow: q("SELECT id, owner, name, mime, w, h, bytes, meta, created_at, blob, CASE WHEN length(data) > 0 THEN data END AS inline FROM assets WHERE owner = ? AND id = ?"),
+    assetPutBlob: q(`INSERT INTO assets (id, owner, name, mime, w, h, bytes, data, meta, created_at, blob) VALUES (?, ?, ?, ?, ?, ?, ?, x'', ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime, w = excluded.w, h = excluded.h, bytes = excluded.bytes, data = x'', blob = excluded.blob, meta = COALESCE(excluded.meta, assets.meta) WHERE assets.owner = excluded.owner`),
+    assetInlineCount: q('SELECT COUNT(*) AS n FROM assets WHERE length(data) > 0'), assetInlineBatch: q('SELECT owner, id, data FROM assets WHERE length(data) > 0 LIMIT ?'),
+    assetDropInline: q("UPDATE assets SET data = x'', blob = ? WHERE owner = ? AND id = ? AND length(data) > 0"), assetKeys: q('SELECT blob FROM assets WHERE owner = ? AND blob IS NOT NULL'),
     assetDel: q('DELETE FROM assets WHERE owner = ? AND id = ?'), assetUsage: q('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes FROM assets WHERE owner = ?'),
     usageAll: q('SELECT (SELECT COALESCE(SUM(bytes), 0) FROM assets) + (SELECT COALESCE(SUM(length(json)), 0) FROM projects) + (SELECT COALESCE(SUM(length(enc)), 0) FROM profiles) + (SELECT COALESCE(SUM(length(json)), 0) FROM kv) AS bytes'),
     kvGet: q('SELECT json, updated_at FROM kv WHERE owner = ? AND key = ?'),
@@ -232,6 +239,14 @@ export function openDb(file) {
       patch: (owner, id, meta, name) => { S.assetPatch.run(JSON.stringify(meta || {}), name ? String(name).slice(0, 200) : null, owner, id); const a = S.assetMeta.get(owner, id); return a ? assetMeta(a) : null; },
       remove: (owner, id) => { S.assetDel.run(owner, id); },
       usage: (owner) => S.assetUsage.get(owner),
+      /** Blob-store side (see blobs.mjs): metadata plus where the bytes are — `inline` for rows not migrated yet, else `blob`. */
+      row: (owner, id) => { const a = S.assetRow.get(owner, id); return a ? { owner: a.owner, meta: assetMeta(a), blob: a.blob || null, inline: a.inline ? Buffer.from(a.inline) : null } : null; },
+      /** Metadata + blob key (bytes already stored); null when the id belongs to another owner. */
+      putBlob: (owner, m, bytes, key) => { const meta = m.meta ? JSON.stringify(m.meta) : null; const t = now(); const r = S.assetPutBlob.run(m.id, owner, String(m.name || 'image').slice(0, 200), m.mime || 'application/octet-stream', m.w | 0, m.h | 0, bytes, meta, t, key); return Number(r.changes) ? assetMeta({ ...m, meta, bytes, created_at: t }) : null; },
+      inlineCount: () => Number(S.assetInlineCount.get().n),
+      inlineBatch: (n) => S.assetInlineBatch.all(n).map((r) => ({ owner: r.owner, id: r.id, data: Buffer.from(r.data) })),
+      dropInline: (owner, id, key) => Number(S.assetDropInline.run(key, owner, id).changes) > 0,
+      keysOf: (owner) => S.assetKeys.all(owner).map((r) => r.blob),
     },
     profiles: {
       get: (owner, secret) => { const r = S.profGet.get(owner); if (!r) return { profiles: [], updatedAt: null }; try { return { profiles: JSON.parse(decrypt(secret, r.enc)), updatedAt: r.updated_at }; } catch { return { profiles: [], updatedAt: r.updated_at, corrupt: true }; } }, // corrupt = secret changed: the client must keep its own copy
