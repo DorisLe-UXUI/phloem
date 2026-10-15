@@ -6969,6 +6969,15 @@ select.in {
 .ic-tile.d3:hover img {
   transform: scale(1.12) translateY(-2px);
 }
+.ic-tile.pp {
+  padding: 2px;
+  background: #F4F1EA;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ic-tile.pp img {
+  border-radius: 8px;
+}
 .ic-tile.busy {
   opacity: .5;
 }

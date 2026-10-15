@@ -145,7 +145,11 @@ function Assets() {
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const PREVIEW = 6; // one row of thumbnails per group until "+N" is pressed
-  const list = assets.all();
+  // Email and MKT keep separate images: an email sees its own and the email library; a social design sees its client's
+  // library and other designs' pictures. Graphics/stock picked from the catalog belong to whichever project used them.
+  const designIds = new Set(s.projects.filter((p) => p.kind === 'design').map((p) => p.id));
+  const isMkt = (a: { project?: string | null; client?: string | null }) => (a.project ? designIds.has(a.project) : !!a.client);
+  const list = assets.all().filter((a) => (s.project?.kind === 'design' ? a.project === s.project.id || isMkt(a) && (!a.client || a.client === s.project.clientId) : !isMkt(a)));
   const groups = groupAssets(list, { projectId: s.project?.id ?? null, usedIds: usedAssetIds(s.project), scope, query: q });
   const shown = groups.reduce((n, g) => n + g.items.length, 0);
   const input = useRef<HTMLInputElement>(null);
@@ -163,7 +167,7 @@ function Assets() {
       <div class={`dropzone ${over ? 'over' : ''}`} onClick={() => input.current?.click()} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); if (e.dataTransfer?.files) void upload(e.dataTransfer.files); }}>
         <Icon name="upload" /> <div>Thả ảnh vào đây hoặc bấm để chọn</div><div class="dim small">PNG, JPG, WebP, GIF · lưu trong trình duyệt</div>
       </div>
-      {s.project?.clientId && <ClientLibrary clientId={s.project.clientId} onUse={use} />}
+      {s.project?.clientId && s.project.kind === 'design' && <ClientLibrary clientId={s.project.clientId} onUse={use} />}
       <input ref={input} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) void upload(f); (e.target as HTMLInputElement).value = ''; }} />
       <div class="seg block" style={{ height: 26 }}><button class={scope === 'project' ? 'on' : ''} onClick={() => setScope('project')} title="Ảnh đang dùng, ảnh của dự án này và web đã đọc cho nó" style={{ whiteSpace: 'nowrap' }}>Dự án này</button><button class={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')} style={{ whiteSpace: 'nowrap' }}>Tất cả ({list.length})</button></div>
       <input class="in" style={{ height: 26 }} placeholder="Tìm theo tên, website, trang…" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.stopPropagation()} />

@@ -57,12 +57,14 @@ export function Home() {
   const [newClient, setNewClient] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const client = s.clients.find((c) => c.id === s.clientFilter) || null;
+  // Phloem Email lists emails only: MKT social designs live in Phloem MKT (Thiết kế tab), never here
+  const emails = useMemo(() => s.projects.filter((p) => p.kind !== 'design'), [s.projects]);
   const filed = (p: { clientId?: string }) => !!p.clientId && s.clients.some((c) => c.id === p.clientId);
-  const countOf = (id: string | null) => s.projects.filter((p) => (id ? p.clientId === id : !filed(p))).length;
+  const countOf = (id: string | null) => emails.filter((p) => (id ? p.clientId === id : !filed(p))).length;
   const projects = useMemo(() => {
-    const list = s.projects.filter((p) => (!s.clientFilter || (s.clientFilter === '-' ? !p.clientId || !s.clients.some((c) => c.id === p.clientId) : p.clientId === s.clientFilter)) && (!q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase())));
+    const list = emails.filter((p) => (!s.clientFilter || (s.clientFilter === '-' ? !p.clientId || !s.clients.some((c) => c.id === p.clientId) : p.clientId === s.clientFilter)) && (!q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase())));
     return list.sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : sort === 'old' ? a.updatedAt.localeCompare(b.updatedAt) : b.updatedAt.localeCompare(a.updatedAt)));
-  }, [s.projects, s.clientFilter, s.clients, q, sort]);
+  }, [emails, s.clientFilter, s.clients, q, sort]);
   const fmt = (iso: string) => new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
   const trend = TEMPLATES.filter((t) => t.blocks.length && t.tag === 'trend');
   const classic = TEMPLATES.filter((t) => t.blocks.length && t.tag !== 'trend');
@@ -120,7 +122,7 @@ export function Home() {
         <section>
           <div class="client-bar">
             <span class="eyebrow" style={{ margin: 0 }}>Khách hàng</span>
-            <button class={`cl ${!s.clientFilter ? 'on' : ''}`} onClick={() => set({ clientFilter: null })}>Tất cả<i>{s.projects.length}</i></button>
+            <button class={`cl ${!s.clientFilter ? 'on' : ''}`} onClick={() => set({ clientFilter: null })}>Tất cả<i>{emails.length}</i></button>
             {s.clients.map((c) => (
               <button key={c.id} class={`cl ${s.clientFilter === c.id ? 'on' : ''}`} onClick={() => set({ clientFilter: c.id })} onDblClick={() => void A.openBoard(c.id)} title="Bấm đúp để mở bảng email của khách này">
                 <span class="dot" style={{ background: A.clientColor(c) }} />{c.name}<i>{countOf(c.id)}</i>

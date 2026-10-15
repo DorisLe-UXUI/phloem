@@ -9,16 +9,17 @@ import { assets } from '../storage/assets';
 import type { ImageNode } from '../model/types';
 import { uid } from '../model/types';
 import { ANIM_PRESETS, ELEMENTS, ICONS, ICON_STYLES, colorChoices, iconLayer, type ElCat } from '../design/elements';
-import { COLOR_SETS, ICON_SETS, iconCollection, iconTileSvg, searchIcons, vectorAsset } from '../design/vector';
+import { COLOR_SETS, ICON_BROWSE, ICON_SETS, iconCollection, iconTileSvg, searchIcons, vectorAsset } from '../design/vector';
 import { GENERATORS, GEN_GROUPS, GEN_PALETTES, genSvg, svgDataUrl, type GenGroup } from '../design/generators';
 import { CAT_VI, fluent3dLayer, fluent3dUrl, loadFluent3d, searchFluent3d, type Fluent3d } from '../design/library';
 import { relayAuth } from '../ai/client';
+import { PEOPLE_STYLES, peopleLayer, peopleSeeds, peopleUrl } from '../design/people';
 import { Btn, Eyebrow } from './components';
 import { Icon } from './icons';
 
-type Cat = 'all' | 'shape' | 'graphic' | 'bg' | '3d' | 'sticker' | 'icon' | 'logo' | 'text' | 'photo' | 'anim';
+type Cat = 'all' | 'shape' | 'graphic' | 'bg' | '3d' | 'people' | 'sticker' | 'icon' | 'logo' | 'text' | 'photo' | 'anim';
 const CATS: { v: Cat; label: string }[] = [
-  { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' },
+  { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'people', label: 'Người & nhân vật' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' },
   { v: 'sticker', label: 'Sticker' }, { v: 'icon', label: 'Icon' }, { v: 'logo', label: 'Logo' }, { v: 'text', label: 'Chữ' }, { v: 'photo', label: 'Ảnh' }, { v: 'anim', label: 'Hoạt ảnh' },
 ];
 const STICKER_SETS = COLOR_SETS;
@@ -29,6 +30,7 @@ export type Spec =
   | { kind: 'icon'; id: string; color?: string }
   | { kind: 'sticker'; id: string }
   | { kind: '3d'; id: string }
+  | { kind: 'people'; style: string; seed: string }
   | { kind: 'gen'; id: string; seed: number; palette: string[] }
   | { kind: 'photo'; photo: Photo };
 interface Photo { id: string; title: string; url: string; thumb: string; creator: string; license: string; page: string; w: number; h: number }
@@ -47,6 +49,7 @@ export async function insertSpec(spec: Spec, at?: { x: number; y: number }) {
     } else if (spec.kind === 'icon') A.insertLayers([await iconLayer(spec.id, pt, 64, color)]);
     else if (spec.kind === 'sticker') A.insertLayers([await iconLayer(spec.id.includes(':') ? spec.id : `fluent-emoji:${spec.id}`, pt, 110, null)]);
     else if (spec.kind === '3d') A.insertLayers([await fluent3dLayer(spec.id, pt, 128)]);
+    else if (spec.kind === 'people') A.insertLayers([await peopleLayer(spec.style, spec.seed, pt, 180)]);
     else if (spec.kind === 'gen') {
       const g = GENERATORS.find((x) => x.id === spec.id); if (!g) return;
       const full = g.group === 'bg' || g.group === 'pattern';
@@ -119,6 +122,11 @@ export function DesignPanel() {
   const [stSet, setStSet] = useState('fluent-emoji');
   const [stCats, setStCats] = useState<[string, string[]][]>([]);
   const [stCat, setStCat] = useState('');
+  const [icSet, setIcSet] = useState('ph');
+  const [icCats, setIcCats] = useState<[string, string[]][]>([]);
+  const [icCat, setIcCat] = useState('');
+  const [pStyle, setPStyle] = useState('open-peeps');
+  const [pRound, setPRound] = useState(1);
   const [genGroup, setGenGroup] = useState<GenGroup>('bg');
   const [palIdx, setPalIdx] = useState(-1); // -1 = brand
   const [seed, setSeed] = useState(1);
@@ -128,10 +136,11 @@ export function DesignPanel() {
   const brandPal = b ? [b.bg, b.primary, b.accent, b.soft, b.ink] : GEN_PALETTES[0].p;
   const palette = palIdx < 0 ? brandPal : GEN_PALETTES[palIdx].p;
 
-  useEffect(() => { setMore(1); }, [cat, f3cat, stCat, stSet]);
+  useEffect(() => { setMore(1); }, [cat, f3cat, stCat, stSet, icSet, icCat, pStyle, pRound]);
   // 3D library on demand
   useEffect(() => { if ((cat === '3d' || cat === 'all' || q.trim()) && !f3) void loadFluent3d().then(setF3).catch((e) => toast((e as Error).message, 'err')); }, [cat, q]);
   // sticker set categories on demand
+  useEffect(() => { if (cat !== 'icon' || icSet === 'ph') return; setIcCats([]); void iconCollection(icSet).then((c) => { setIcCats(c.cats.length ? c.cats : [['Tất cả', c.all]]); setIcCat((c.cats[0] || ['Tất cả'])[0]); }).catch(() => setIcCats([])); }, [cat, icSet]);
   useEffect(() => { if (cat !== 'sticker') return; setStCats([]); void iconCollection(stSet).then((c) => { setStCats(c.cats.length ? c.cats : [['Tất cả', c.all]]); setStCat((c.cats[0] || ['Tất cả'])[0]); }).catch(() => setStCats([])); }, [cat, stSet]);
   // search icons + stickers + 3D as you type (debounced); photos on Enter
   useEffect(() => {
@@ -175,6 +184,11 @@ export function DesignPanel() {
       </button>
     );
   };
+  const peopleTile = (style: string, seed: string) => (
+    <button key={`${style}-${seed}`} class={`ic-tile st pp ${busy === `${style}-${seed}` ? 'busy' : ''}`} title={`${PEOPLE_STYLES.find((x) => x.v === style)?.label || style} · bấm để chèn`} draggable onDragStart={drag({ kind: 'people', style, seed })} onClick={() => void put({ kind: 'people', style, seed }, `${style}-${seed}`)}>
+      <img src={peopleUrl(style, seed)} alt="" loading="lazy" />
+    </button>
+  );
   const genTile = (gid: string, sd: number) => {
     const g = GENERATORS.find((x) => x.id === gid)!;
     const svg = genSvg(gid, palette, sd, g.group === 'shape3d' || g.group === 'deco' ? g.w : 300, g.group === 'shape3d' || g.group === 'deco' ? g.h : Math.round(300 * (g.h / g.w)))!;
@@ -218,7 +232,7 @@ export function DesignPanel() {
         </>
       ) : (
         <>
-          {cat === 'all' && <div class="dp-count">Hơn 40.000 đồ hoạ: 1.600 vật thể 3D, 25.000+ sticker, minh hoạ &amp; icon màu, 4.000 hình game, 2.000 logo, nền &amp; hoạ tiết sinh vô hạn theo màu thương hiệu. <a href="https://github.com/DorisLe-UXUI/phloem/blob/main/docs/CREDITS.md" target="_blank" rel="noopener">Nguồn &amp; giấy phép</a></div>}
+          {cat === 'all' && <div class="dp-count">Hơn 100.000 đồ hoạ: 1.600 vật thể 3D, nhân vật &amp; người minh hoạ không giới hạn (23 phong cách), 32.000+ sticker, minh hoạ &amp; icon màu, 70.000 icon, 4.000 hình game, 2.000 logo, nền &amp; hoạ tiết sinh vô hạn theo màu thương hiệu. <a href="https://github.com/DorisLe-UXUI/phloem/blob/main/docs/CREDITS.md" target="_blank" rel="noopener">Nguồn &amp; giấy phép</a></div>}
           {(cat === 'all' || cat === '3d') && (
             <>
               {head('Vật thể 3D', '3d')}
@@ -244,6 +258,15 @@ export function DesignPanel() {
           )}
           {(cat === 'all' || cat === 'shape') && <>{head('Hình khối', 'shape')}<div class="el-grid">{els(['shape', 'svg'], cat === 'all' ? 8 : undefined).map(tile)}</div></>}
           {(cat === 'all' || cat === 'graphic') && <>{head('Đồ hoạ dựng sẵn', 'graphic')}<div class="el-grid">{els('graphic', cat === 'all' ? 8 : undefined).map(tile)}</div></>}
+          {(cat === 'all' || cat === 'people') && (
+            <>
+              {head('Người & nhân vật', 'people')}
+              {cat === 'people' && <div class="dp-cats">{PEOPLE_STYLES.map((x) => <button key={x.v} class={`chip ${pStyle === x.v ? 'on' : ''}`} onClick={() => setPStyle(x.v)}>{x.label}</button>)}</div>}
+              <div class="ic-grid">{(cat === 'all' ? peopleSeeds(pRound, 8).map((sd, i) => peopleTile(['open-peeps', 'micah', 'personas', 'notionists', 'adventurer', 'clay', 'toon-head', 'dylan'][i], sd)) : peopleSeeds(pRound, 36 * more).map((sd) => peopleTile(pStyle, sd)))}</div>
+              {cat === 'people' && <div class="row" style={{ gap: 6 }}><Btn sm kind="ghost" icon="sparkle" onClick={() => setPRound((r) => r + 1)}>Đổi mẫu khác</Btn><Btn sm kind="ghost" onClick={() => setMore((m) => m + 1)}>Xem thêm 36</Btn></div>}
+              {cat === 'people' && <div class="dim small">Mỗi lần đổi là một bộ nhân vật mới, không giới hạn. Tranh của {PEOPLE_STYLES.find((x) => x.v === pStyle)?.by} · {PEOPLE_STYLES.find((x) => x.v === pStyle)?.lic} · qua DiceBear.</div>}
+            </>
+          )}
           {(cat === 'all' || cat === 'sticker') && (
             <>
               {head('Sticker', 'sticker')}
@@ -256,9 +279,13 @@ export function DesignPanel() {
           {(cat === 'all' || cat === 'icon') && (
             <>
               {head('Icon', 'icon')}
-              {cat === 'icon' && <div class="dp-cats">{ICON_STYLES.map((st) => <button key={st.v} class={`chip ${style === st.v ? 'on' : ''}`} onClick={() => setStyle(st.v)}>{st.label}</button>)}</div>}
-              <div class="ic-grid">{(cat === 'all' ? ICONS.slice(0, 12) : ICONS).map((n) => iconTile(`ph:${n}${style}`))}</div>
-              {cat === 'icon' && <div class="dim small">Gõ vào ô tìm kiếm để có hơn 20.000 icon (Phosphor, Lucide, Tabler, Material…).</div>}
+              {cat === 'icon' && <div class="dp-cats">{ICON_BROWSE.map((x) => <button key={x.v} class={`chip ${icSet === x.v ? 'on' : ''}`} onClick={() => setIcSet(x.v)}>{x.label}</button>)}</div>}
+              {cat === 'icon' && icSet === 'ph' && <div class="dp-cats">{ICON_STYLES.map((st) => <button key={st.v} class={`chip ${style === st.v ? 'on' : ''}`} onClick={() => setStyle(st.v)}>{st.label}</button>)}</div>}
+              {cat === 'icon' && icSet !== 'ph' && icCats.length > 1 && <div class="dp-cats">{icCats.map(([c, ids]) => <button key={c} class={`chip ${icCat === c ? 'on' : ''}`} onClick={() => setIcCat(c)}>{c} · {ids.length}</button>)}</div>}
+              {cat === 'icon' && icSet !== 'ph'
+                ? <>{!icCats.length ? <div class="dim small">Đang tải bộ icon…</div> : <div class="ic-grid">{page(icCats.find(([c]) => c === icCat)?.[1] || []).map((n) => iconTile(`${icSet}:${n}`))}</div>}{moreBtn(icCats.find(([c]) => c === icCat)?.[1] || [])}</>
+                : <div class="ic-grid">{(cat === 'all' ? ICONS.slice(0, 12) : ICONS).map((n) => iconTile(`ph:${n}${style}`))}</div>}
+              {cat === 'icon' && <div class="dim small">Gõ vào ô tìm kiếm để tìm trong hơn 70.000 icon của 18 bộ (Phosphor, Fluent, Solar, Huge, MingCute, Material…).</div>}
             </>
           )}
           {cat === 'logo' && (
