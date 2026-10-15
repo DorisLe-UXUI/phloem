@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS } from '../../src/shared/types';
 import type { Project } from './model/types';
 import { History } from './model/history';
 import type { ProjectMeta } from './storage/idb';
+import type { Client, MktView } from './mkt/types';
 
 export type Tool = 'select' | 'rect' | 'text' | 'image' | 'hand';
 export type Variant = 'desktop' | 'mobile';
@@ -68,6 +69,14 @@ export interface State {
   cutting: string | null;
   /** Preview the layer animations on the canvas (looping). */
   playing: boolean;
+  /** Which app this page is: Phloem Email (studio/) or Phloem MKT (mkt/, same bundle). */
+  app: 'email' | 'mkt';
+  /** Phloem MKT: where the user is (mirrored in location.hash) and the clients this account can open. */
+  mkt: MktView;
+  clients: Client[];
+  clientsAt: string | null;
+  /** The client workspace an email being edited belongs to (new emails are filed under it). */
+  activeClientId: string | null;
 }
 
 export interface Scrap { id: string; assetId: string; x: number; y: number; w: number; h: number }
@@ -114,6 +123,11 @@ export const initialState: State = {
   cropping: null,
   cutting: null,
   playing: false,
+  app: typeof document !== 'undefined' && (document.querySelector('meta[name="phloem-app"]') as HTMLMetaElement | null)?.content === 'mkt' ? 'mkt' : 'email',
+  mkt: { view: 'overview' },
+  clients: [],
+  clientsAt: null,
+  activeClientId: null,
   rightTab: 'design',
   leftTab: 'layers',
   mobilePane: 'canvas',

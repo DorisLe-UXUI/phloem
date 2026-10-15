@@ -7,7 +7,7 @@ import { getSession, expired } from '../auth/core';
 import { get, set } from '../store';
 
 export interface AiImage { name: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; base64: string }
-export interface AiTurn { role: 'user' | 'assistant'; text: string; images?: AiImage[] }
+export interface AiTurn { role: 'user' | 'assistant'; text: string; images?: AiImage[]; /** PDFs (brand guidelines…), sent as document blocks */ docs?: { name: string; base64: string }[] }
 export interface AiRequest { system: string; turns: AiTurn[]; maxTokens?: number; effort?: 'low' | 'medium' | 'high' }
 
 export type AiTransport = 'key' | 'relay' | 'sample' | null;
@@ -22,6 +22,7 @@ export const AI_MODELS = [
 
 function toBlocks(t: AiTurn): Anthropic.ContentBlockParam[] {
   const blocks: Anthropic.ContentBlockParam[] = [];
+  for (const d of t.docs || []) blocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: d.base64 }, title: d.name } as Anthropic.ContentBlockParam);
   for (const im of t.images || []) blocks.push({ type: 'image', source: { type: 'base64', media_type: im.mime, data: im.base64 } });
   blocks.push({ type: 'text', text: t.text });
   return blocks;

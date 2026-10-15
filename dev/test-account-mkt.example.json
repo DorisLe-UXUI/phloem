@@ -1,0 +1,6 @@
+{
+  "_": "Local relay test account for Phloem MKT (relay on localhost:8788, data in a temp DATA_DIR). Not a real person.",
+  "name": "Agency Test",
+  "email": "agency@phloem.local",
+  "password": "test-only-pass-123"
+}

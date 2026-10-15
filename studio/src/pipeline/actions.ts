@@ -1,4 +1,5 @@
 // Editor actions: every mutation of the project goes through here (history, dirty flag, autosave).
+import { clientEmailBrand } from '../mkt/kit';
 import type { BlockKind, Check, NNode, SlicePlan, Suggestion, SuggestionAction, TemplateKind } from '../../../src/shared/types';
 import { planSlices } from '../../../src/shared/slicer';
 import { runChecks } from '../../../src/shared/checks';
@@ -86,7 +87,9 @@ function scheduleSave() {
 export async function saveProject(): Promise<void> {
   const s = get();
   if (!s.project) return;
-  const p: Project = { ...s.project, updatedAt: new Date().toISOString() };
+  // Phloem MKT: an email made inside a client's workspace is filed under that client
+  const cid = !s.project.clientId && s.activeClientId ? s.activeClientId : s.project.clientId;
+  const p: Project = { ...s.project, ...(cid ? { clientId: cid } : {}), updatedAt: new Date().toISOString() };
   let thumb: string | undefined, thumbMobile: string | undefined;
   try { thumb = thumbnail(p.desktop, p.brand, assets, 320); if (p.mobile) thumbMobile = thumbnail(p.mobile, p.brand, assets, 160); }
   catch { try { const old = await db.getProject(p.id); thumb = old?.thumb; thumbMobile = old?.thumbMobile; } catch { /* no previous thumb */ } } // fonts/images not ready: keep the last good thumbnail
@@ -882,7 +885,7 @@ export async function openProject(id: string) {
 
 export async function newProject(kind: TemplateKind, brandOverride?: Partial<Brand>, name?: string) {
   const own = get().user?.brand;
-  const b = { ...DEFAULT_BRAND, ...(own ? { name: own } : {}), ...(brandOverride || {}) };
+  const b = { ...DEFAULT_BRAND, ...(own ? { name: own } : {}), ...(brandOverride || {}), ...clientEmailBrand(get().activeClientId) };
   ensureFonts([b.fontFamily, b.headingFamily]);
   await document.fonts.ready;
   const t = makeTemplate(kind, b);

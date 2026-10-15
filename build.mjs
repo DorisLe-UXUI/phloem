@@ -72,7 +72,7 @@ const authCfg = { entryPoints: ['studio/src/auth/standalone.ts'], bundle: true, 
 
 function stampVersion() {
   const v = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
-  for (const f of ['studio/index.html', 'index.html', 'landing/landing.js']) {
+  for (const f of ['studio/index.html', 'mkt/index.html', 'index.html', 'landing/landing.js']) {
     if (!existsSync(f)) continue;
     const t = readFileSync(f, 'utf8').replace(/\?v=\d{12}/g, `?v=${v}`);
     writeFileSync(f, t);

@@ -8,6 +8,9 @@ import { planSlices } from '../../src/shared/slicer';
 import { docToNNode } from './model/toNNode';
 import { exportDocSlices } from './render/exportSlices';
 import { get, set } from './store';
+import { startRouter } from './mkt/router';
+
+if (get().app === 'mkt') startRouter(); // Phloem MKT: same bundle, routes in the URL fragment
 
 ensureFonts(['Inter']);
 void assets.ready.then(async () => {

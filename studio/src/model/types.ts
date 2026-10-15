@@ -183,6 +183,8 @@ export interface Project {
   mobile: Doc | null;
   /** profileId -> draft record (see shared types) */
   drafts: Record<string, unknown>;
+  /** Phloem MKT: the client workspace this email belongs to (none = a plain Phloem Email project). */
+  clientId?: string;
   /** Free-form AI design source: the HTML the layers were converted from, and a hash of the converted desktop doc
    *  (unchanged doc → "AI tự chỉnh" can revise the HTML and convert again without losing hand edits). */
   design?: { html: string; hash: string; name?: string; at: string; /** the art direction (design.ts Direction) */ dir?: unknown } | null;
