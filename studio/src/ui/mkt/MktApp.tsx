@@ -20,7 +20,9 @@ export function MktApp() {
   const [nav, setNav] = useState(false);
   const [loadErr, setLoadErr] = useState('');
 
-  useEffect(() => { if (s.user && s.mkt.view !== 'review') loadClients().then(() => setLoadErr('')).catch((e) => setLoadErr((e as Error).message)); }, [s.user?.id]);
+  const inReview = s.mkt.view === 'review';
+  useEffect(() => { if (!inReview) document.title = 'Phloem MKT'; }, [inReview]);
+  useEffect(() => { if (s.user && !inReview) loadClients().then(() => setLoadErr('')).catch((e) => setLoadErr((e as Error).message)); }, [s.user?.id, inReview]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSwitcher((v) => !v); } };
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
