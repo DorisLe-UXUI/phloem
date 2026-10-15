@@ -5,14 +5,15 @@ import { relayApi } from './mailServer';
 export type ContactStatus = 'subscribed' | 'pending' | 'unsubscribed' | 'bounced' | 'complained';
 export const STATUS_LABEL: Record<ContactStatus, string> = { subscribed: 'Đang nhận', pending: 'Chờ xác nhận', unsubscribed: 'Đã huỷ', bounced: 'Thư dội', complained: 'Báo spam' };
 export interface FieldDef { key: string; label: string; type: 'text' | 'date' | 'number' }
-export interface AudList { id: string; name: string; company: { name: string; address: string }; sender: { owner: string; id: string } | null; fields: FieldDef[]; counts: Record<ContactStatus, number>; total: number; createdAt: string }
+export interface Group { name: string; tag: string }
+export interface AudList { id: string; name: string; company: { name: string; address: string }; sender: { owner: string; id: string } | null; fields: FieldDef[]; groups: Group[]; counts: Record<ContactStatus, number>; total: number; createdAt: string }
 export interface Contact { email: string; status: ContactStatus; first_name: string; last_name: string; tags: string[]; fields: Record<string, string>; source: string; consent: Record<string, string>; createdAt: string; subscribedAt?: string | null; unsubscribedAt?: string | null; lastOpenAt?: string | null; lastClickAt?: string | null; opens: number; clicks: number }
 export interface Rule { field: string; op: string; value: string }
 export interface Segment { id: string; name: string; list: string; match: 'all' | 'any'; rules: Rule[] }
-export interface SignupForm { id: string; list: string; name: string; title: string; intro: string; button: string; success: string; redirect: string; doubleOptIn: boolean; tags: string[]; consentText: string; fields: { first_name: boolean; last_name: boolean; phone: boolean; birthday: boolean }; colors: { bg: string; accent: string; text: string }; url: string }
+export interface SignupForm { id: string; list: string; name: string; title: string; intro: string; button: string; success: string; redirect: string; doubleOptIn: boolean; tags: string[]; consentText: string; fields: { first_name: boolean; last_name: boolean; phone: boolean; birthday: boolean; groups?: boolean }; groupsLabel?: string; colors: { bg: string; accent: string; text: string }; url: string }
 export interface Step { id?: string; type: 'email' | 'tag'; delayHours: number; subject?: string; project?: string; projectName?: string; html?: string; text?: string; links?: string[]; hasHtml?: boolean; add?: string[]; remove?: string[]; log?: Record<string, number>; stats?: { opens: number; clicks: number; unsubscribes: number } | null }
 export interface Automation { id: string; name: string; list: string; trigger: { type: 'subscribe' | 'tag' | 'date' | 'inactive'; tag?: string; field?: string; days?: number }; steps: Step[]; sender: { owner: string; id: string } | null; status: 'draft' | 'active' | 'paused'; runs?: Record<string, number> }
-export interface Report { days: number; growth: { day: string; subscribed: number; unsubscribed: number }[]; lists: { id: string; name: string; counts: Record<ContactStatus, number>; total: number }[]; campaigns: { id: string; subject: string; at: string; status: string; list: string; segment: string; sent: number; opens: number; clicks: number; unsubscribes: number; failed: number }[] }
+export interface Report { days: number; growth: { day: string; subscribed: number; unsubscribed: number }[]; lists: { id: string; name: string; counts: Record<ContactStatus, number>; total: number }[]; campaigns: { id: string; subject: string; at: string; status: string; list: string; segment: string; sent: number; opens: number; clicks: number; unsubscribes: number; failed: number; orders: number; revenue: number }[] }
 export interface SenderRef { id: string; label: string; fromEmail: string; fromName: string }
 
 const q = (client: string | null | undefined, extra = '') => { const p = new URLSearchParams(extra); if (client) p.set('client', client); const s = p.toString(); return s ? `?${s}` : ''; };
@@ -90,4 +91,39 @@ export function rowsToContacts(rows: string[][], map: string[]): Partial<Contact
     });
     return c;
   });
+}
+
+// ---------- orders (the shop's order tag) ----------
+export interface Order { orderId: string; value: number; currency: string; email: string; at: string; receivedAt: string; match: '' | 'click' | 'email'; campaign: string; subject: string; clickedAt: string | null; source: string }
+export interface OrdersReport { days: number; attributionDays: number; orders: Order[]; totals: { orders: number; revenue: number; emailOrders: number; emailRevenue: number } }
+export interface Site { key: string; name: string; domain: string; createdAt: string }
+export const orders = (client: string | null | undefined, days = 30) => relayApi<OrdersReport>(`/aud/orders${q(client, `days=${days}`)}`);
+export const sites = (client?: string | null) => relayApi<{ sites: Site[]; relay: string; days: number }>(`/aud/sites${q(client)}`);
+export const createSite = (client: string | null | undefined, name: string, domain = '') => relayApi<{ site: Site }>(`/aud/sites${q(client)}`, { body: { name, domain } });
+
+/** Every page of the shop: remembers the click id from the email link (7 days) and exposes phloemOrder({...}). */
+export function tagSnippet(relay: string, key: string): string {
+  return `<!-- Phloem Email: đo đơn hàng từ email (dán trước </body> ở MỌI trang) -->
+<script>
+(function(){var R='${relay}',K='${key}';
+try{var q=new URLSearchParams(location.search).get('phl');if(q){document.cookie='phl='+q+';path=/;max-age=604800;SameSite=Lax';localStorage.setItem('phl',q);}}catch(e){}
+window.phloemOrder=function(o){try{var c=(document.cookie.match(/(?:^|; )phl=([^;]+)/)||[])[1]||localStorage.getItem('phl')||'';var d=JSON.stringify(Object.assign({k:K,phl:c},o||{}));if(navigator.sendBeacon)navigator.sendBeacon(R+'/t/order',new Blob([d],{type:'text/plain'}));else fetch(R+'/t/order',{method:'POST',body:d,keepalive:true,mode:'no-cors'});}catch(e){}};
+})();
+</script>`;
+}
+/** The thank-you page: one call with the order's numbers (placeholders replaced by the platform's variables). */
+export const thankYouSnippet = `<script>
+  phloemOrder({ order_id: 'MÃ_ĐƠN', value: TỔNG_TIỀN, currency: 'VND', email: 'EMAIL_KHÁCH' });
+</script>`;
+/** Shopify → Settings → Customer events → Add custom pixel. */
+export function shopifyPixel(relay: string, key: string): string {
+  return `// Phloem Email: Shopify → Cài đặt → Sự kiện khách hàng → Thêm pixel tuỳ chỉnh
+analytics.subscribe('checkout_completed', async (event) => {
+  const c = event.data.checkout;
+  let phl = '';
+  try { phl = (await browser.cookie.get('phl')) || (await browser.localStorage.getItem('phl')) || ''; } catch (e) {}
+  fetch('${relay}/t/order', { method: 'POST', keepalive: true, body: JSON.stringify({
+    k: '${key}', phl, order_id: String(c.order?.id || c.token), value: c.totalPrice?.amount, currency: c.currencyCode, email: c.email,
+  }) });
+});`;
 }

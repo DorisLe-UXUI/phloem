@@ -31,6 +31,8 @@ export function esc(s: string): string {
 
 /** Spaces and non-ASCII in an href break ESP click-tracking rewrites; percent-encode only those (never re-encode an encoded URL). */
 export function safeHref(u: string): string { return u.replace(/ /g, '%20').replace(/[^\x21-\x7E]/g, (c) => encodeURIComponent(c)); }
+/** utm_content for a slice: what the reader clicked ("mua-ngay", "giam-30"), not its grid position. */
+function sliceLabel(s: Slice): string { const a = (s.alt || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); return a || s.key; }
 function hrefFor(link: string, sliceKey: string, inp: HtmlInput): string {
   return safeHref(inp.utm ? applyUtm(link, inp.utm.template, { ...inp.utm.vars, slice: sliceKey }) : link);
 }
@@ -98,10 +100,10 @@ function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlIn
   for (const row of plan.rows) {
     if (row.cells.length === 1) {
       const s = row.cells[0];
-      if (s.text) { rows.push(`<tr>${liveTd(s, s.text, s.link ? hrefFor(s.link, s.key, inp) : null)}</tr>`); continue; }
+      if (s.text) { rows.push(`<tr>${liveTd(s, s.text, s.link ? hrefFor(s.link, sliceLabel(s), inp) : null)}</tr>`); continue; }
       const src = images[s.key] ?? '';
       let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
-      if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
+      if (s.link) inner = `<a href="${esc(hrefFor(s.link, sliceLabel(s), inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
       const p = paint(s.key);
       rows.push(`<tr><td align="left" valign="top"${p.attr} style="padding:0;margin:0;line-height:0;font-size:0;${p.css}">${inner}</td></tr>`);
       continue;
@@ -109,10 +111,10 @@ function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlIn
     // multi-column row: nested table, proportional widths so columns stay aligned when fluid
     const tds = row.cells.map((s) => {
       const pct = Math.round((s.w / W) * 10000) / 100;
-      if (s.text) return liveTd(s, s.text, s.link ? hrefFor(s.link, s.key, inp) : null, ` width="${pct}%"`, `width:${pct}%;`);
+      if (s.text) return liveTd(s, s.text, s.link ? hrefFor(s.link, sliceLabel(s), inp) : null, ` width="${pct}%"`, `width:${pct}%;`);
       const src = images[s.key] ?? '';
       let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
-      if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
+      if (s.link) inner = `<a href="${esc(hrefFor(s.link, sliceLabel(s), inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
       const p = paint(s.key);
       return `<td width="${pct}%" align="left" valign="top"${p.attr} style="padding:0;margin:0;line-height:0;font-size:0;width:${pct}%;${p.css}">${inner}</td>`;
     });

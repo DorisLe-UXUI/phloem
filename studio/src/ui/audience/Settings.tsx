@@ -2,7 +2,7 @@
 // authentication (DNS records from the provider) and the bounce/complaint webhook.
 import { useEffect, useState } from 'preact/hooks';
 import { toast } from '../../store';
-import { deleteList, updateList, type AudList, type FieldDef } from '../../pipeline/audience';
+import { deleteList, updateList, type AudList, type FieldDef, type Group } from '../../pipeline/audience';
 import { addSenderDomain, listSenders, senderDomain, type DomainState, type Sender } from '../../pipeline/mailServer';
 import { Btn, Field, TextInput } from '../components';
 import { SenderForm } from '../MailExtras';
@@ -22,14 +22,15 @@ export function SettingsTab({ ctx, list }: { ctx: AudCtx; list: AudList }) {
   const [address, setAddress] = useState(list.company?.address || '');
   const [senderId, setSenderId] = useState(list.sender?.id || '');
   const [fields, setFields] = useState<FieldDef[]>(list.fields || []);
+  const [groups, setGroups] = useState<Group[]>(list.groups || []);
   const [senders, setSenders] = useState<Sender[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [delName, setDelName] = useState<string | null>(null);
   const loadSenders = async () => { try { setSenders((await listSenders()).senders); } catch { setSenders([]); } };
   useEffect(() => { void loadSenders(); }, []);
-  useEffect(() => { setName(list.name); setCompany(list.company?.name || ''); setAddress(list.company?.address || ''); setSenderId(list.sender?.id || ''); setFields(list.fields || []); }, [list.id]);
+  useEffect(() => { setName(list.name); setCompany(list.company?.name || ''); setAddress(list.company?.address || ''); setSenderId(list.sender?.id || ''); setFields(list.fields || []); setGroups(list.groups || []); }, [list.id]);
   const save = async () => {
-    try { await updateList(ctx.client, list.id, { name, company: { name: company, address }, fields, ...(senderId ? { sender: { owner: '', id: senderId } } : senderId === '' && list.sender ? { sender: null } : {}) }); await ctx.reload(); toast('Đã lưu cài đặt danh sách.', 'ok'); }
+    try { await updateList(ctx.client, list.id, { name, company: { name: company, address }, fields, groups, ...(senderId ? { sender: { owner: '', id: senderId } } : senderId === '' && list.sender ? { sender: null } : {}) }); await ctx.reload(); toast('Đã lưu cài đặt danh sách.', 'ok'); }
     catch (e) { toast((e as Error).message, 'err'); }
   };
   return (
@@ -45,6 +46,17 @@ export function SettingsTab({ ctx, list }: { ctx: AudCtx; list: AudList }) {
             {list.sender && !ctx.senders.some((x) => x.id === list.sender!.id) && <option value={list.sender.id}>Kênh của thành viên khác</option>}
           </select>
         </Field>
+        <div class="col" style={{ gap: 6 }}>
+          <span class="dim small">Nhóm trong danh sách (hiện thành tab ở Danh bạ; form đăng ký có thể cho khách tự chọn)</span>
+          {groups.map((g, i) => (
+            <div key={g.tag || i} class="row" style={{ gap: 6 }}>
+              <input class="in" value={g.name} onInput={(e) => setGroups(groups.map((x, j) => (j === i ? { ...x, name: (e.target as HTMLInputElement).value } : x)))} />
+              <span class="chip mono" title="Tag gắn cho người trong nhóm">#{g.tag || 'mới'}</span>
+              <Btn xs kind="ghost" title="Xoá nhóm (liên hệ vẫn giữ tag)" onClick={() => setGroups(groups.filter((_, j) => j !== i))}>×</Btn>
+            </div>
+          ))}
+          <div><Btn xs icon="plus" onClick={() => setGroups([...groups, { name: '', tag: '' }])}>Thêm nhóm</Btn></div>
+        </div>
         <div class="col" style={{ gap: 6 }}>
           <span class="dim small">Trường tuỳ chỉnh (dùng trong phân nhóm và {'{{ten_truong}}'} trong email)</span>
           {fields.map((f, i) => (

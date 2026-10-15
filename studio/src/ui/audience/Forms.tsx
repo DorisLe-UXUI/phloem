@@ -70,7 +70,9 @@ function FormEditor({ ctx, list, f, onClose }: { ctx: AudCtx; list: AudList; f: 
         <div class="row wrap small" style={{ gap: 12 }}>
           <span class="dim">Hỏi thêm:</span>
           {(['first_name', 'last_name', 'phone', 'birthday'] as const).map((k) => <label key={k} class="row" style={{ gap: 4 }}><input type="checkbox" checked={fl[k]} onChange={(e) => up({ fields: { ...fl, [k]: (e.target as HTMLInputElement).checked } })} />{{ first_name: 'Tên', last_name: 'Họ', phone: 'Số điện thoại', birthday: 'Ngày sinh' }[k]}</label>)}
+          {list.groups?.length > 0 && <label class="row" style={{ gap: 4 }}><input type="checkbox" checked={!!fl.groups} onChange={(e) => up({ fields: { ...fl, groups: (e.target as HTMLInputElement).checked } })} />Cho chọn nhóm</label>}
         </div>
+        {fl.groups && list.groups?.length > 0 && <Field label="Câu hỏi chọn nhóm" hint={list.groups.map((g) => g.name).join(' · ')}><TextInput value={v.groupsLabel || ''} placeholder="Bạn quan tâm" onCommit={(x) => up({ groupsLabel: x })} onInput={(x) => up({ groupsLabel: x })} /></Field>}
         <Toggle checked={v.doubleOptIn !== false} onChange={(x) => up({ doubleOptIn: x })} label="Xác nhận 2 bước qua email" sub={list.sender ? 'Người đăng ký bấm link trong email mới vào danh sách: chặn email giả, lọt hộp thư chính tốt hơn' : 'Cần kênh gửi cho danh sách (tab Gửi & tên miền)'} />
         <Field label="Lời cảm ơn sau khi đăng ký"><TextInput value={v.success || ''} onCommit={(x) => up({ success: x })} onInput={(x) => up({ success: x })} placeholder="Cảm ơn bạn! Ưu đãi đang trên đường tới hộp thư." /></Field>
         <Field label="Chuyển tới trang (tuỳ chọn)" hint="https://… sau khi đăng ký"><TextInput value={v.redirect || ''} onCommit={(x) => up({ redirect: x })} onInput={(x) => up({ redirect: x })} /></Field>

@@ -185,6 +185,8 @@ export interface Project {
   drafts: Record<string, unknown>;
   /** Phloem MKT: the client workspace this email belongs to (none = a plain Phloem Email project). */
   clientId?: string;
+  /** Google Analytics tags added to every link (on unless turned off): utm_source / utm_medium / utm_campaign. */
+  utm?: { on?: boolean; source?: string; medium?: string; campaign?: string } | null;
   /** Phloem MKT: 'design' = a social/ads design at a fixed channel size (no email export); default email. */
   kind?: 'email' | 'design';
   /** Design size preset (Phloem Design), e.g. { id: 'ig-portrait', w: 1080, h: 1350 }. */

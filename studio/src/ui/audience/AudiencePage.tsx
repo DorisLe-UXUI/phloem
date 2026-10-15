@@ -96,33 +96,37 @@ export function AudiencePage() {
             </div>
             {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
             {namingBox}
-            {lists === null ? <div class="card"><div class="progress"><i class="indet" /></div><div class="dim small">Đang tải (relay có thể đang thức dậy)…</div></div>
-              : !lists.length ? (
-                <div class="card aud-empty">
-                  <Icon name="mail" size={28} style={{ color: 'var(--neon)' }} />
-                  <b>Tạo danh sách đầu tiên</b>
-                  <div class="small muted">Một danh sách là một nhóm người đã đồng ý nhận email (khách hàng, người đăng ký bản tin…). Nhập từ CSV, thêm tay, hoặc để họ tự đăng ký qua form.</div>
-                  {ctx.canWrite ? (naming === null && <Btn kind="primary" icon="plus" onClick={newList}>Tạo danh sách</Btn>) : <div class="dim small">Bạn chỉ có quyền xem.</div>}
-                </div>
-              ) : (
-                <>
+            {lists === null ? <div class="card"><div class="progress"><i class="indet" /></div><div class="dim small">Đang tải (relay có thể đang thức dậy)…</div></div> : (
+              <>
+                {list && (
                   <div class="aud-tiles">
-                    <div class="adm-tile"><span>Đang nhận</span><b>{(list?.counts.subscribed || 0).toLocaleString('vi-VN')}</b><i>trong {(list?.total || 0).toLocaleString('vi-VN')} liên hệ</i></div>
-                    <div class="adm-tile"><span>Chờ xác nhận</span><b>{(list?.counts.pending || 0).toLocaleString('vi-VN')}</b><i>đăng ký 2 bước</i></div>
-                    <div class="adm-tile"><span>Đã huỷ</span><b>{(list?.counts.unsubscribed || 0).toLocaleString('vi-VN')}</b><i>không bao giờ gửi lại</i></div>
-                    <div class="adm-tile"><span>Thư dội · spam</span><b>{((list?.counts.bounced || 0) + (list?.counts.complained || 0)).toLocaleString('vi-VN')}</b><i>tự loại khỏi mọi lần gửi</i></div>
+                    <div class="adm-tile"><span>Đang nhận</span><b>{list.counts.subscribed.toLocaleString('vi-VN')}</b><i>trong {list.total.toLocaleString('vi-VN')} liên hệ</i></div>
+                    <div class="adm-tile"><span>Chờ xác nhận</span><b>{list.counts.pending.toLocaleString('vi-VN')}</b><i>đăng ký 2 bước</i></div>
+                    <div class="adm-tile"><span>Đã huỷ</span><b>{list.counts.unsubscribed.toLocaleString('vi-VN')}</b><i>không bao giờ gửi lại</i></div>
+                    <div class="adm-tile"><span>Thư dội · spam</span><b>{(list.counts.bounced + list.counts.complained).toLocaleString('vi-VN')}</b><i>tự loại khỏi mọi lần gửi</i></div>
                   </div>
-                  <div class="seg aud-tabs">
-                    {TABS.map((t) => <button key={t.id} class={tab === t.id ? 'on' : ''} onClick={() => go(t.id)}><Icon name={t.icon} size={13} />{t.label}</button>)}
+                )}
+                <div class="seg aud-tabs">
+                  {TABS.map((t) => <button key={t.id} class={tab === t.id ? 'on' : ''} onClick={() => go(t.id)}><Icon name={t.icon} size={13} />{t.label}</button>)}
+                </div>
+                {tab === 'reports' ? <ReportsTab ctx={ctx} /> : !list ? (
+                  <div class="card aud-empty">
+                    <Icon name="mail" size={28} style={{ color: 'var(--neon)' }} />
+                    <b>Tạo danh sách đầu tiên</b>
+                    <div class="small muted">Một danh sách là một nhóm người đã đồng ý nhận email (khách hàng, người đăng ký bản tin…). Nhập từ CSV, thêm tay, hoặc để họ tự đăng ký qua form.</div>
+                    {ctx.canWrite ? (naming === null && <Btn kind="primary" icon="plus" onClick={newList}>Tạo danh sách</Btn>) : <div class="dim small">Bạn chỉ có quyền xem.</div>}
                   </div>
-                  {list && tab === 'contacts' && <ContactsTab ctx={ctx} list={list} />}
-                  {list && tab === 'segments' && <SegmentsTab ctx={ctx} list={list} />}
-                  {list && tab === 'forms' && <FormsTab ctx={ctx} list={list} />}
-                  {list && tab === 'automations' && <AutomationsTab ctx={ctx} list={list} />}
-                  {tab === 'reports' && <ReportsTab ctx={ctx} />}
-                  {list && tab === 'settings' && <SettingsTab ctx={ctx} list={list} />}
-                </>
-              )}
+                ) : (
+                  <>
+                    {tab === 'contacts' && <ContactsTab ctx={ctx} list={list} />}
+                    {tab === 'segments' && <SegmentsTab ctx={ctx} list={list} />}
+                    {tab === 'forms' && <FormsTab ctx={ctx} list={list} />}
+                    {tab === 'automations' && <AutomationsTab ctx={ctx} list={list} />}
+                    {tab === 'settings' && <SettingsTab ctx={ctx} list={list} />}
+                  </>
+                )}
+              </>
+            )}
           </>
         )}
       </div>

@@ -179,8 +179,17 @@ async function uploadAll(prof: Profile, p: Project, ex: Exported, prev: DraftRec
 
 const bgMap = (list: ExportedSlice[]): Record<string, string> => Object.fromEntries(list.filter((s) => s.bg).map((s) => [s.key, s.bg!]));
 
+/** The UTM template a project's links get: the export profile's own, else the project's (on by default). */
+export function utmTemplateOf(p: Project, prof: Profile | null): string {
+  if (prof?.utmTemplate) return prof.utmTemplate;
+  if (p.utm?.on === false) return '';
+  return `utm_source=${slug(p.utm?.source || 'phloem')}&utm_medium=${slug(p.utm?.medium || 'email')}&utm_campaign={campaign}&utm_content={slice}`;
+}
+/** utm_campaign as Google Analytics will show it. */
+export const utmCampaignOf = (p: Project) => slug(p.utm?.campaign || p.fields.campaignName || p.name);
 export function htmlFor(p: Project, prof: Profile | null, ex: Exported, images: Record<string, string>, mobileImages: Record<string, string>, mode: 'fragment' | 'full'): string {
   const today = new Date().toISOString().slice(0, 10);
+  const utmT = utmTemplateOf(p, prof);
   return buildEmailHtml({
     plan: ex.plan, images,
     mobile: ex.mobile ? { plan: ex.mobile.plan, images: mobileImages, cellBg: bgMap(ex.mobile.slices) } : null,
@@ -191,7 +200,7 @@ export function htmlFor(p: Project, prof: Profile | null, ex: Exported, images: 
     footerHtml: prof?.footerHtml || '',
     bgColor: resolveColor(p.desktop.bg, p.brand),
     provider: prof?.provider ?? null,
-    utm: prof?.utmTemplate ? { template: prof.utmTemplate, vars: { provider: prof.provider, campaign: p.fields.campaignName || p.name, frame: p.name, date: today } } : null,
+    utm: utmT ? { template: utmT, vars: { provider: prof?.provider || 'phloem', campaign: p.utm?.campaign || p.fields.campaignName || p.name, frame: p.name, date: today } } : null,
     fontLinks: liveFontLinks([ex.plan, ex.mobile?.plan]),
   });
 }

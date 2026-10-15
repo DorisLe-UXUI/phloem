@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { get, toast } from '../../store';
 import { getSession } from '../../auth/core';
-import { addContact, bulkTags, contacts as fetchContacts, deleteContact, exportUrl, importContacts, listTags, parseCsv, guessColumn, rowsToContacts, patchContact, STATUS_LABEL, type AudList, type Contact, type ContactStatus } from '../../pipeline/audience';
+import { addContact, bulkTags, contacts as fetchContacts, deleteContact, exportUrl, importContacts, listTags, parseCsv, guessColumn, rowsToContacts, patchContact, segments as fetchSegments, updateList, STATUS_LABEL, type AudList, type Contact, type ContactStatus, type Segment } from '../../pipeline/audience';
 import { Btn, Field, Modal, TextInput, Toggle } from '../components';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
@@ -24,16 +24,33 @@ export function ContactsTab({ ctx, list }: { ctx: AudCtx; list: AudList }) {
   const [importing, setImporting] = useState(false);
   const [limit, setLimit] = useState(PAGE);
   const [tagText, setTagText] = useState('');
+  const [segment, setSegment] = useState('');
+  const [segs, setSegs] = useState<Segment[]>([]);
+  const [naming, setNaming] = useState<string | null>(null);
+  const groups = list.groups || [];
   const load = async () => {
     try {
-      const [r, t] = await Promise.all([fetchContacts(ctx.client, list.id, { q: qy.trim(), status, tag, limit }), listTags(ctx.client, list.id)]);
+      const [r, t] = await Promise.all([fetchContacts(ctx.client, list.id, { q: qy.trim(), status, tag, segment, limit }), listTags(ctx.client, list.id)]);
       setRows(r.contacts); setTotal(r.total); setTags(t.tags);
     } catch (e) { toast((e as Error).message, 'err'); setRows([]); }
   };
-  useEffect(() => { const t = setTimeout(() => void load(), qy ? 300 : 0); return () => clearTimeout(t); }, [list.id, qy, status, tag, limit]);
+  useEffect(() => { const t = setTimeout(() => void load(), qy ? 300 : 0); return () => clearTimeout(t); }, [list.id, qy, status, tag, segment, limit]);
+  useEffect(() => { setTag(''); setSegment(''); void fetchSegments(ctx.client).then((r) => setSegs(r.segments.filter((x) => x.list === list.id))).catch(() => setSegs([])); }, [list.id]);
+  const pick = (t: string, sg = '') => { setTag(t); setSegment(sg); setSel(new Set()); setLimit(PAGE); };
+  const count = Object.fromEntries(tags.map((t) => [t.tag, t.n]));
+  const loose = tags.filter((t) => !groups.some((g) => g.tag === t.tag)).slice(0, 8);
+  const addGroup = async () => {
+    const name = (naming || '').trim(); if (!name) return;
+    try { await updateList(ctx.client, list.id, { groups: [...groups, { name, tag: '' }] }); setNaming(null); await ctx.reload(); toast(`Đã tạo nhóm "${name}". Chọn liên hệ rồi bấm Thêm vào nhóm.`, 'ok'); } catch (e) { toast((e as Error).message, 'err'); }
+  };
+  const toGroup = async (g: { tag: string; name: string }, remove = false) => {
+    const r = await bulkTags(ctx.client, list.id, [...sel], remove ? [] : [g.tag], remove ? [g.tag] : []).catch((e) => { toast((e as Error).message, 'err'); return null; });
+    if (r) toast(`${remove ? 'Đã bỏ' : 'Đã thêm'} ${r.updated} liên hệ ${remove ? 'khỏi' : 'vào'} "${g.name}".`, 'ok');
+    setSel(new Set()); await refresh();
+  };
   const refresh = async () => { await load(); await ctx.reload(); };
   const allOn = !!rows?.length && rows.every((r) => sel.has(r.email));
-  const toggle = (e: string) => { const n = new Set(sel); if (n.has(e)) n.delete(e); else n.add(e); setSel(n); };
+  const toggle = (e: string) => setSel((prev) => { const n = new Set(prev); if (n.has(e)) n.delete(e); else n.add(e); return n; });
   const bulk = async (kind: 'add' | 'remove' | 'delete') => {
     const emails = [...sel];
     if (kind === 'delete') {
@@ -59,15 +76,20 @@ export function ContactsTab({ ctx, list }: { ctx: AudCtx; list: AudList }) {
 
   return (
     <div class="col" style={{ gap: 12 }}>
+      <div class="aud-groups" role="tablist" aria-label="Nhóm trong danh sách">
+        <button role="tab" class={!tag && !segment ? 'on' : ''} onClick={() => pick('')}>Tất cả<i>{list.total.toLocaleString('vi-VN')}</i></button>
+        {groups.map((g) => <button key={g.tag} role="tab" class={tag === g.tag ? 'on' : ''} onClick={() => pick(g.tag)} title={`Nhóm (tag "${g.tag}")`}>{g.name}<i>{(count[g.tag] || 0).toLocaleString('vi-VN')}</i></button>)}
+        {segs.map((x) => <button key={x.id} role="tab" class={`seg ${segment === x.id ? 'on' : ''}`} onClick={() => pick('', x.id)} title="Phân nhóm theo điều kiện (tự cập nhật)">⚡ {x.name}</button>)}
+        {loose.map((t) => <button key={t.tag} role="tab" class={`tag ${tag === t.tag ? 'on' : ''}`} onClick={() => pick(t.tag)} title="Tag">#{t.tag}<i>{t.n}</i></button>)}
+        {ctx.canWrite && (naming === null
+          ? <button class="add" onClick={() => setNaming('')}>+ Nhóm</button>
+          : <span class="row" style={{ gap: 4 }}><input class="in" autoFocus style={{ width: 170, height: 28 }} placeholder="Tên nhóm (VIP, Đã mua…)" value={naming} onInput={(e) => setNaming((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === 'Enter') void addGroup(); if (e.key === 'Escape') setNaming(null); }} /><Btn xs kind="primary" onClick={() => void addGroup()}>Tạo</Btn><Btn xs kind="ghost" onClick={() => setNaming(null)}>×</Btn></span>)}
+      </div>
       <div class="row wrap aud-toolbar">
         <input class="in" style={{ maxWidth: 260, height: 32 }} placeholder="Tìm email hoặc tên…" value={qy} onInput={(e) => { setQy((e.target as HTMLInputElement).value); setLimit(PAGE); }} />
         <select class="in" style={{ maxWidth: 170, height: 32 }} value={status} onChange={(e) => setStatus((e.target as HTMLSelectElement).value)}>
           <option value="">Mọi trạng thái</option>
           {(Object.keys(STATUS_LABEL) as ContactStatus[]).map((k) => <option key={k} value={k}>{STATUS_LABEL[k]} · {list.counts[k] || 0}</option>)}
-        </select>
-        <select class="in" style={{ maxWidth: 170, height: 32 }} value={tag} onChange={(e) => setTag((e.target as HTMLSelectElement).value)}>
-          <option value="">Mọi tag</option>
-          {tags.map((t) => <option key={t.tag} value={t.tag}>{t.tag} · {t.n}</option>)}
         </select>
         <span class="grow" />
         {ctx.canWrite && <Btn sm icon="plus" onClick={() => setAdding(true)}>Thêm</Btn>}
@@ -75,7 +97,7 @@ export function ContactsTab({ ctx, list }: { ctx: AudCtx; list: AudList }) {
         <Btn sm icon="download" onClick={() => void download()}>Xuất CSV</Btn>
       </div>
       {sel.size > 0 && ctx.canWrite && (
-        <div class="row aud-bulk"><b>{sel.size} đã chọn</b><input class="in" style={{ maxWidth: 200, height: 26 }} placeholder="tag (cách nhau dấu phẩy)" value={tagText} onInput={(e) => setTagText((e.target as HTMLInputElement).value)} /><Btn xs onClick={() => void bulk('add')}>Gắn tag</Btn><Btn xs onClick={() => void bulk('remove')}>Bỏ tag</Btn><Btn xs kind="danger" onClick={() => void bulk('delete')}>Xoá</Btn><span class="grow" /><Btn xs kind="ghost" onClick={() => setSel(new Set())}>Bỏ chọn</Btn></div>
+        <div class="row aud-bulk wrap"><b>{sel.size} đã chọn</b>{groups.length > 0 && <select class="in" style={{ maxWidth: 190, height: 26 }} value="" onChange={(e) => { const v = (e.target as HTMLSelectElement).value; const g = groups.find((x) => x.tag === v.slice(1)); if (g) void toGroup(g, v[0] === '-'); }}><option value="">Thêm vào nhóm…</option>{groups.map((g) => <option key={g.tag} value={`+${g.tag}`}>+ {g.name}</option>)}{groups.map((g) => <option key={`r${g.tag}`} value={`-${g.tag}`}>− bỏ khỏi {g.name}</option>)}</select>}<input class="in" style={{ maxWidth: 200, height: 26 }} placeholder="tag (cách nhau dấu phẩy)" value={tagText} onInput={(e) => setTagText((e.target as HTMLInputElement).value)} /><Btn xs onClick={() => void bulk('add')}>Gắn tag</Btn><Btn xs onClick={() => void bulk('remove')}>Bỏ tag</Btn><Btn xs kind="danger" onClick={() => void bulk('delete')}>Xoá</Btn><span class="grow" /><Btn xs kind="ghost" onClick={() => setSel(new Set())}>Bỏ chọn</Btn></div>
       )}
       <div class="adm-table aud-table">
         <table>
@@ -85,7 +107,7 @@ export function ContactsTab({ ctx, list }: { ctx: AudCtx; list: AudList }) {
           </tr></thead>
           <tbody>
             {rows === null ? <tr><td colSpan={9} class="dim">Đang tải…</td></tr>
-              : !rows.length ? <tr><td colSpan={9} class="dim">{qy || status || tag ? 'Không có ai khớp bộ lọc.' : 'Danh sách trống: nhập CSV, thêm tay, hoặc tạo form đăng ký.'}</td></tr>
+              : !rows.length ? <tr><td colSpan={9} class="dim">{qy || status || tag || segment ? (tag && groups.some((g) => g.tag === tag) ? 'Nhóm chưa có ai: tick liên hệ ở tab Tất cả rồi chọn Thêm vào nhóm.' : 'Không có ai khớp bộ lọc.') : 'Danh sách trống: nhập CSV, thêm tay, hoặc tạo form đăng ký.'}</td></tr>
                 : rows.map((c) => (
                   <tr key={c.email} onClick={() => setOpen(c)} style={{ cursor: 'pointer' }}>
                     <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.has(c.email)} onChange={() => toggle(c.email)} /></td>

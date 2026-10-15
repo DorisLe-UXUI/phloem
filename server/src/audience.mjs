@@ -10,7 +10,9 @@
 //   /aud/segments[/:id] · /aud/preview      saved rule sets · live count
 //   /aud/forms[/:id]                        signup forms;  public: GET|POST /f/:id, GET /f/:id/c/:token (confirm)
 //   /aud/automations[/:id][/activate|pause] trigger + steps (email / tag, each after a delay)
-//   /aud/reports                            growth, campaigns, automations
+//   /aud/reports                            growth, campaigns (with orders + revenue), automations
+//   /aud/sites · /aud/orders                order tag for the shop (site key + snippet) · orders, matched to emails
+//   public: POST /t/order (beacon) · GET /t/order.gif   an order from the shop's thank-you page
 // All /aud routes take ?client=<id> for a client workspace (none = personal).
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -23,6 +25,8 @@ const STATUSES = ['subscribed', 'pending', 'unsubscribed', 'bounced', 'complaine
 const uid = (p) => `${p}_${Date.now().toString(36)}${randomBytes(3).toString('hex')}`;
 const cleanTags = (t) => [...new Set((Array.isArray(t) ? t : String(t || '').split(/[,;|]/)).map((x) => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 50);
 const DAY = 864e5;
+/** "Quan tâm đồ gốm" → "quan-tam-do-gom" (tags stay ASCII so they survive any CSV or ESP). */
+const slugTag = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS aud_lists (scope TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (scope, id));
@@ -38,7 +42,24 @@ CREATE INDEX IF NOT EXISTS aud_runs_due ON aud_runs(status, next_at);
 CREATE TABLE IF NOT EXISTS aud_auto_log (scope TEXT NOT NULL, automation_id TEXT NOT NULL, step_id TEXT NOT NULL, email TEXT NOT NULL, status TEXT NOT NULL, at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS aud_auto_log_a ON aud_auto_log(scope, automation_id, step_id);
 CREATE TABLE IF NOT EXISTS aud_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS aud_clicks (id TEXT PRIMARY KEY, owner TEXT NOT NULL, campaign TEXT NOT NULL, scope TEXT NOT NULL, email TEXT NOT NULL, link INTEGER, at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS aud_clicks_email ON aud_clicks(scope, email, at);
+CREATE TABLE IF NOT EXISTS aud_sites (key TEXT PRIMARY KEY, scope TEXT NOT NULL, json TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS aud_orders (scope TEXT NOT NULL, order_id TEXT NOT NULL, value REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, received_at TEXT NOT NULL, click_id TEXT NOT NULL DEFAULT '', campaign TEXT NOT NULL DEFAULT '', campaign_owner TEXT NOT NULL DEFAULT '', match TEXT NOT NULL DEFAULT '', clicked_at TEXT, source TEXT NOT NULL DEFAULT 'tag', PRIMARY KEY (scope, order_id));
+CREATE INDEX IF NOT EXISTS aud_orders_at ON aud_orders(scope, at);
 `;
+/** Days an order still counts for the email click before it (Klaviyo uses 5, Mailchimp 5–30; a week fits VN shopping). */
+export const ATTRIBUTION_DAYS = 7;
+/** "590.000", "590,000", "1.290.000đ", 590000, "12.5" → a number (dots/commas as thousands when grouped by three). */
+export function parseMoney(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const t = String(v ?? '').replace(/[^\d.,-]/g, '');
+  if (!t) return 0;
+  if (/^-?\d{1,3}([.,]\d{3})+$/.test(t)) return Number(t.replace(/[.,]/g, ''));
+  if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(t)) return Number(t.replace(/\./g, '').replace(',', '.'));
+  if (/^-?\d{1,3}(,\d{3})+\.\d+$/.test(t)) return Number(t.replace(/,/g, ''));
+  return Number(t.replace(',', '.')) || 0;
+}
 
 // ---------- segments ----------
 const daysSince = (iso, nowMs) => (iso ? Math.floor((nowMs - Date.parse(iso)) / DAY) : null);
@@ -108,8 +129,9 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
     cOpen: q('UPDATE aud_contacts SET opens = opens + 1, last_open_at = ? WHERE scope = ? AND email = ?'),
     cClick: q('UPDATE aud_contacts SET clicks = clicks + 1, last_click_at = ? WHERE scope = ? AND email = ?'),
     cStatusAll: q("UPDATE aud_contacts SET status = ?, unsubscribed_at = ?, updated_at = ? WHERE scope = ? AND email = ? AND status IN ('subscribed', 'pending')"),
-    growthSub: q('SELECT substr(subscribed_at, 1, 10) AS d, COUNT(*) AS n FROM aud_contacts WHERE scope = ? AND subscribed_at >= ? GROUP BY d'),
-    growthUnsub: q('SELECT substr(unsubscribed_at, 1, 10) AS d, COUNT(*) AS n FROM aud_contacts WHERE scope = ? AND unsubscribed_at >= ? GROUP BY d'),
+    // days in the shop's local time (UTC+7 by default): a sign-up at 23:30 in Hà Nội belongs to that day, not the next
+    growthSub: q("SELECT substr(datetime(subscribed_at, ? || ' hours'), 1, 10) AS d, COUNT(*) AS n FROM aud_contacts WHERE scope = ? AND subscribed_at >= ? GROUP BY d"),
+    growthUnsub: q("SELECT substr(datetime(unsubscribed_at, ? || ' hours'), 1, 10) AS d, COUNT(*) AS n FROM aud_contacts WHERE scope = ? AND unsubscribed_at >= ? GROUP BY d"),
     scopes: q("SELECT DISTINCT scope FROM aud_lists WHERE scope LIKE 'c:%'"),
     segPut: q('INSERT INTO aud_segments (scope, id, json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(scope, id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at'),
     segGet: q('SELECT json FROM aud_segments WHERE scope = ? AND id = ?'),
@@ -135,6 +157,17 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
     runDelAuto: q('DELETE FROM aud_runs WHERE scope = ? AND automation_id = ?'),
     logAdd: q('INSERT INTO aud_auto_log (scope, automation_id, step_id, email, status, at) VALUES (?, ?, ?, ?, ?, ?)'),
     logCounts: q('SELECT step_id, status, COUNT(*) AS n FROM aud_auto_log WHERE scope = ? AND automation_id = ? GROUP BY step_id, status'),
+    clickIns: q('INSERT INTO aud_clicks (id, owner, campaign, scope, email, link, at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    clickGet: q('SELECT * FROM aud_clicks WHERE id = ?'),
+    clickByEmail: q('SELECT * FROM aud_clicks WHERE scope = ? AND email = ? AND at >= ? ORDER BY at DESC LIMIT 1'),
+    clickOld: q('DELETE FROM aud_clicks WHERE at < ?'),
+    sitePut: q('INSERT INTO aud_sites (key, scope, json, created_at) VALUES (?, ?, ?, ?)'),
+    siteGet: q('SELECT * FROM aud_sites WHERE key = ?'),
+    siteAll: q('SELECT * FROM aud_sites WHERE scope = ? ORDER BY created_at'),
+    siteDel: q('DELETE FROM aud_sites WHERE key = ? AND scope = ?'),
+    orderIns: q('INSERT INTO aud_orders (scope, order_id, value, currency, email, at, received_at, click_id, campaign, campaign_owner, match, clicked_at, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(scope, order_id) DO NOTHING'),
+    orderAll: q('SELECT * FROM aud_orders WHERE scope = ? AND at >= ? ORDER BY at DESC LIMIT 2000'),
+    orderByCampaign: q("SELECT campaign, COUNT(*) AS n, SUM(value) AS v FROM aud_orders WHERE scope = ? AND campaign_owner = ? AND match <> '' GROUP BY campaign"),
     metaGet: q('SELECT value FROM aud_meta WHERE key = ?'),
     metaPut: q('INSERT OR REPLACE INTO aud_meta (key, value) VALUES (?, ?)'),
   };
@@ -230,6 +263,7 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
     if (S.metaGet.get('daily')?.value === day) return;
     S.metaPut.run('daily', day);
     S.pendOld.run(new Date(nowMs - 14 * DAY).toISOString()); // unconfirmed sign-ups expire after two weeks
+    S.clickOld.run(new Date(nowMs - 60 * DAY).toISOString()); // click ids only matter inside the attribution window
     for (const r of S.autoActive.all()) {
       const a = autoOf(r);
       if (a.trigger?.type === 'date') {
@@ -297,10 +331,11 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
   const page = (f, title, msg, extra = '') => {
     const c = f?.colors || {};
     const bg = /^#[0-9a-f]{6}$/i.test(c.bg || '') ? c.bg : '#f4f5f3', accent = /^#[0-9a-f]{6}$/i.test(c.accent || '') ? c.accent : '#111111', ink = /^#[0-9a-f]{6}$/i.test(c.text || '') ? c.text : '#141714';
-    return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:${bg};font:16px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:${ink}}main{width:100%;max-width:440px;margin:24px;padding:32px;background:#fff;border-radius:18px;box-shadow:0 24px 48px -24px rgba(0,0,0,.28)}h1{font-size:24px;line-height:1.2;margin:0 0 8px}p{color:#555;margin:0 0 18px}label{display:block;font-size:13px;font-weight:600;margin:12px 0 6px}input{width:100%;font:inherit;padding:12px 14px;border:1px solid #d6d9d4;border-radius:10px;background:#fff;color:#141714}input:focus{outline:2px solid ${accent};border-color:${accent}}button{margin-top:18px;width:100%;font:inherit;font-weight:700;padding:14px 22px;border:0;border-radius:999px;background:${accent};color:#fff;cursor:pointer}.hp{position:absolute;left:-9999px}small{display:block;margin-top:14px;color:#888;font-size:12px}</style></head><body><main><h1>${esc(title)}</h1><p>${msg}</p>${extra}<small>${esc(f?.consentText || 'Bạn có thể huỷ đăng ký bất cứ lúc nào bằng link cuối mỗi email.')}</small></main></body></html>`;
+    return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:${bg};font:16px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:${ink}}main{width:100%;max-width:440px;margin:24px;padding:32px;background:#fff;border-radius:18px;box-shadow:0 24px 48px -24px rgba(0,0,0,.28)}h1{font-size:24px;line-height:1.2;margin:0 0 8px}p{color:#555;margin:0 0 18px}label{display:block;font-size:13px;font-weight:600;margin:12px 0 6px}input{width:100%;font:inherit;padding:12px 14px;border:1px solid #d6d9d4;border-radius:10px;background:#fff;color:#141714}input:focus{outline:2px solid ${accent};border-color:${accent}}button{margin-top:18px;width:100%;font:inherit;font-weight:700;padding:14px 22px;border:0;border-radius:999px;background:${accent};color:#fff;cursor:pointer}.hp{position:absolute;left:-9999px}.grp{display:flex;flex-wrap:wrap;gap:8px 14px}.chk{display:flex;align-items:center;gap:6px;font-weight:400;margin:0;font-size:14px}.chk input{width:auto}small{display:block;margin-top:14px;color:#888;font-size:12px}</style></head><body><main><h1>${esc(title)}</h1><p>${msg}</p>${extra}<small>${esc(f?.consentText || 'Bạn có thể huỷ đăng ký bất cứ lúc nào bằng link cuối mỗi email.')}</small></main></body></html>`;
   };
   const sendHtml = (res, code, s) => { res.statusCode = code; res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(s); };
-  const formFields = (f) => `<form method="post"><label for="e">Email</label><input id="e" type="email" name="email" required autocomplete="email" placeholder="ban@email.com">${f.fields?.first_name ? '<label for="n">Tên</label><input id="n" name="first_name" autocomplete="given-name">' : ''}${f.fields?.last_name ? '<label for="l">Họ</label><input id="l" name="last_name" autocomplete="family-name">' : ''}${f.fields?.phone ? '<label for="p">Số điện thoại</label><input id="p" name="phone" autocomplete="tel">' : ''}${f.fields?.birthday ? '<label for="b">Ngày sinh (dd/mm)</label><input id="b" name="birthday" placeholder="15/10">' : ''}<input class="hp" name="hp" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">${esc(f.button || 'Đăng ký')}</button></form>`;
+  const groupBoxes = (f, list) => (f.fields?.groups && list?.groups?.length ? `<label>${esc(f.groupsLabel || 'Bạn quan tâm')}</label><div class="grp">${list.groups.map((g) => `<label class="chk"><input type="checkbox" name="group" value="${esc(g.tag)}"> ${esc(g.name)}</label>`).join('')}</div>` : '');
+  const formFields = (f, list) => `<form method="post"><label for="e">Email</label><input id="e" type="email" name="email" required autocomplete="email" placeholder="ban@email.com">${f.fields?.first_name ? '<label for="n">Tên</label><input id="n" name="first_name" autocomplete="given-name">' : ''}${f.fields?.last_name ? '<label for="l">Họ</label><input id="l" name="last_name" autocomplete="family-name">' : ''}${f.fields?.phone ? '<label for="p">Số điện thoại</label><input id="p" name="phone" autocomplete="tel">' : ''}${f.fields?.birthday ? '<label for="b">Ngày sinh (dd/mm)</label><input id="b" name="birthday" placeholder="15/10">' : ''}${groupBoxes(f, list)}<input class="hp" name="hp" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">${esc(f.button || 'Đăng ký')}</button></form>`;
 
   async function formSubmit(f, scope, req, res) {
     const wantsJson = /json/.test(String(req.headers.accept || '')) || /json/.test(String(req.headers['content-type'] || ''));
@@ -308,12 +343,18 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
     if (throttled(`form:${f.id}:${ipOf(req)}`, 20, 3600e3)) return reply(429, false, 'Bạn gửi quá nhiều lần. Thử lại sau.');
     let p = {};
     const rawText = (await rawBody(req, 64 * 1024)).toString('utf8');
-    try { p = /json/.test(String(req.headers['content-type'] || '')) ? JSON.parse(rawText || '{}') : Object.fromEntries(new URLSearchParams(rawText)); } catch { return reply(400, false, 'Dữ liệu không hợp lệ.'); }
+    let picked = [];
+    try {
+      if (/json/.test(String(req.headers['content-type'] || ''))) { p = JSON.parse(rawText || '{}'); picked = [].concat(p.group || p.groups || []); }
+      else { const sp = new URLSearchParams(rawText); p = Object.fromEntries(sp); picked = sp.getAll('group'); }
+    } catch { return reply(400, false, 'Dữ liệu không hợp lệ.'); }
     if (p.hp) return reply(200, true, f.success || 'Đã đăng ký.'); // a bot filled the hidden field: pretend it worked
     const email = normEmail(p.email);
     if (!EMAIL_RE.test(email)) return reply(400, false, 'Email không hợp lệ.');
     const list = getList(scope, f.list);
     if (!list) return reply(410, false, 'Form này không còn hoạt động.');
+    const allowed = new Set((list.groups || []).map((g) => g.tag));
+    f = { ...f, tags: [...(f.tags || []), ...picked.map(String).filter((t) => allowed.has(t))] }; // only the list's own groups
     const consent = { method: 'form', form: f.id, at: now(), ip: ipOf(req), text: f.consentText || '', page: String(req.headers.referer || '').slice(0, 300) };
     const input = { email, first_name: p.first_name, last_name: p.last_name, fields: { ...(p.phone ? { phone: p.phone } : {}), ...(p.birthday ? { birthday: p.birthday } : {}) } };
     const prev = S.cGet.get(scope, f.list, email);
@@ -333,6 +374,33 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
     }
     upsert(scope, f.list, input, { status: 'subscribed', resubscribe: true, tagsAdd: f.tags, source: 'form', consent });
     return reply(200, true, f.success || 'Bạn đã có tên trong danh sách. Hẹn gặp bạn trong hộp thư!');
+  }
+
+  // ---------- orders: the shop's thank-you page tells us, we match the order to the email click before it ----------
+  const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  /** Which email (if any) led to this order: the click id carried in the link (exact), else the buyer's last email click. */
+  function attribute(scope, clickId, email, atMs) {
+    const since = new Date(atMs - ATTRIBUTION_DAYS * DAY).toISOString();
+    if (clickId) {
+      const c = S.clickGet.get(String(clickId).slice(0, 40));
+      if (c && c.scope === scope && Date.parse(c.at) <= atMs + 60e3 && c.at >= since) return { match: 'click', click: c };
+    }
+    if (email) { const c = S.clickByEmail.get(scope, email, since); if (c && Date.parse(c.at) <= atMs + 60e3) return { match: 'email', click: c }; }
+    return { match: '', click: null };
+  }
+  async function orderTag(url, req, res, gif) {
+    const done = (ok) => { if (gif) { res.statusCode = 200; res.setHeader('Content-Type', 'image/gif'); res.setHeader('Cache-Control', 'no-store'); res.end(GIF); } else json(res, 200, { ok }); };
+    if (throttled(`order:${ipOf(req)}`, 300, 3600e3)) return done(false);
+    let d = {};
+    try { d = req.method === 'POST' ? JSON.parse((await rawBody(req, 32 * 1024)).toString('utf8') || '{}') : Object.fromEntries(url.searchParams); } catch { return done(false); }
+    const site = S.siteGet.get(String(d.k || '').slice(0, 60));
+    const orderId = String(d.order_id ?? d.orderId ?? '').trim().slice(0, 80);
+    if (!site || !orderId) return done(false);
+    const email = normEmail(d.email); const okEmail = EMAIL_RE.test(email) ? email : '';
+    const tAt = Date.parse(String(d.at || '')); const atMs = Number.isFinite(tAt) && Math.abs(tAt - Date.now()) < 2 * DAY ? tAt : Date.now();
+    const a = attribute(site.scope, d.phl, okEmail, atMs);
+    S.orderIns.run(site.scope, orderId, Math.max(0, parseMoney(d.value ?? d.total)), String(d.currency || 'VND').slice(0, 8).toUpperCase(), okEmail, new Date(atMs).toISOString(), now(), a.click?.id || '', a.click?.campaign || '', a.click?.owner || '', a.match, a.click?.at || null, String(d.source || 'tag').slice(0, 20));
+    done(true);
   }
 
   // ---------- recipients for a list send (mail /mail/send) ----------
@@ -363,6 +431,12 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
       if (kind === 'open') S.cOpen.run(now(), scope, t.email);
       if (kind === 'click') S.cClick.run(now(), scope, t.email);
     },
+    onClickId: (t, link, c) => {
+      const scope = c?.audience?.scope || c?.scope || `u:${t.owner}`;
+      const id = randomBytes(9).toString('base64url');
+      S.clickIns.run(id, t.owner, t.campaign, scope, t.email, Number.isInteger(link) ? link : null, now());
+      return id;
+    },
     onUnsubscribe: (t, c) => { const scope = c?.audience?.scope || c?.scope || `u:${t.owner}`; S.cStatusAll.run('unsubscribed', now(), now(), scope, t.email); },
     onBounce: (owner, email, kind) => { for (const sc of scopesOfUser(owner)) S.cStatusAll.run(kind === 'complaint' ? 'complained' : 'bounced', null, now(), sc, email); },
   };
@@ -384,8 +458,9 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
         sendHtml(res, 200, page(f, 'Đã xác nhận!', esc(f.success || 'Cảm ơn bạn. Bạn sẽ nhận email từ chúng tôi.'))); return true;
       }
       if (m === 'POST') { await formSubmit(f, r.scope, req, res); return true; }
-      if (m === 'GET') { sendHtml(res, 200, page(f, f.title || 'Đăng ký nhận tin', esc(f.intro || 'Nhận ưu đãi và tin mới qua email.'), formFields(f))); return true; }
+      if (m === 'GET') { sendHtml(res, 200, page(f, f.title || 'Đăng ký nhận tin', esc(f.intro || 'Nhận ưu đãi và tin mới qua email.'), formFields(f, getList(r.scope, f.list)))); return true; }
     }
+    if (p === '/t/order' || p === '/t/order.gif') { await orderTag(url, req, res, p.endsWith('.gif')); return true; }
     if (!p.startsWith('/aud/')) return false;
     const u = requireUser(req, res); if (!u) return true;
     const write = m !== 'GET';
@@ -508,7 +583,7 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
           if (id) { const ex = S.formGet.get(id); if (!ex || ex.scope !== scope) { json(res, 404, { error: 'Không có form này.' }); return true; } }
           if (!getList(scope, String(b?.list || ''))) { json(res, 400, { error: 'Chọn danh sách nhận người đăng ký.' }); return true; }
           const hex = (v, d) => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v) : d);
-          const f = { list: String(b.list), name: String(b.name || b.title || 'Form').slice(0, 80), title: String(b.title || 'Đăng ký nhận tin').slice(0, 120), intro: String(b.intro || '').slice(0, 400), button: String(b.button || 'Đăng ký').slice(0, 40), success: String(b.success || '').slice(0, 300), redirect: /^https?:\/\//i.test(String(b.redirect || '')) ? String(b.redirect).slice(0, 500) : '', doubleOptIn: b.doubleOptIn !== false, tags: cleanTags(b.tags), consentText: String(b.consentText || '').slice(0, 300), fields: { first_name: !!b.fields?.first_name, last_name: !!b.fields?.last_name, phone: !!b.fields?.phone, birthday: !!b.fields?.birthday }, colors: { bg: hex(b.colors?.bg, '#f4f5f3'), accent: hex(b.colors?.accent, '#111111'), text: hex(b.colors?.text, '#141714') } };
+          const f = { list: String(b.list), name: String(b.name || b.title || 'Form').slice(0, 80), title: String(b.title || 'Đăng ký nhận tin').slice(0, 120), intro: String(b.intro || '').slice(0, 400), button: String(b.button || 'Đăng ký').slice(0, 40), success: String(b.success || '').slice(0, 300), redirect: /^https?:\/\//i.test(String(b.redirect || '')) ? String(b.redirect).slice(0, 500) : '', doubleOptIn: b.doubleOptIn !== false, tags: cleanTags(b.tags), consentText: String(b.consentText || '').slice(0, 300), fields: { first_name: !!b.fields?.first_name, last_name: !!b.fields?.last_name, phone: !!b.fields?.phone, birthday: !!b.fields?.birthday, groups: !!b.fields?.groups }, groupsLabel: String(b.groupsLabel || '').slice(0, 80), colors: { bg: hex(b.colors?.bg, '#f4f5f3'), accent: hex(b.colors?.accent, '#111111'), text: hex(b.colors?.text, '#141714') } };
           S.formPut.run(fid, scope, JSON.stringify(f), now()); json(res, 200, { form: { id: fid, ...f, url: `${publicUrl}/f/${fid}` } }); return true;
         }
         if (id && m === 'DELETE') { S.formDel.run(id, scope); json(res, 200, { ok: true }); return true; }
@@ -562,14 +637,33 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
         }
         if (id && !action && m === 'DELETE') { S.autoDel.run(scope, id); S.runDelAuto.run(scope, id); json(res, 200, { ok: true }); return true; }
       }
+      // ----- order tag + orders -----
+      if (parts[0] === 'sites') {
+        const key = parts[1];
+        if (!key && m === 'GET') { json(res, 200, { sites: S.siteAll.all(scope).map((r) => ({ key: r.key, ...JSON.parse(r.json), createdAt: r.created_at })), relay: publicUrl, days: ATTRIBUTION_DAYS }); return true; }
+        if (!key && m === 'POST') { const b = await body(req); const k = `st_${randomBytes(9).toString('base64url')}`; const j = { name: String(b?.name || 'Website').slice(0, 80), domain: String(b?.domain || '').slice(0, 120) }; S.sitePut.run(k, scope, JSON.stringify(j), now()); json(res, 200, { site: { key: k, ...j } }); return true; }
+        if (key && m === 'DELETE') { S.siteDel.run(key, scope); json(res, 200, { ok: true }); return true; }
+      }
+      if (parts[0] === 'orders' && m === 'GET') {
+        const days = Math.max(1, Math.min(365, Number(url.searchParams.get('days')) || 30));
+        const rows = S.orderAll.all(scope, new Date(Date.now() - days * DAY).toISOString());
+        const subj = new Map();
+        const subjectOf = (owner, id) => { const k = `${owner}|${id}`; if (!subj.has(k)) { const c = id ? mail.campaign(owner, id) : null; subj.set(k, c ? (c.send?.subject || c.subject || id) : ''); } return subj.get(k); };
+        const orders = rows.map((r) => ({ orderId: r.order_id, value: r.value, currency: r.currency, email: r.email, at: r.at, receivedAt: r.received_at, match: r.match, campaign: r.campaign, subject: r.match ? subjectOf(r.campaign_owner, r.campaign) : '', clickedAt: r.clicked_at, source: r.source }));
+        const fromEmail = orders.filter((o) => o.match);
+        json(res, 200, { days, attributionDays: ATTRIBUTION_DAYS, orders, totals: { orders: orders.length, revenue: orders.reduce((a, o) => a + o.value, 0), emailOrders: fromEmail.length, emailRevenue: fromEmail.reduce((a, o) => a + o.value, 0) } });
+        return true;
+      }
       // ----- reports -----
       if (parts[0] === 'reports' && m === 'GET') {
         const days = Math.max(7, Math.min(365, Number(url.searchParams.get('days')) || 30));
         const since = new Date(Date.now() - days * DAY).toISOString();
-        const sub = Object.fromEntries(S.growthSub.all(scope, since).map((r) => [r.d, r.n])), unsub = Object.fromEntries(S.growthUnsub.all(scope, since).map((r) => [r.d, r.n]));
-        const growth = []; for (let i = days - 1; i >= 0; i--) { const d = new Date(Date.now() - i * DAY).toISOString().slice(0, 10); growth.push({ day: d, subscribed: sub[d] || 0, unsubscribed: unsub[d] || 0 }); }
+        const off = `${tz >= 0 ? '+' : ''}${tz}`;
+        const sub = Object.fromEntries(S.growthSub.all(off, scope, since).map((r) => [r.d, r.n])), unsub = Object.fromEntries(S.growthUnsub.all(off, scope, since).map((r) => [r.d, r.n]));
+        const growth = []; for (let i = days - 1; i >= 0; i--) { const d = new Date(Date.now() + tz * 3600e3 - i * DAY).toISOString().slice(0, 10); growth.push({ day: d, subscribed: sub[d] || 0, unsubscribed: unsub[d] || 0 }); }
+        const rev = Object.fromEntries(S.orderByCampaign.all(scope, u.id).map((r) => [r.campaign, { orders: r.n, revenue: r.v || 0 }]));
         const lists = S.listAll.all(scope).map(listOf).map((l) => ({ id: l.id, name: l.name, counts: l.counts, total: l.total }));
-        const campaigns = mail.campaigns(u.id).filter((c) => c.send && (c.audience?.scope === scope || (!c.audience && scope === `u:${u.id}`))).map((c) => { const st = mail.stats(u.id, c.id); const sent = st.queue.sent || 0; return { id: c.id, subject: c.send.subject || c.subject, at: c.send.sendAt || c.createdAt, status: c.send.status, list: c.audience?.listName || '', segment: c.audience?.segmentName || '', sent, opens: st.opens, clicks: st.clicks, unsubscribes: st.unsubscribes, failed: st.queue.failed || 0 }; }).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 50);
+        const campaigns = mail.campaigns(u.id).filter((c) => c.send && (c.audience?.scope === scope || (!c.audience && scope === `u:${u.id}`))).map((c) => { const st = mail.stats(u.id, c.id); const sent = st.queue.sent || 0; return { id: c.id, subject: c.send.subject || c.subject, at: c.send.sendAt || c.createdAt, status: c.send.status, list: c.audience?.listName || '', segment: c.audience?.segmentName || '', sent, opens: st.opens, clicks: st.clicks, unsubscribes: st.unsubscribes, failed: st.queue.failed || 0, orders: rev[c.id]?.orders || 0, revenue: rev[c.id]?.revenue || 0 }; }).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 50);
         json(res, 200, { days, growth, lists, campaigns }); return true;
       }
       json(res, 404, { error: 'không có route này' }); return true;
@@ -582,6 +676,8 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
       name: String(b?.name ?? prev.name ?? 'Danh sách').trim().slice(0, 80) || 'Danh sách',
       company: { name: String(b?.company?.name ?? prev.company?.name ?? '').slice(0, 120), address: String(b?.company?.address ?? prev.company?.address ?? '').slice(0, 300) },
       sender,
+      // groups inside the list (shown as tabs; signup forms can let people pick them): each one is a tag
+      groups: Array.isArray(b?.groups) ? b.groups.slice(0, 30).map((g) => ({ name: String(g?.name || '').trim().slice(0, 60), tag: cleanTags([g?.tag || slugTag(g?.name)])[0] || '' })).filter((g) => g.name && g.tag).filter((g, i, a) => a.findIndex((x) => x.tag === g.tag) === i) : prev.groups || [],
       fields: Array.isArray(b?.fields) ? b.fields.slice(0, 30).map((f) => ({ key: String(f.key || '').toLowerCase().replace(/[^\w]/g, '_').slice(0, 40), label: String(f.label || f.key || '').slice(0, 60), type: ['text', 'date', 'number'].includes(f.type) ? f.type : 'text' })).filter((f) => f.key) : prev.fields || [],
     };
   }

@@ -49,8 +49,14 @@ export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; 
   useEffect(() => { if (!mailSignedIn()) return; void Promise.all([audLists(client), audSegments(client)]).then(([l, sg]) => { setAud({ lists: l.lists, segs: sg.segments }); if (l.lists[0] && !listId) setListId(l.lists[0].id); }).catch(() => setAud({ lists: [], segs: [] })); }, [client]);
   const curList = aud?.lists.find((l) => l.id === listId) || null;
   const curSeg = aud?.segs.find((x) => x.id === segId && x.list === listId) || null;
-  useEffect(() => { if (!curList) { setCount(null); return; } if (!curSeg) { setCount(curList.counts.subscribed); return; } void previewRules(client, curList.id, curSeg.match, curSeg.rules).then((r) => setCount(r.count)).catch(() => setCount(null)); }, [listId, segId, aud]);
-  const audience = src === 'list' && curList ? { client, list: curList.id, segment: curSeg?.id || null, label: `${curList.name}${curSeg ? ` · ${curSeg.name}` : ''}`, count: count ?? 0 } : null;
+  const curGroup = segId.startsWith('tag:') ? curList?.groups?.find((g) => g.tag === segId.slice(4)) || null : null;
+  useEffect(() => {
+    if (!curList) { setCount(null); return; }
+    const rules = curGroup ? [{ field: 'tag', op: 'has', value: curGroup.tag }] : curSeg?.rules;
+    if (!rules) { setCount(curList.counts.subscribed); return; }
+    void previewRules(client, curList.id, curSeg?.match || 'all', rules).then((r) => setCount(r.count)).catch(() => setCount(null));
+  }, [listId, segId, aud]);
+  const audience = src === 'list' && curList ? { client, list: curList.id, segment: curSeg?.id || null, tags: curGroup ? [curGroup.tag] : undefined, label: `${curList.name}${curSeg ? ` · ${curSeg.name}` : curGroup ? ` · nhóm ${curGroup.name}` : ''}`, count: count ?? 0 } : null;
   const [senders, setSenders] = useState<Sender[] | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [sel, setSel] = useState(ls('phloem.mail.sender'));
@@ -81,7 +87,7 @@ export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; 
       ) : (
         <div class="grid2">
           <Field label="Danh sách"><select class="in" value={listId} onChange={(e) => { setListId((e.target as HTMLSelectElement).value); setSegId(''); }}>{aud.lists.map((l) => <option key={l.id} value={l.id}>{l.name} · {l.counts.subscribed.toLocaleString('vi-VN')}</option>)}</select></Field>
-          <Field label="Phân nhóm"><select class="in" value={segId} onChange={(e) => setSegId((e.target as HTMLSelectElement).value)}><option value="">Cả danh sách</option>{aud.segs.filter((x) => x.list === listId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+          <Field label="Nhóm / phân nhóm"><select class="in" value={segId} onChange={(e) => setSegId((e.target as HTMLSelectElement).value)}><option value="">Cả danh sách</option>{(curList?.groups || []).map((g) => <option key={g.tag} value={`tag:${g.tag}`}>Nhóm: {g.name}</option>)}{aud.segs.filter((x) => x.list === listId).map((x) => <option key={x.id} value={x.id}>⚡ {x.name}</option>)}</select></Field>
         </div>
       ))}
       {src === 'list' && curList && <div class="dim small">{count === null ? 'Đang đếm…' : `${count.toLocaleString('vi-VN')} người đang nhận`} · tự bỏ qua người đã huỷ, thư dội, báo spam · {'{{first_name|bạn}}'} chèn tên từng người{curList.company?.address ? '' : ' · nên điền địa chỉ công ty (Khán giả → Gửi & tên miền)'}</div>}

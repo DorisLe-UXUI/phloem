@@ -246,7 +246,10 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
       const dest = c && Array.isArray(c.links) && Number.isInteger(i) ? c.links[i] : null;
       if (!dest || !/^https?:\/\//i.test(dest)) { html(res, 404, page('Link không còn', 'Link này không tồn tại hoặc chiến dịch đã bị xoá.')); return true; }
       try { event(t, 'click', i); } catch { /* still redirect */ }
-      res.statusCode = 302; res.setHeader('Location', dest); res.setHeader('Cache-Control', 'no-store'); res.end(); return true;
+      // a per-click id rides along (?phl=…): the shop's order tag sends it back, so an order is matched to this exact email
+      let to = dest;
+      try { const cid = hooks.onClickId?.(t, i, c); if (cid) { const [base, hash] = dest.split('#'); to = `${base}${base.includes('?') ? '&' : '?'}phl=${encodeURIComponent(cid)}${hash !== undefined ? `#${hash}` : ''}`; } } catch { /* plain redirect */ }
+      res.statusCode = 302; res.setHeader('Location', to); res.setHeader('Cache-Control', 'no-store'); res.end(); return true;
     }
     const hk = /^\/hooks\/(resend|brevo|ses)\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(p);
     if (hk && m === 'POST') {

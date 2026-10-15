@@ -7342,3 +7342,54 @@ select.in {
     font-size: 22px;
   }
 }
+.aud-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.aud-groups button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.aud-groups button:hover {
+  color: var(--text);
+  border-color: var(--neon-line);
+}
+.aud-groups button.on {
+  color: var(--neon);
+  border-color: var(--neon-line);
+  background: var(--neon-soft);
+}
+.aud-groups button i {
+  font-style: normal;
+  font: 500 10.5px var(--mono);
+  color: var(--dim);
+}
+.aud-groups button.on i {
+  color: var(--neon);
+}
+.aud-groups button.seg {
+  border-style: dashed;
+}
+.aud-groups button.tag {
+  font-weight: 500;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.aud-groups button.add {
+  border-style: dashed;
+  color: var(--neon);
+}

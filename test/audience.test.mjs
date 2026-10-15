@@ -208,3 +208,55 @@ test('provider events: Resend, Brevo, SES (SNS) bounces and complaints', () => {
   assert.deepEqual(parseProviderEvents('ses', sns), [{ email: 'd@x.co', kind: 'bounce' }]);
   assert.deepEqual(parseProviderEvents('ses', { Type: 'Notification', Message: JSON.stringify({ notificationType: 'Bounce', bounce: { bounceType: 'Transient', bouncedRecipients: [{ emailAddress: 'e@x.co' }] } }) }), []);
 });
+
+test('orders: the click id in the link ties an order to the exact email; fallbacks and duplicates', async () => {
+  const { call, mail } = harness();
+  const { parseMoney } = await import('../server/src/audience.mjs');
+  assert.equal(parseMoney('1.290.000đ'), 1290000); assert.equal(parseMoney('590,000'), 590000); assert.equal(parseMoney(12.5), 12.5); assert.equal(parseMoney('1.290.000,50'), 1290000.5); assert.equal(parseMoney('12.5'), 12.5);
+  const s = await sender(call);
+  const list = (await call('POST', '/aud/lists', { body: { name: 'Shop' } })).obj.list;
+  await call('POST', `/aud/lists/${list.id}/import`, { body: { attest: true, rows: [{ email: 'mua@x.co', first_name: 'Mua' }, { email: 'xem@x.co' }] } });
+  await call('POST', '/mail/campaigns', { body: { id: 'sale10', subject: 'Sale 10.10', links: ['https://shop.vn/sp?utm_source=phloem&utm_medium=email&utm_campaign=sale-10-10#top'] } });
+  await call('POST', '/mail/send', { body: { campaign: 'sale10', sender: s.id, subject: 'Sale', html: '<a href="__PHLOEM_CLICK_0__">x</a>', audience: { list: list.id } } });
+  await mail.tick();
+  // the buyer clicks: the redirect keeps the UTM tags and adds a click id before the #hash
+  const c = await call('GET', `/c/${makeToken(SECRET, 'u_1', 'sale10', 'mua@x.co', 'A')}/0`, { user: null });
+  assert.equal(c.statusCode, 302);
+  const loc = c.headers.location; assert.match(loc, /^https:\/\/shop\.vn\/sp\?utm_source=phloem&utm_medium=email&utm_campaign=sale-10-10&phl=[\w-]{12}#top$/);
+  const phl = /phl=([\w-]+)/.exec(loc)[1];
+  // the shop installs the tag (a site key for this scope) and reports orders from the thank-you page
+  const site = (await call('POST', '/aud/sites', { body: { name: 'shop.vn' } })).obj.site;
+  const beacon = (o) => call('POST', '/t/order', { user: null, raw: JSON.stringify({ k: site.key, ...o }) });
+  assert.equal((await beacon({ order_id: '#1001', value: '590.000', phl })).obj.ok, true);
+  await beacon({ order_id: '#1001', value: '590.000', phl }); // thank-you page reloaded: still one order
+  await beacon({ order_id: '#1002', value: 120000, email: 'MUA@x.co' }); // no click id (other device): matched by the buyer's email click
+  await beacon({ order_id: '#1003', value: 99000, email: 'walkin@x.co' }); // not from email
+  assert.equal((await beacon({ order_id: '#1004', value: 1 })).obj.ok, true, 'unknown buyer still recorded');
+  assert.equal((await call('POST', '/t/order', { user: null, raw: JSON.stringify({ k: 'st_wrong', order_id: 'x' }) })).obj.ok, false);
+  const gif = await call('GET', `/t/order.gif?k=${site.key}&order_id=%231005&value=50000&phl=${phl}`, { user: null });
+  assert.equal(gif.headers['content-type'], 'image/gif');
+  const o = (await call('GET', '/aud/orders')).obj;
+  assert.equal(o.totals.orders, 5);
+  assert.equal(o.totals.emailOrders, 3); assert.equal(o.totals.emailRevenue, 590000 + 120000 + 50000);
+  const byId = Object.fromEntries(o.orders.map((x) => [x.orderId, x]));
+  assert.equal(byId['#1001'].match, 'click'); assert.equal(byId['#1001'].subject, 'Sale'); assert.equal(byId['#1001'].value, 590000);
+  assert.equal(byId['#1002'].match, 'email'); assert.equal(byId['#1003'].match, '');
+  assert.ok(byId['#1001'].clickedAt && byId['#1001'].at >= byId['#1001'].clickedAt);
+  const rep = (await call('GET', '/aud/reports')).obj;
+  assert.equal(rep.campaigns[0].orders, 3); assert.equal(rep.campaigns[0].revenue, 760000);
+  // another scope's site key cannot claim this campaign's clicks
+  const theirs = (await call('POST', '/aud/sites', { user: U3, body: {} })).obj.site;
+  await call('POST', '/t/order', { user: null, raw: JSON.stringify({ k: theirs.key, order_id: 'T1', value: 5, phl }) });
+  assert.equal((await call('GET', '/aud/orders', { user: U3 })).obj.orders[0].match, '');
+});
+
+test('groups: named tags on the list; a signup form lets people pick only those', async () => {
+  const { call } = harness();
+  const list = (await call('POST', '/aud/lists', { body: { name: 'Gốm', groups: [{ name: 'Đồ gốm' }, { name: 'Nến thơm', tag: 'nen' }, { name: 'Đồ gốm' }] } })).obj.list;
+  assert.deepEqual(list.groups, [{ name: 'Đồ gốm', tag: 'do-gom' }, { name: 'Nến thơm', tag: 'nen' }]);
+  const form = (await call('POST', '/aud/forms', { body: { list: list.id, fields: { groups: true }, groupsLabel: 'Bạn thích gì?' } })).obj.form;
+  const html = (await call('GET', `/f/${form.id}`, { user: null })).text;
+  assert.match(html, /Bạn thích gì\?/); assert.match(html, /name="group" value="do-gom"/); assert.match(html, /Nến thơm/);
+  await call('POST', `/f/${form.id}`, { user: null, raw: 'email=g%40x.co&group=nen&group=hack', headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+  assert.deepEqual((await call('GET', `/aud/lists/${list.id}/contacts/g@x.co`)).obj.contact.tags, ['nen'], 'unknown groups are ignored');
+});

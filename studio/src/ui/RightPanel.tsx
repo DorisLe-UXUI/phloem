@@ -11,7 +11,8 @@ import * as ops from '../model/ops';
 import { assets } from '../storage/assets';
 import { get, set, useStore, toast } from '../store';
 import * as A from '../pipeline/actions';
-import { activeProfile, providerName, runExport } from '../pipeline/exportFlow';
+import { activeProfile, providerName, runExport, utmCampaignOf, utmTemplateOf } from '../pipeline/exportFlow';
+import { applyUtm, slug } from '../../../src/shared/utm';
 import { ensureFont } from '../render/fonts';
 import { Btn, ColorInput, Eyebrow, Field, Num, Ring, Seg, Select, TextArea, TextInput, Toggle, Progress } from './components';
 import { Icon } from './icons';
@@ -356,6 +357,7 @@ function EmailTab() {
       <Eyebrow>Thông tin email</Eyebrow>
       <Field label="Khách hàng" hint="email cùng khách nằm chung một bảng"><ClientPicker /></Field>
       <Field label="Tên campaign" for="f-campaignName"><TextInput id="f-campaignName" value={p.fields.campaignName} onCommit={(v) => setField('campaignName', v)} /></Field>
+      <UtmBox />
       <Field label="Subject" for="f-subject" hint={`${p.fields.subject.length} ký tự`}><TextInput id="f-subject" value={p.fields.subject} placeholder="30–50 ký tự, nói thẳng lợi ích" onCommit={(v) => setField('subject', v)} /></Field>
       <Field label="Preheader" for="f-preheader" hint="dòng xem trước"><TextInput id="f-preheader" value={p.fields.preheader} placeholder="Nối tiếp subject, 40–90 ký tự" onCommit={(v) => setField('preheader', v)} /></Field>
       <Eyebrow>Bản mobile</Eyebrow>
@@ -473,6 +475,31 @@ function BlockBg({ g }: { g: GroupNode }) {
   );
 }
 
+
+/** Google Analytics: UTM tags on every link, so GA4 shows visits and orders under "phloem / email · <campaign>". */
+function UtmBox() {
+  const s = useStore(); const p = s.project!;
+  const u = p.utm || {};
+  const on = u.on !== false;
+  const up = (patch: NonNullable<typeof p.utm>) => A.patchProject({ utm: { ...u, ...patch } });
+  const site = p.brand.links?.website || 'https://shop.vn';
+  const example = on ? applyUtm(site, utmTemplateOf(p, null), { provider: 'phloem', campaign: u.campaign || p.fields.campaignName || p.name, frame: p.name, slice: 'mua-ngay', date: '' }) : site;
+  return (
+    <div class="card" style={{ background: 'var(--panel)', gap: 8 }}>
+      <Toggle checked={on} onChange={(v) => up({ on: v })} label="Google Analytics (UTM)" sub="Gắn nguồn email vào mọi link: GA4 thấy lượt vào và đơn hàng của chiến dịch này" />
+      {on && (
+        <>
+          <div class="grid2">
+            <Field label="Nguồn (utm_source)"><TextInput value={u.source || ''} placeholder="phloem" onCommit={(v) => up({ source: v.trim() })} /></Field>
+            <Field label="Chiến dịch (utm_campaign)"><TextInput value={u.campaign || ''} placeholder={utmCampaignOf(p)} onCommit={(v) => up({ campaign: v.trim() })} /></Field>
+          </div>
+          <div class="mono dim" style={{ fontSize: 10.5, wordBreak: 'break-all' }}>{example}</div>
+          <div class="dim small">GA4 → Báo cáo → Thu nạp → Thu nạp lưu lượng truy cập: nguồn/phương tiện <b>{slug(u.source || 'phloem')} / email</b>, chiến dịch <b>{utmCampaignOf(p)}</b>. utm_content là chữ trên nút được bấm. Đơn hàng khớp từng người nhận: Khán giả → Báo cáo → Đơn hàng.</div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /** Which customer the open email belongs to (its board), or a new customer typed on the spot. */
 function ClientPicker() {
