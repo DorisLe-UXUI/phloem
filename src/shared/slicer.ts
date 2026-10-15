@@ -86,23 +86,28 @@ function cellsForRow(regs: Region[], y: number, h: number, W: number): Cell[] {
     const link = reg ? reg.node.link : null;
     const linkNodeId = reg ? reg.node.id : null;
     const prev = cells[cells.length - 1];
-    if (prev && prev.link === link && prev.linkNodeId === linkNodeId) prev.w += w;
+    // one destination = one cell, even when the picture, the title and the button each carry the link themselves
+    if (prev && prev.link === link) prev.w += w;
     else cells.push({ x, w, link, linkNodeId });
   }
   return absorbGutters(cells);
 }
 
-/** Link-less strips thinner than 20px (card gutters, hairline margins) join the neighbouring cell: one request less each. */
+/** Link-less strips that only separate things join a neighbouring cell (one request less each): card gutters under
+ *  24px, and the side margins of a row of linked cards (≤ 48px; the margin then clicks through to its neighbour). */
 function absorbGutters(cells: Cell[]): Cell[] {
   if (cells.length < 2) return cells;
   const out: Cell[] = [];
   for (let i = 0; i < cells.length; i++) {
     const c = cells[i];
-    if (!c.link && c.w < 20) {
+    const edge = i === 0 || i === cells.length - 1;
+    if (!c.link && (c.w < 24 || (edge && c.w <= 48))) {
       const prev = out[out.length - 1];
       if (prev) { prev.w += c.w; continue; }
       const next = cells[i + 1]; if (next) { next.x = c.x; next.w += c.w; continue; }
     }
+    const prev = out[out.length - 1];
+    if (prev && prev.link === c.link) { prev.w += c.w; continue; } // neighbours that met after a gutter left
     out.push({ ...c });
   }
   return out;
@@ -113,7 +118,7 @@ function sameStructure(a: RawRow, b: RawRow): boolean {
   if (a.cells.length !== b.cells.length) return false;
   for (let i = 0; i < a.cells.length; i++) {
     const p = a.cells[i], q = b.cells[i];
-    if (p.x !== q.x || p.w !== q.w || p.link !== q.link || p.linkNodeId !== q.linkNodeId) return false;
+    if (p.x !== q.x || p.w !== q.w || p.link !== q.link) return false;
   }
   return true;
 }
@@ -148,9 +153,9 @@ function keepCells(cols: Region[], row: Rect, W: number): Cell[] {
     if (w <= 0) continue;
     const { link, linkNodeId } = dominantLink(cols, { x, y: row.y, w, h: row.h });
     const prev = cells[cells.length - 1];
-    if (prev && prev.link === link && prev.linkNodeId === linkNodeId) prev.w += w; else cells.push({ x, w, link, linkNodeId });
+    if (prev && prev.link === link) prev.w += w; else cells.push({ x, w, link, linkNodeId });
   }
-  return cells;
+  return absorbGutters(cells);
 }
 
 /** Rows inside a kept (animated) span: a row holding two or more column-like links (product cards, nav items, social

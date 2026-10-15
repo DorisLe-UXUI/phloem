@@ -1,5 +1,5 @@
 // Table-based email HTML builder. Deterministic: same plan + same URLs -> same HTML.
-import type { Provider, SlicePlan } from './types';
+import type { LiveText, Provider, Slice, SlicePlan } from './types';
 import { applyUtm, type UtmVars } from './utm';
 import { utf8Bytes } from './hash';
 
@@ -21,6 +21,8 @@ export interface HtmlInput {
   utm?: { template: string; vars: Omit<UtmVars, 'slice' | 'host'> } | null;
   provider?: Provider | null;
   lang?: string;
+  /** Web-font stylesheets for live-text slices (Apple Mail / iOS use them; others fall back to the safe font). */
+  fontLinks?: string[];
 }
 
 export function esc(s: string): string {
@@ -54,6 +56,40 @@ function imgTag(src: string, w: number, h: number, alt: string, cls: string, flu
   return `<img src="${esc(src)}" width="${w}" height="${h}" alt="${esc(alt)}" class="${cls}" style="${style}" />`;
 }
 
+/** A live-text cell: each paragraph placed with padding at its design position. Rows stack, so a fallback font that
+ *  wraps differently only makes the cell taller, never overlaps anything. */
+function liveTd(s: Slice, t: LiveText, href: string | null, widthAttr = '', widthCss = ''): string {
+  const bg = solidHex(t.bg);
+  const runs = [...t.runs].sort((a, b) => a.y - b.y || a.x - b.x);
+  if (!runs.length) return `<td${widthAttr} align="left" valign="top" bgcolor="${bg}" height="${Math.round(s.h)}" style="padding:0;margin:0;${widthCss}height:${Math.round(s.h)}px;line-height:0;font-size:0;background-color:${bg};">&nbsp;</td>`;
+  // runs on one baseline (a bold lead-in, a coloured word) share a line: one div, a span per run
+  const lines: (typeof runs)[] = [];
+  for (const r of runs) { const l = lines.find((ln) => Math.abs(ln[0].y - r.y) < Math.max(ln[0].size, r.size) * 0.5); if (l) l.push(r); else lines.push([r]); }
+  let y = 0;
+  const out = lines.map((ln) => {
+    ln.sort((a, b) => a.x - b.x);
+    const first = ln[0], last = ln[ln.length - 1];
+    const lineY = Math.min(...ln.map((r) => r.y)), lineBottom = Math.max(...ln.map((r) => r.y + r.h));
+    const top = Math.max(0, Math.round(lineY - y));
+    const left = Math.max(0, Math.round(first.x)), right = Math.max(0, Math.round(s.w - (last.x + last.w)));
+    const size = Math.max(...ln.map((r) => r.size));
+    const lh = Math.max(1, Math.round(Math.max(...ln.map((r) => r.size * r.lineHeight))));
+    const runCss = (r: (typeof runs)[number]) => `font-family:${r.font.replace(/"/g, "'")};font-size:${r.size}px;font-weight:${r.weight};${r.italic ? 'font-style:italic;' : ''}color:${solidHex(r.color)};${r.letterSpacing ? `letter-spacing:${r.letterSpacing}px;` : ''}`;
+    const piece = (r: (typeof runs)[number], i: number) => {
+      const body = esc(r.text).replace(/\n/g, '<br />');
+      const gap = i > 0 && r.x - (ln[i - 1].x + ln[i - 1].w) > 1 && !/^\s/.test(r.text) && !/\s$/.test(ln[i - 1].text) ? ' ' : '';
+      const color = solidHex(r.color);
+      const inner = href ? `<a href="${esc(href)}" target="_blank" rel="noopener" style="color:${color};text-decoration:${r.underline ? 'underline' : 'none'};">${body}</a>` : body;
+      return ln.length === 1 ? inner : `${gap}<span style="${runCss(r)}${r.underline && !href ? 'text-decoration:underline;' : ''}">${inner}</span>`;
+    };
+    const css = `margin:0;padding:${top}px ${right}px 0 ${left}px;${runCss(first).replace(/font-size:[^;]+;/, `font-size:${size}px;`)}line-height:${lh}px;mso-line-height-rule:exactly;text-align:${first.align};${ln.length === 1 && first.underline && !href ? 'text-decoration:underline;' : ''}`;
+    y = Math.max(y, lineBottom);
+    return `<div style="${css}">${ln.map(piece).join('')}</div>`;
+  });
+  const bottom = Math.max(0, Math.round(s.h - y));
+  return `<td${widthAttr} align="left" valign="top" bgcolor="${bg}" style="padding:0 0 ${bottom}px 0;margin:0;${widthCss}background-color:${bg};">${out.join('')}</td>`;
+}
+
 function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlInput, cls: string, cellBg: Record<string, string> = {}): string {
   const W = plan.width;
   const rows: string[] = [];
@@ -62,6 +98,7 @@ function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlIn
   for (const row of plan.rows) {
     if (row.cells.length === 1) {
       const s = row.cells[0];
+      if (s.text) { rows.push(`<tr>${liveTd(s, s.text, s.link ? hrefFor(s.link, s.key, inp) : null)}</tr>`); continue; }
       const src = images[s.key] ?? '';
       let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
       if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
@@ -72,6 +109,7 @@ function renderPlan(plan: SlicePlan, images: Record<string, string>, inp: HtmlIn
     // multi-column row: nested table, proportional widths so columns stay aligned when fluid
     const tds = row.cells.map((s) => {
       const pct = Math.round((s.w / W) * 10000) / 100;
+      if (s.text) return liveTd(s, s.text, s.link ? hrefFor(s.link, s.key, inp) : null, ` width="${pct}%"`, `width:${pct}%;`);
       const src = images[s.key] ?? '';
       let inner = imgTag(src, s.w, s.h, s.alt, `${cls}-img`, true);
       if (s.link) inner = `<a href="${esc(hrefFor(s.link, s.key, inp))}" target="_blank" rel="noopener" style="display:block;text-decoration:none;">${inner}</a>`;
@@ -142,6 +180,7 @@ ${parts.join('\n')}
 <meta name="x-apple-disable-message-reformatting" />
 <meta name="color-scheme" content="light" />
 <title>${esc(inp.title)}</title>
+${inp.fontLinks && inp.fontLinks.length ? `<!--[if !mso]><!-->${inp.fontLinks.map((u) => `<link href="${esc(u)}" rel="stylesheet" type="text/css" />`).join('')}<!--<![endif]-->` : ''}
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 <style type="text/css">body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}img{border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}body{margin:0!important;padding:0!important;width:100%!important;}</style>
 </head>

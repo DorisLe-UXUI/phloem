@@ -121,3 +121,35 @@ test('html: every slice cell is painted with its edge colour (no white seams on 
   assert.ok(imgCells.length >= plan.slices.length, 'one cell per slice');
   assert.ok(imgCells.every((t) => /bgcolor="#e8ae4f"/.test(t) && /background-color:#e8ae4f/.test(t)), 'each slice cell carries the colour');
 });
+
+test('html: live-text slices come out as real text in a painted cell, linked, with the design font first', () => {
+  const plan = planSlices(newsletter());
+  const target = plan.slices.find((s) => s.link === 'https://shop.test/unsub');
+  target.text = { bg: '#f4f1ea', runs: [{ text: 'Huỷ đăng ký <ngay>', x: 0, y: 2, w: target.w, h: 16, font: "'Be Vietnam Pro', Helvetica, Arial, sans-serif", size: 12, weight: 400, italic: false, color: '#8a8a8a', align: 'center', lineHeight: 1.4, letterSpacing: 0, underline: true }] };
+  const quiet = plan.slices.find((s) => !s.link && s !== target);
+  quiet.text = { bg: '#ffffff', runs: [] };
+  const images = Object.fromEntries(plan.slices.filter((s) => !s.text).map((s) => [s.key, `https://cdn.test/${s.key}.png`]));
+  const html = buildEmailHtml({ plan, images, title: 'T', preheader: '', includePreheader: false, fullDocument: true, fontLinks: ['https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro&display=swap'] });
+  assert.ok(html.includes('Huỷ đăng ký &lt;ngay&gt;'), 'escaped live text');
+  assert.ok(!html.includes(`${target.key}.png`) && !html.includes(`${quiet.key}.png`), 'no picture for live slices');
+  assert.match(html, /bgcolor="#f4f1ea"[^>]*><div style="margin:0;padding:2px 0px 0 0px;font-family:'Be Vietnam Pro', Helvetica, Arial, sans-serif;font-size:12px;font-weight:400;color:#8a8a8a;line-height:17px;mso-line-height-rule:exactly;text-align:center;">/);
+  assert.match(html, /<a href="https:\/\/shop\.test\/unsub"[^>]*style="color:#8a8a8a;text-decoration:underline;">Huỷ đăng ký/);
+  assert.ok(html.includes('fonts.googleapis.com/css2?family=Be+Vietnam+Pro'), 'web font link in the head');
+  assert.match(html, new RegExp(`height="${Math.round(quiet.h)}"`), 'an empty live slice keeps its height');
+  assert.equal((html.match(/<img /g) || []).length, plan.slices.length - 2);
+});
+
+test('html: style runs on one line (bold lead-in + normal text) share one line div', () => {
+  const plan = planSlices(newsletter());
+  const t = plan.slices.find((s) => !s.link);
+  const base = { font: "'Inter', Helvetica, Arial, sans-serif", size: 16, italic: false, color: '#222222', align: 'left', lineHeight: 1.5, letterSpacing: 0, underline: false };
+  t.text = { bg: '#ffffff', runs: [
+    { ...base, text: 'Đã mở cửa', x: 40, y: 10, w: 90, h: 24, weight: 700 },
+    { ...base, text: '— chơi ngay', x: 134, y: 10, w: 100, h: 24, weight: 400 },
+    { ...base, text: 'dòng hai', x: 40, y: 34, w: 80, h: 24, weight: 400 },
+  ] };
+  const html = buildEmailHtml({ plan, images: {}, title: 'T', preheader: '', includePreheader: false, fullDocument: false });
+  const cell = html.slice(html.indexOf('Đã mở cửa') - 400, html.indexOf('dòng hai') + 20);
+  assert.equal((cell.match(/<div style="margin:0;/g) || []).length, 2, 'two lines, not three stacked blocks');
+  assert.match(cell, /<span style="[^"]*font-weight:700;[^"]*">Đã mở cửa<\/span> <span style="[^"]*font-weight:400;[^"]*">— chơi ngay<\/span>/);
+});

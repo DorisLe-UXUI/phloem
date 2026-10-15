@@ -25,12 +25,12 @@ test('newsletter: full coverage, no overlaps, each link lands on its own cell', 
   // hero is a single full-width slice with its alt
   const hero = plan.slices.find((s) => s.link === 'https://shop.test/sale');
   assert.equal(hero.w, 600); assert.equal(hero.h, 300); assert.equal(hero.alt, 'Summer sale');
-  // grid row: 24 margin | p1 | 24 gap | p2 | 24 margin  -> 5 cells
+  // grid row: 24 margin | p1 | 24 gap | p2 | 24 margin -> the side margins join their card: 3 cells
   const gridRow = plan.rows.find((r) => r.y === 400);
-  assert.equal(gridRow.cells.length, 5);
-  assert.equal(gridRow.cells[1].link, 'https://shop.test/p1');
-  assert.equal(gridRow.cells[3].link, 'https://shop.test/p2');
-  assert.equal(gridRow.cells[2].link, null);
+  assert.equal(gridRow.cells.length, 3);
+  assert.equal(gridRow.cells[0].link, 'https://shop.test/p1'); assert.equal(gridRow.cells[0].x, 0);
+  assert.equal(gridRow.cells[2].link, 'https://shop.test/p2'); assert.equal(gridRow.cells[2].x + gridRow.cells[2].w, 600);
+  assert.equal(gridRow.cells[1].link, null);
   // header + nothing-linked rows merged into one slice
   assert.equal(plan.rows[0].cells.length, 1);
   assert.equal(plan.rows[0].h, 80);
@@ -88,9 +88,9 @@ test('keep: an animated block comes out as ONE full-width slice (one GIF), with 
   assert.equal(kept.length, 1, 'hero rows collapse into one slice');
   assert.equal(kept[0].w, 600); assert.equal(kept[0].y, 80); assert.equal(kept[0].h, 320);
   assert.equal(kept[0].link, 'https://shop.test/sale');
-  // the grid row still splits into its 5 cells below the kept region
+  // the grid row still splits into its cells below the kept region
   const grid = plan.rows.find((r) => r.y === 400);
-  assert.equal(grid.cells.length, 5);
+  assert.equal(grid.cells.length, 3);
   // the header row above is not merged into the GIF
   assert.equal(plan.rows[0].h, 80);
 });
@@ -107,4 +107,21 @@ test('slicer: a link beside a taller logo never cuts the logo (no seam through a
   assert.deepEqual(cutsInsideLogo, [], 'no row starts inside the logo');
   const fb = plan.slices.find((s) => s.link === 'https://facebook.com/x');
   assert.ok(fb && fb.y <= 100 && fb.y + fb.h >= 190, 'the icon row spans the logo height');
+});
+
+test('slicer: one destination is one cell and one row, even when several layers carry the same link', () => {
+  const node = (id, x, y, w, h, extra = {}) => ({ id, name: id, type: 'RECTANGLE', x, y, w, h, visible: true, link: null, linkSource: null, alt: null, altSource: null, hasImage: false, isText: false, text: null, fontSize: null, fill: null, children: [], ...extra });
+  // two product cards; in each the photo, the title, the price and the button link separately to the same page
+  const card = (p, x) => [
+    node(`${p}-img`, x, 100, 263, 260, { link: `https://s.test/${p}`, hasImage: true, alt: p }),
+    node(`${p}-title`, x, 370, 263, 20, { link: `https://s.test/${p}`, isText: true, text: p }),
+    node(`${p}-price`, x, 392, 263, 18, { link: `https://s.test/${p}`, isText: true, text: '99k' }),
+    node(`${p}-btn`, x, 420, 120, 36, { link: `https://s.test/${p}` }),
+  ];
+  const root = node('root', 0, 0, 600, 520, { type: 'FRAME', children: [...card('a', 40), ...card('b', 308)] });
+  const plan = planSlices(root);
+  const linked = plan.slices.filter((s) => s.link);
+  assert.equal(new Set(linked.map((s) => s.link)).size, 2);
+  assert.ok(linked.length <= 4, `cards stay in few slices (got ${linked.length})`);
+  assert.ok(plan.slices.length <= 8, `whole email in few slices (got ${plan.slices.length})`);
 });

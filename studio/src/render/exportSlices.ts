@@ -124,6 +124,7 @@ export async function exportDocSlices(doc: Doc, brand: Brand, plan: SlicePlan, s
   const fctx = full.getContext('2d', { willReadFrequently: true })!;
   for (let i = 0; i < plan.slices.length; i++) {
     const s = plan.slices[i];
+    if (s.text) { done++; continue; } // live HTML text: no picture
     const bg = edgeColor(fctx, s, scale);
     const g = gifBytes.get(s.key);
     if (g) { out.push({ key: s.key, bytes: g, format: 'GIF', hash: fnv1a(g), w: s.w, h: s.h, scale: 1, bg }); continue; }

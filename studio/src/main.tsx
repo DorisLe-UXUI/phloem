@@ -40,6 +40,8 @@ import { polishDesign } from './pipeline/polish';
 import { renderToCanvas } from './render/renderer';
 import { animBlocks, makeMobile } from './model/ops';
 import { finalizeSlices } from '../../src/ui/imageops';
+import { exportProject, previewHtml } from './pipeline/exportFlow';
+import { explainLive } from './pipeline/liveText';
 (window as unknown as { __phloemExportThumbs?: (base?: string) => Promise<string[]> }).__phloemExportThumbs = async (base = '') => {
   const out: string[] = [];
   for (const t of TEMPLATES) {
@@ -126,6 +128,10 @@ window.addEventListener('online', () => { void A.syncNow().catch(() => { /* repo
   /** HTML → layers (AI designer converter), for browser checks. */
   htmlToDoc: (html: string, width = 600) => htmlToDoc(html, { width, validIds: new Set(assets.all().map((a) => a.id)), temp: false }),
   get, set, A, assets,
+  /** The open project's email HTML as sent (slices as object URLs) + the export plan, for live-text / slice checks. */
+  previewHtml: () => previewHtml(get().project!),
+  explainLive: () => explainLive(get().project!.desktop, get().project!.brand),
+  exportPlan: async () => { const ex = await exportProject(get().project!, null); return { slices: ex.slices.length, live: ex.plan.slices.filter((x) => x.text).length, rows: ex.plan.rows.length, cells: ex.plan.slices.length, kb: Math.round(ex.slices.reduce((a, x) => a + x.bytes.length, 0) / 1024) }; },
   /** Export the open project's desktop doc as slices (PNG, animated regions as GIF) without uploading. */
   exportSlices: async (fps = 10, format: 'PNG' | 'JPG' = 'PNG') => { const p = get().project!; const plan = planSlices(docToNNode(p.desktop, p.brand), { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: animBlocks(p.desktop.nodes) }); const raw = await exportDocSlices(p.desktop, p.brand, plan, 2, undefined, fps); const slices = await finalizeSlices(raw, format, 85); return slices.map((x) => ({ key: x.key, format: x.format, kb: Math.round(x.bytes.length / 1024), w: x.w, h: x.h, url: x.format === 'GIF' ? URL.createObjectURL(new Blob([x.bytes as BlobPart], { type: 'image/gif' })) : undefined })); },
 };

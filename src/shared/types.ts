@@ -48,7 +48,19 @@ export interface Slice {
   label: string;
   /** Index of the kept (animated) region this slice belongs to; sibling slices share one animation clock and frame rate. */
   keep?: number;
+  /** Live HTML text instead of a picture (plain copy on a solid background): real text for spam filters, screen
+   *  readers, search and dark mode. Slices with `text` have no image. */
+  text?: LiveText;
 }
+
+/** One paragraph of live text, positioned inside its slice (px, slice-relative). */
+export interface LiveTextRun {
+  text: string; x: number; y: number; w: number; h: number;
+  /** CSS font-family list: the design font first, then a web-safe fallback of the same category. */
+  font: string; size: number; weight: number; italic: boolean; color: string;
+  align: 'left' | 'center' | 'right'; lineHeight: number; letterSpacing: number; underline: boolean;
+}
+export interface LiveText { bg: string; runs: LiveTextRun[] }
 
 export interface SliceRow {
   y: number;
@@ -248,6 +260,8 @@ export interface Settings {
   activeProfileId: string | null;
   maxSliceHeight: number;
   mergeRows: boolean;
+  /** Plain copy (≤ 24px, solid background) exported as live HTML text instead of pictures. */
+  liveText?: boolean;
   altFromLayerName: boolean;
   uiHeight: number;
   language: 'vi' | 'en';
@@ -259,6 +273,7 @@ export const DEFAULT_SETTINGS: Settings = {
   activeProfileId: null,
   maxSliceHeight: 1500,
   mergeRows: true,
+  liveText: true,
   altFromLayerName: true,
   uiHeight: 680,
   language: 'vi',

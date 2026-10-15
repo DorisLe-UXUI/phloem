@@ -300,6 +300,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       <Eyebrow>Cắt lát</Eyebrow>
       <Field label="Chiều cao lát tối đa (px)" hint="Outlook cắt ảnh >1728"><Num value={st.maxSliceHeight} min={300} max={1728} onChange={(v) => up({ maxSliceHeight: Math.round(v) })} /></Field>
       <Toggle checked={st.mergeRows} onChange={(v) => up({ mergeRows: v })} label="Gộp các hàng không link thành một lát" sub="Ít ảnh hơn, email nhẹ hơn" />
+      <Toggle checked={st.liveText !== false} onChange={(v) => up({ liveText: v })} label="Chữ thật cho đoạn văn" sub="Đoạn chữ ≤ 24px trên nền trơn xuất thành chữ HTML thay vì ảnh: lọt hộp thư chính tốt hơn, đọc được khi tắt ảnh. Tiêu đề lớn vẫn là ảnh." />
       <Eyebrow>Trình soạn</Eyebrow>
       <Toggle checked={st.autosave} onChange={(v) => up({ autosave: v })} label="Tự lưu" sub="Lưu vào trình duyệt sau mỗi thay đổi (⌘S để lưu tay)" />
       <Toggle checked={st.snap} onChange={(v) => up({ snap: v })} label="Bắt dính cạnh / tâm" />

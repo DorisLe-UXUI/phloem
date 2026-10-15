@@ -1,4 +1,5 @@
 // Export pipeline for Studio: draft (Mailchimp/Klaviyo) · copy HTML · zip. Mirrors the plugin flow, minus Figma.
+import { applyLiveText, liveFontLinks } from './liveText';
 import { cloud } from '../storage/sync';
 import type { DraftFile, DraftRecord, ExportedSlice, Profile, Provider, SlicePlan } from '../../../src/shared/types';
 import { buildEmailHtml, htmlSizeBytes, solidHex } from '../../../src/shared/html';
@@ -129,7 +130,7 @@ export async function exportProject(p: Project, prof: Profile | null): Promise<E
   const format = prof?.imageFormat ?? 'JPG', scale = prof?.scale ?? 2, q = prof?.jpgQuality ?? 85; // JPG mode keeps a slice as PNG when that is smaller (flat colour, text)
   const bg = solidHex(resolveColor(p.desktop.bg, p.brand) || '#ffffff');
   const s = get().settings;
-  const planFor = (d: Doc) => planSlices(docToNNode(d, p.brand), { maxSliceHeight: s.maxSliceHeight, mergeRows: s.mergeRows, keep: animBlocks(d.nodes) });
+  const planFor = (d: Doc) => { const pl = planSlices(docToNNode(d, p.brand), { maxSliceHeight: s.maxSliceHeight, mergeRows: s.mergeRows, keep: animBlocks(d.nodes) }); return s.liveText === false ? pl : applyLiveText(pl, d, p.brand); };
   busy('Cắt & xuất ảnh…');
   const plan = planFor(p.desktop);
   const raw = await exportDocSlices(p.desktop, p.brand, plan, scale, (d, t) => busy('Cắt & xuất ảnh…', d, t));
@@ -142,7 +143,8 @@ export async function exportProject(p: Project, prof: Profile | null): Promise<E
     mobile = { plan: mp, slices: await finalizeSlices(mr, format, q, bg) };
   }
   const bytes = slices.reduce((a, x) => a + x.bytes.length, 0) + (mobile ? mobile.slices.reduce((a, x) => a + x.bytes.length, 0) : 0);
-  log(`${slices.length}${mobile ? ` + ${mobile.slices.length} mobile` : ''} lát · ${(bytes / 1024).toFixed(0)} KB (${format} ${scale}x)`);
+  const liveN = plan.slices.filter((x) => x.text).length + (mobile ? mobile.plan.slices.filter((x) => x.text).length : 0);
+  log(`${slices.length}${mobile ? ` + ${mobile.slices.length} mobile` : ''} lát ảnh${liveN ? ` + ${liveN} ô chữ thật` : ''} · ${(bytes / 1024).toFixed(0)} KB (${format} ${scale}x)`);
   if (bytes > WEIGHT_ERROR) log(`Tổng ảnh ${(bytes / 1024 / 1024).toFixed(1)} MB — quá nặng. Đổi sang JPG hoặc 1x.`, 'er');
   else if (bytes > WEIGHT_WARN) log(`Tổng ảnh ${(bytes / 1024).toFixed(0)} KB — nặng, cân nhắc JPG.`);
   return { plan, slices, mobile };
@@ -190,6 +192,7 @@ export function htmlFor(p: Project, prof: Profile | null, ex: Exported, images: 
     bgColor: resolveColor(p.desktop.bg, p.brand),
     provider: prof?.provider ?? null,
     utm: prof?.utmTemplate ? { template: prof.utmTemplate, vars: { provider: prof.provider, campaign: p.fields.campaignName || p.name, frame: p.name, date: today } } : null,
+    fontLinks: liveFontLinks([ex.plan, ex.mobile?.plan]),
   });
 }
 
