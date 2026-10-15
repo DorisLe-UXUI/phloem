@@ -61,7 +61,14 @@ CREATE TABLE IF NOT EXISTS client_shares (
   token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   kind TEXT NOT NULL, item_id TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS client_members (
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL, added_at TEXT NOT NULL, PRIMARY KEY (client_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS client_members_user ON client_members(user_id);
 `;
+/** Roles a teammate can hold in one client's workspace (the agency account that created the client is its owner). */
+export const CLIENT_ROLES = ['manager', 'designer', 'content', 'ads', 'client_viewer'];
 /** Kinds of per-client records the API accepts (anything else is refused). */
 export const CLIENT_KINDS = new Set(['brand', 'plan', 'review', 'post', 'campaign', 'report', 'note']);
 
@@ -146,6 +153,13 @@ export function openDb(file) {
     shareGet: q('SELECT s.*, c.owner, c.name AS client_name, c.json AS client_json FROM client_shares s JOIN clients c ON c.id = s.client_id WHERE s.token_hash = ? AND s.revoked = 0'),
     shareItemPut: q('INSERT INTO client_items (client_id, kind, id, json, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(client_id, kind, id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at'),
     shareAudit: q('INSERT INTO client_audit (client_id, actor, action, detail, at) VALUES (?, ?, ?, ?, ?)'),
+    shareList: q('SELECT s.token_hash, s.kind, s.item_id, s.created_at, s.expires_at FROM client_shares s JOIN clients c ON c.id = s.client_id WHERE c.owner = ? AND s.client_id = ? AND s.revoked = 0 ORDER BY s.created_at DESC'),
+    shareRevoke: q('UPDATE client_shares SET revoked = 1 WHERE client_id = ? AND substr(token_hash, 1, 16) = ? AND EXISTS (SELECT 1 FROM clients WHERE id = ? AND owner = ?)'),
+    memList: q('SELECT m.user_id, m.role, m.added_at, u.name, u.email FROM client_members m JOIN clients c ON c.id = m.client_id JOIN users u ON u.id = m.user_id WHERE c.owner = ? AND m.client_id = ? ORDER BY m.added_at'),
+    memPut: q('INSERT INTO client_members (client_id, user_id, role, added_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM clients WHERE id = ? AND owner = ? AND owner <> ?) ON CONFLICT(client_id, user_id) DO UPDATE SET role = excluded.role'),
+    memDel: q('DELETE FROM client_members WHERE client_id = ? AND user_id = ? AND EXISTS (SELECT 1 FROM clients WHERE id = ? AND owner = ?)'),
+    memOf: q('SELECT c.*, m.role FROM client_members m JOIN clients c ON c.id = m.client_id WHERE m.user_id = ? ORDER BY c.updated_at DESC'),
+    access: q("SELECT c.owner, CASE WHEN c.owner = ? THEN 'owner' ELSE m.role END AS role FROM clients c LEFT JOIN client_members m ON m.client_id = c.id AND m.user_id = ? WHERE c.id = ? AND (c.owner = ? OR m.user_id IS NOT NULL)"),
     projGet: q('SELECT * FROM projects WHERE owner = ? AND id = ?'),
     projPut: q(`INSERT INTO projects (id, owner, name, json, thumb, thumb_mobile, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at WHERE projects.owner = excluded.owner AND excluded.updated_at >= projects.updated_at`),
@@ -252,7 +266,21 @@ export function openDb(file) {
       resolve: (token) => { const s0 = S.shareGet.get(sha256(String(token || ''))); if (!s0 || s0.expires_at < now()) return null; return { clientId: s0.client_id, owner: s0.owner, kind: s0.kind, itemId: s0.item_id, clientName: s0.client_name, client: JSON.parse(s0.client_json || '{}'), expiresAt: s0.expires_at }; },
       /** Writes made through a review link: only to that link's client, logged as the reviewer. */
       write: (sh, kind, id, data, actor, action, detail) => { const t = now(); S.shareItemPut.run(sh.clientId, kind, id, JSON.stringify(data), t); S.shareAudit.run(sh.clientId, `Khách: ${String(actor).slice(0, 80)}`, action, String(detail).slice(0, 500), t); return { updatedAt: t }; },
+      /** Live links of one client; `id` is a short prefix of the token hash, enough to revoke it, useless to open it. */
+      list: (owner, clientId) => S.shareList.all(owner, clientId).map((r) => ({ id: r.token_hash.slice(0, 16), kind: r.kind, itemId: r.item_id, createdAt: r.created_at, expiresAt: r.expires_at })),
+      revoke: (owner, clientId, id) => Number(S.shareRevoke.run(clientId, String(id).slice(0, 16), clientId, owner).changes) > 0,
     },
+    members: {
+      list: (owner, clientId) => S.memList.all(owner, clientId).map((m) => ({ userId: m.user_id, name: m.name, email: m.email, role: m.role, addedAt: m.added_at })),
+      /** Only the client's owner adds teammates, never itself, only with a known role. */
+      put: (owner, clientId, userId, role) => CLIENT_ROLES.includes(role) && Number(S.memPut.run(clientId, userId, role, now(), clientId, owner, userId).changes) > 0,
+      remove: (owner, clientId, userId) => Number(S.memDel.run(clientId, userId, clientId, owner).changes) > 0,
+      /** Clients shared with this user by another account, with the role it holds there. */
+      clientsOf: (userId) => S.memOf.all(userId).map((c) => ({ ...cli(c), role: c.role, shared: true })),
+    },
+    /** Who may open a client: { owner, role } when `userId` owns it or is a member, else null. Every route resolves this first
+     *  and then talks to the tables as the client's owner, so the owner-scoped statements above stay the only gate. */
+    access: (userId, clientId) => { const r = S.access.get(userId, userId, String(clientId || ''), userId); return r ? { owner: r.owner, role: r.role } : null; },
     kv: {
       get: (owner, key) => { const r = S.kvGet.get(owner, key); return r ? { value: JSON.parse(r.json), updatedAt: r.updated_at } : { value: null, updatedAt: null }; },
       put: (owner, key, value, updatedAt) => { const t = updatedAt || now(); S.kvPut.run(owner, String(key).slice(0, 64), JSON.stringify(value ?? null), t); return { updatedAt: t }; },

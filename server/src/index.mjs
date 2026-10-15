@@ -11,6 +11,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createAuth } from './auth.mjs';
 import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
+import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -98,6 +99,8 @@ const server = createServer(async (req, res) => {
       });
     }
     if (url.pathname.startsWith('/oauth/callback/')) return await oauthCallback(url, res);
+    // client review links: no account, no relay token, only the token in the link (it opens one item of one client)
+    if (url.pathname.startsWith('/share/')) return await shareRoute(url, req, res);
     if (RELAY_TOKEN && req.headers['x-phloem-token'] !== RELAY_TOKEN) return json(res, 401, { error: 'relay token sai hoặc thiếu' });
 
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
@@ -491,9 +494,10 @@ function raw(req, limit) {
 // The app database, scoped to the signed-in user: projects, assets (bytes), client profiles (encrypted), stats, sessions.
 async function dbRoute(url, req, res) {
   const u = requireUser(req, res); if (!u) return;
-  const [, kind, id] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  const [, kind, id, ...rest] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const m = req.method;
   try {
+    if (kind === 'clients' || kind === 'client') return await clientsRoute(u, kind, id, rest, url, req, res);
     if (kind === 'projects') {
       if (m === 'GET' && !id) return json(res, 200, { projects: DB.projects.list(u.id), deleted: DB.projects.tombstones(u.id) });
       if (m === 'GET') { const p = DB.projects.get(u.id, id); return p ? json(res, 200, { project: p }) : json(res, 404, { error: 'không có project này' }); }
@@ -528,6 +532,158 @@ async function dbRoute(url, req, res) {
     if (kind === 'stats' && m === 'GET') return json(res, 200, DB.stats(u.id));
     return json(res, 404, { error: 'không có route db này' });
   } catch (e) { return json(res, e.status || 500, { error: e.message }); }
+}
+
+// ---------- Phloem MKT: clients (one workspace per client of the agency) ----------
+//  GET    /db/clients                         own clients + clients shared with me (with my role)
+//  PUT    /db/clients/:id                     create / update (owner, manager)
+//  DELETE /db/clients/:id?confirm=<name>      remove the client and everything filed under it (owner, name typed back)
+//  GET    /db/client/:id/items[?kind=]        records of that client      PUT|DELETE /db/client/:id/items/:kind/:itemId
+//  GET    /db/client/:id/audit                who did what                GET /db/client/:id/export   everything, one JSON
+//  GET|POST /db/client/:id/share              review links (list / create)  DELETE /db/client/:id/share/:linkId
+//  GET|PUT|DELETE /db/client/:id/members[/:email]  teammates and their role (owner only writes)
+// Every request resolves the caller's access to THAT client first (owner or member) and then works as the client's
+// owner on owner-scoped statements: a client id from the browser never reaches data the caller cannot open.
+const ROLE_CAN = {
+  owner: new Set(['read', 'write', 'manage', 'admin']),
+  manager: new Set(['read', 'write', 'manage']),
+  designer: new Set(['read', 'write']), content: new Set(['read', 'write']), ads: new Set(['read', 'write']),
+  client_viewer: new Set(['read']),
+};
+const can = (acc, what) => !!acc && !!ROLE_CAN[acc.role]?.has(what);
+const CLIENT_FIELDS = ['logo', 'industry', 'website', 'timezone', 'currency', 'status', 'lead', 'color', 'note'];
+function cleanClient(p, id) {
+  const out = { id, name: String(p?.name || '').trim().slice(0, 120) || 'Khách hàng' };
+  for (const k of CLIENT_FIELDS) if (typeof p?.[k] === 'string') out[k] = p[k].slice(0, k === 'logo' ? 200_000 : 600);
+  if (typeof p?.updatedAt === 'string') out.updatedAt = p.updatedAt;
+  if (typeof p?.createdAt === 'string') out.createdAt = p.createdAt;
+  return out;
+}
+async function clientsRoute(u, kind, id, rest, url, req, res) {
+  const m = req.method;
+  const actor = u.name || u.email;
+  if (kind === 'clients') {
+    if (m === 'GET' && !id) return json(res, 200, { clients: [...DB.clients.list(u.id).map((c) => ({ ...c, role: 'owner' })), ...DB.members.clientsOf(u.id)] });
+    if (!id || !/^[\w-]{1,64}$/.test(id)) return json(res, 400, { error: 'id khách hàng không hợp lệ' });
+    const acc = DB.access(u.id, id);
+    if (m === 'PUT') {
+      const body0 = await body(req);
+      if (acc && !can(acc, 'manage')) return json(res, 403, { error: 'Bạn không có quyền sửa khách hàng này.' });
+      const owner = acc ? acc.owner : u.id; // new id → the caller creates it and owns it
+      if (!acc && DB.clients.list(u.id).length >= 500) return json(res, 400, { error: 'Tối đa 500 khách hàng mỗi tài khoản.' });
+      const r = DB.clients.put(owner, cleanClient(body0, id));
+      if (r.forbidden) return json(res, 403, { error: 'Không có quyền với khách hàng này.' });
+      if (r.stale) return json(res, 409, { error: 'Bản trên relay mới hơn.', code: 'stale', updatedAt: r.updatedAt });
+      DB.audit.add(owner, id, actor, acc ? 'client.update' : 'client.create', String(body0?.name || '').slice(0, 120));
+      return json(res, 200, r);
+    }
+    if (m === 'DELETE') {
+      if (!acc || acc.role !== 'owner') return json(res, 403, { error: 'Chỉ chủ workspace xoá được khách hàng.' });
+      const c = DB.clients.get(u.id, id);
+      const typed = String(url.searchParams.get('confirm') || '').trim().toLowerCase();
+      if (!c || typed !== c.name.trim().toLowerCase()) return json(res, 400, { error: 'Gõ đúng tên khách hàng để xác nhận xoá.', code: 'confirm' });
+      DB.clients.remove(u.id, id);
+      console.log(`[mkt] client ${id} removed by ${u.email}`);
+      return json(res, 200, { ok: true });
+    }
+    return json(res, 404, { error: 'không có route này' });
+  }
+  // /db/client/:id/...
+  const acc = DB.access(u.id, String(id || ''));
+  if (!acc) return json(res, 404, { error: 'Không có khách hàng này, hoặc bạn không có quyền xem.' });
+  const owner = acc.owner, [sub, a, b] = rest;
+  if (sub === 'items') {
+    if (m === 'GET' && !a) { const k = url.searchParams.get('kind'); if (k && !CLIENT_KINDS.has(k)) return json(res, 400, { error: 'loại dữ liệu không hợp lệ' }); return json(res, 200, { items: DB.items.list(owner, id, k || undefined), role: acc.role }); }
+    if (!CLIENT_KINDS.has(a) || !b || !/^[\w.:-]{1,80}$/.test(b)) return json(res, 400, { error: 'loại hoặc id không hợp lệ' });
+    if (m === 'GET') { const i = DB.items.get(owner, id, a, b); return i ? json(res, 200, { item: i }) : json(res, 404, { error: 'không có mục này' }); }
+    if (!can(acc, 'write')) return json(res, 403, { error: 'Vai trò của bạn chỉ được xem.' });
+    if (m === 'PUT') {
+      const p = await body(req);
+      const size = JSON.stringify(p?.data ?? null).length;
+      if (size > 2 * 1048576) return json(res, 413, { error: 'Dữ liệu quá lớn (>2MB).' });
+      if (!checkQuota(res, owner, size)) return;
+      const prev = DB.items.get(owner, id, a, b);
+      const r = DB.items.put(owner, id, a, b, p?.data ?? null, typeof p?.updatedAt === 'string' ? p.updatedAt : undefined);
+      if (r.forbidden) return json(res, 403, { error: 'Không có quyền.' });
+      if (r.stale) return json(res, 409, { error: 'Bản trên relay mới hơn.', code: 'stale', updatedAt: DB.items.get(owner, id, a, b)?.updatedAt });
+      const st = p?.data && typeof p.data === 'object' ? p.data.status : undefined;
+      if (!prev) DB.audit.add(owner, id, actor, `${a}.create`, String(p?.data?.title || b).slice(0, 120));
+      else if (st && st !== prev.data?.status) DB.audit.add(owner, id, actor, `${a}.status`, `${String(p?.data?.title || b).slice(0, 80)} → ${st}`);
+      return json(res, 200, r);
+    }
+    if (m === 'DELETE') { const ok = DB.items.remove(owner, id, a, b); if (ok) DB.audit.add(owner, id, actor, `${a}.delete`, b); return json(res, 200, { ok }); }
+  }
+  if (sub === 'audit' && m === 'GET') return json(res, 200, { audit: DB.audit.list(owner, id) });
+  if (sub === 'export' && m === 'GET') {
+    if (!can(acc, 'manage')) return json(res, 403, { error: 'Chỉ chủ workspace hoặc quản lý được xuất dữ liệu.' });
+    DB.audit.add(owner, id, actor, 'client.export', '');
+    const projects = DB.projects.list(owner).filter((p) => p.clientId === id).map((p) => DB.projects.get(owner, p.id));
+    return json(res, 200, { exportedAt: new Date().toISOString(), client: DB.clients.get(owner, id), items: DB.items.list(owner, id), audit: DB.audit.list(owner, id), members: DB.members.list(owner, id), shares: DB.shares.list(owner, id), projects });
+  }
+  if (sub === 'share') {
+    if (!can(acc, 'write')) return json(res, 403, { error: 'Vai trò của bạn không tạo được link duyệt.' });
+    if (m === 'GET') return json(res, 200, { shares: DB.shares.list(owner, id) });
+    if (m === 'POST') {
+      const p = await body(req); const k = String(p?.kind || ''), itemId = String(p?.itemId || '');
+      if (!['brand', 'plan', 'post'].includes(k) || !DB.items.get(owner, id, k, itemId)) return json(res, 400, { error: 'Không có mục này để gửi duyệt.' });
+      const days = Math.max(1, Math.min(90, Number(p?.days) || 30));
+      const token = DB.shares.create(owner, id, k, itemId, days);
+      if (!token) return json(res, 403, { error: 'Không tạo được link.' });
+      DB.audit.add(owner, id, actor, 'share.create', `${k} ${itemId} · ${days} ngày`);
+      return json(res, 200, { token, days });
+    }
+    if (m === 'DELETE' && a) { const ok = DB.shares.revoke(owner, id, a); if (ok) DB.audit.add(owner, id, actor, 'share.revoke', a); return json(res, 200, { ok }); }
+  }
+  if (sub === 'members') {
+    if (m === 'GET') return json(res, 200, { members: DB.members.list(owner, id), roles: CLIENT_ROLES, me: acc.role });
+    if (acc.role !== 'owner') return json(res, 403, { error: 'Chỉ chủ workspace thêm hoặc bớt thành viên.' });
+    const who = DB.users.byEmail(String(a || '').trim().toLowerCase());
+    if (!who) return json(res, 404, { error: 'Email này chưa có tài khoản Phloem. Nhờ họ đăng ký trước.' });
+    if (m === 'PUT') { const p = await body(req); if (!DB.members.put(owner, id, who.id, String(p?.role || ''))) return json(res, 400, { error: 'Vai trò không hợp lệ.' }); DB.audit.add(owner, id, actor, 'member.set', `${who.email} → ${p.role}`); return json(res, 200, { ok: true }); }
+    if (m === 'DELETE') { const ok = DB.members.remove(owner, id, who.id); if (ok) DB.audit.add(owner, id, actor, 'member.remove', who.email); return json(res, 200, { ok }); }
+  }
+  return json(res, 404, { error: 'không có route này' });
+}
+
+// Public review link (/share/:token): the client sees exactly one item of their own workspace, approves or asks for
+// changes per row, comments. Writes go to a `review` record of that client only, each one logged as "Khách: <name>".
+const REVIEW_STATUS = new Set(['approved', 'changes', 'pending']);
+async function shareRoute(url, req, res) {
+  const [, token, action] = url.pathname.split('/').filter(Boolean);
+  if (throttled(`share:${ipOf(req)}`, req.method === 'GET' ? 240 : 60, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều yêu cầu. Thử lại sau ít phút.' });
+  const sh = DB.shares.resolve(token);
+  if (!sh) return json(res, 404, { error: 'Link duyệt không còn hiệu lực. Nhờ agency gửi link mới.', code: 'expired' });
+  const item = DB.items.get(sh.owner, sh.clientId, sh.kind, sh.itemId);
+  if (!item) return json(res, 404, { error: 'Nội dung này đã bị xoá.', code: 'gone' });
+  const reviewId = `${sh.kind}-${sh.itemId}`.slice(0, 80);
+  const review = DB.items.get(sh.owner, sh.clientId, 'review', reviewId)?.data || { rows: {}, comments: [], overall: null };
+  if (req.method === 'GET' && !action) {
+    const c = sh.client || {};
+    return json(res, 200, { client: { name: sh.clientName, logo: c.logo || '', color: c.color || '' }, kind: sh.kind, itemId: sh.itemId, data: item.data, updatedAt: item.updatedAt, review, expiresAt: sh.expiresAt });
+  }
+  if (req.method === 'POST' && action === 'review') {
+    const p = await body(req);
+    const name = String(p?.name || '').trim().slice(0, 80);
+    if (!name) return json(res, 400, { error: 'Nhập tên của bạn trước khi gửi.' });
+    const rowIds = new Set(Array.isArray(item.data?.rows) ? item.data.rows.map((r) => String(r?.id)) : []);
+    const at = new Date().toISOString();
+    const next = { rows: { ...(review.rows || {}) }, comments: Array.isArray(review.comments) ? review.comments.slice(-500) : [], overall: review.overall || null };
+    let n = 0;
+    for (const [rid, st] of Object.entries(p?.rows || {}).slice(0, 2000)) {
+      if (!rowIds.has(rid) || !REVIEW_STATUS.has(st)) continue;
+      next.rows[rid] = { status: st, by: name, at }; n++;
+    }
+    for (const c of (Array.isArray(p?.comments) ? p.comments : []).slice(0, 50)) {
+      const text = String(c?.text || '').trim().slice(0, 1000); if (!text) continue;
+      const row = c?.row && rowIds.has(String(c.row)) ? String(c.row) : null;
+      next.comments.push({ row, text, by: name, at });
+    }
+    if (REVIEW_STATUS.has(p?.overall)) next.overall = { status: p.overall, by: name, at };
+    const detail = [n ? `${n} hàng` : '', next.overall?.at === at ? `tổng: ${p.overall}` : '', p?.comments?.length ? `${p.comments.length} bình luận` : ''].filter(Boolean).join(' · ');
+    DB.shares.write(sh, 'review', reviewId, next, name, `${sh.kind}.review`, detail || 'xem');
+    return json(res, 200, { ok: true, review: next });
+  }
+  return json(res, 404, { error: 'không có route này' });
 }
 
 // Website brand profile for the AI composer (logo, colours, fonts, headings, images) + image proxy for those images.
