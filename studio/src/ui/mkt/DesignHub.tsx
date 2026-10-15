@@ -31,8 +31,9 @@ export function DesignHub({ client }: { client: Client }) {
   const shown = all.filter((r) => (scope === 'all' || ['approved', 'scheduled', 'live'].includes(r.status)) && r.date >= today);
   const dates = [...new Set(shown.map((r) => r.date))];
   const visibleDates = dates.slice(0, days);
-  const week = shown.filter((r) => r.date < new Date(Date.now() + 7 * 86400e3).toISOString().slice(0, 10) && !(r.designId && byId.has(r.designId)));
-  const loose = designs.filter((d) => !d.rowRef || !all.some((r) => r.designId === d.id));
+  const hasDesign = (r: Row) => (r.designId && byId.has(r.designId)) || designs.some((d) => d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id);
+  const week = shown.filter((r) => r.date < new Date(Date.now() + 7 * 86400e3).toISOString().slice(0, 10) && !hasDesign(r));
+  const loose = designs.filter((d) => !all.some((r) => r.designId === d.id || (d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id)));
 
   const make = async (size: DesignSize, row: Row | null, ai: boolean) => {
     setPicker(null);
@@ -66,7 +67,7 @@ export function DesignHub({ client }: { client: Client }) {
 
       <div class="row wrap" style={{ marginBottom: 12 }}>
         <div class="seg"><button class={scope === 'approved' ? 'on' : ''} onClick={() => setScope('approved')}>Bài đã duyệt</button><button class={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>Tất cả bài</button></div>
-        <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter((r) => r.designId && byId.has(r.designId)).length} đã có ảnh</span>
+        <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter(hasDesign).length} đã có ảnh</span>
       </div>
 
       {visibleDates.length ? visibleDates.map((d) => (
@@ -74,7 +75,8 @@ export function DesignHub({ client }: { client: Client }) {
           <div class="mk-day-h"><b>{new Date(`${d}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}</b>{d === today && <span class="chip on">Hôm nay</span>}</div>
           <div class="mk-posts">
             {shown.filter((r) => r.date === d).map((r) => {
-              const des = r.designId ? byId.get(r.designId) : undefined;
+              // the pinned design, else the newest design made for this post (older ones were made before pinning existed)
+              const des = (r.designId ? byId.get(r.designId) : undefined) || designs.find((d) => d.rowRef?.planId === r.planId && d.rowRef.rowId === r.id);
               const c = channelOf(r.channel);
               const z = des?.size || sizeForRow(r);
               return (

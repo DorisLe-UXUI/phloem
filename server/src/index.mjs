@@ -303,7 +303,13 @@ async function aiImage(p, res) {
         ? await fetch(`${base}:predict`, { method: 'POST', headers, body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio: aspect } }), signal: AbortSignal.timeout(110_000) })
         : await fetch(`${base}:generateContent`, { method: 'POST', headers, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nAspect ratio ${aspect}. Output one image only.` }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: aspect } } }), signal: AbortSignal.timeout(110_000) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) { if (r.status === 404) googleModel = undefined; return json(res, r.status === 429 ? 429 : 502, { error: `Google (${pick.name.replace('models/', '')}): ${j?.error?.message || `HTTP ${r.status}`}` }); }
+      if (!r.ok) {
+        if (r.status === 404) googleModel = undefined;
+        const msg = String(j?.error?.message || `HTTP ${r.status}`);
+        // free-tier keys get an image quota of 0: say what to do instead of Google's raw quota dump
+        if (r.status === 429 && /free_tier|limit: 0/.test(msg)) return json(res, 429, { error: 'Key Gemini đang ở gói miễn phí: Google không cho tạo ảnh ở gói này (hạn mức = 0). Vào Google AI Studio → Billing, bật thanh toán cho project của key (trả theo số ảnh), rồi thử lại. Hoặc dùng OPENAI_API_KEY.', code: 'image_billing' });
+        return json(res, r.status === 429 ? 429 : 502, { error: `Google (${pick.name.replace('models/', '')}): ${msg.slice(0, 300)}` });
+      }
       const pred = j?.predictions?.[0];
       const part = (j?.candidates?.[0]?.content?.parts || []).find((x) => x?.inlineData?.data || x?.inline_data?.data);
       const b64 = pred?.bytesBase64Encoded || part?.inlineData?.data || part?.inline_data?.data;
