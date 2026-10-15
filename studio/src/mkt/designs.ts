@@ -87,7 +87,7 @@ async function toDoc(html: string, size: DesignSize, brand: Brand, validIds: Set
 }
 
 /** Create a design for a client (optionally from a plan row) and open it in the editor. */
-export async function newDesign(client: Client, size: DesignSize, row?: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; onStage?: (m: string) => void; signal?: AbortSignal } = {}) {
+export async function newDesign(client: Client, size: DesignSize, row?: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; open?: boolean; onStage?: (m: string) => void; signal?: AbortSignal } = {}) {
   const brand = designBrand(client);
   const imgs = clientImages(client.id);
   const logo = (brand.logoAssetId && assets.get(brand.logoAssetId)) ? brand.logoAssetId : null;
@@ -98,13 +98,35 @@ export async function newDesign(client: Client, size: DesignSize, row?: (PlanRow
   else doc = await toDoc(starterHtml(size, brand, row || null, photo, logo), size, brand, valid, opts.onStage);
   await readyDoc(doc);
   const now = new Date().toISOString();
-  const name = row ? `${channelOf(row.channel).label} · ${row.topic}`.slice(0, 80) : `${size.label} · ${new Date().toLocaleDateString('vi-VN')}`;
+  const name = row ? `${row.date.slice(8, 10)}/${row.date.slice(5, 7)} · ${channelOf(row.channel).label} · ${row.topic}`.slice(0, 90) : `${size.label} · ${new Date().toLocaleDateString('vi-VN')}`;
   const p: Project = { id: uid('p'), name, createdAt: now, updatedAt: now, brand, fields: { campaignName: name, subject: '', preheader: '' }, desktop: doc, mobile: null, drafts: {}, clientId: client.id, kind: 'design', size: { id: size.id, label: size.label, w: size.w, h: size.h }, ...(row ? { rowRef: { planId: row.planId, rowId: row.id } } : {}) };
-  history.clear();
-  assets.context.client = client.id;
-  set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [], scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null, leftTab: 'design', rightTab: 'design' });
-  await A.saveProject();
+  if (opts.open === false) {
+    // batch mode: save next to the others without leaving the page
+    const { db } = await import('../storage/idb');
+    const { cloud } = await import('../storage/sync');
+    const { thumbnail } = await import('../render/renderer');
+    await document.fonts.ready;
+    let thumb: string | undefined; try { thumb = thumbnail(doc, brand, assets, 360, size.h / size.w); } catch { /* fonts not ready */ }
+    const stored = { ...p, thumb, owner: get().user?.id || '' };
+    await db.putProject(stored); cloud.pushProjectSoon(stored);
+    await A.refreshProjects();
+  } else {
+    history.clear();
+    assets.context.client = client.id;
+    set({ route: { name: 'editor', projectId: p.id }, project: p, variant: 'desktop', selection: [], zoom: 1, pan: { x: 0, y: 0 }, modal: null, dirty: true, result: null, log: [], scraps: [], scrapSel: null, cropping: null, cutting: null, enteredGroup: null, editingText: null, leftTab: 'design', rightTab: 'design' });
+    await A.saveProject();
+  }
+  if (row) await attachDesign(client.id, row.planId, row.id, p.id);
   return p;
+}
+
+/** Pin a design to its post in the plan (the post shows that picture everywhere: Thiết kế, Lịch đăng, the plan grid). */
+export async function attachDesign(clientId: string, planId: string, rowId: string, designId: string) {
+  const { cachedItems, putItem } = await import('./data');
+  const it = cachedItems(clientId)?.find((i) => i.kind === 'plan' && i.id === planId); if (!it) return;
+  const plan = it.data as import('./types').Plan;
+  const version = (plan.version || 1) + 1;
+  await putItem(clientId, 'plan', planId, { ...plan, rows: plan.rows.map((r) => (r.id === rowId ? { ...r, designId } : r)), version, versions: [...(plan.versions || []), { version, at: new Date().toISOString(), by: get().user?.name || 'Bạn', note: 'Gắn thiết kế vào bài' }].slice(-40) });
 }
 
 // ---------- Đổi cỡ thần kỳ ----------

@@ -48,7 +48,7 @@ export function DesignExport() {
       {p.rowRef && <>
         <Eyebrow>Bài trong kế hoạch</Eyebrow>
         {row ? <div class="mk-rowref"><b>{row.topic}</b><span class="dim small">{row.date.split('-').reverse().join('/')} {row.time} · {row.channel}</span>{row.caption && <p class="small muted">{row.caption.slice(0, 160)}{row.caption.length > 160 ? '…' : ''}</p>}</div> : <div class="dim small">Bài gốc không còn trong kế hoạch.</div>}
-        {row && <Btn block kind="primary" icon="check" onClick={() => void markDone()}>Thiết kế xong · gắn vào bài</Btn>}
+        {row && <Btn block kind="primary" icon="check" onClick={() => void markDone()}>Duyệt ảnh · chuyển sang Lịch đăng</Btn>}
       </>}
       <div class="dim small"><Icon name="info" size={12} /> Phloem không tự đăng. Ở Lịch đăng: tải ảnh, copy caption, đăng trên nền tảng.</div>
     </div>
