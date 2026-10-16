@@ -8,18 +8,18 @@ import * as A from '../pipeline/actions';
 import { assets } from '../storage/assets';
 import type { ImageNode } from '../model/types';
 import { uid } from '../model/types';
-import { ANIM_PRESETS, ELEMENTS, ICONS, ICON_STYLES, colorChoices, iconLayer, type ElCat } from '../design/elements';
-import { COLOR_SETS, ICON_BROWSE, ICON_SETS, iconCollection, iconTileSvg, searchIcons, vectorAsset } from '../design/vector';
+import { ANIM_PRESETS, ELEMENTS, ICONS, ICON_STYLES, colorChoices, iconLayer, vec, type ElCat } from '../design/elements';
+import { COLOR_SETS, ICON_BROWSE, ICON_SETS, iconCollection, iconTileSvg, searchIcons, svgAspect, vectorAsset } from '../design/vector';
 import { GENERATORS, GEN_GROUPS, GEN_PALETTES, genSvg, svgDataUrl, type GenGroup } from '../design/generators';
-import { CAT_VI, fluent3dLayer, fluent3dUrl, loadFluent3d, searchFluent3d, type Fluent3d } from '../design/library';
+import { CAT_VI, enQuery, fluent3dLayer, fluent3dUrl, loadFluent3d, searchFluent3d, type Fluent3d } from '../design/library';
 import { relayAuth } from '../ai/client';
 import { PEOPLE_STYLES, peopleLayer, peopleSeeds, peopleUrl } from '../design/people';
 import { Btn, Eyebrow } from './components';
 import { Icon } from './icons';
 
-type Cat = 'all' | 'shape' | 'graphic' | 'elem' | 'bg' | '3d' | 'people' | 'sticker' | 'icon' | 'logo' | 'text' | 'photo' | 'anim';
+type Cat = 'all' | 'shape' | 'graphic' | 'elem' | 'illus' | 'bg' | '3d' | 'people' | 'sticker' | 'icon' | 'logo' | 'text' | 'photo' | 'anim';
 const CATS: { v: Cat; label: string }[] = [
-  { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'people', label: 'Người & nhân vật' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' }, { v: 'elem', label: 'Phần tử' },
+  { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'illus', label: 'Minh hoạ 2D/3D' }, { v: 'people', label: 'Người & nhân vật' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' }, { v: 'elem', label: 'Phần tử' },
   { v: 'sticker', label: 'Sticker' }, { v: 'icon', label: 'Icon' }, { v: 'logo', label: 'Logo' }, { v: 'text', label: 'Chữ' }, { v: 'photo', label: 'Ảnh' }, { v: 'anim', label: 'Hoạt ảnh' },
 ];
 const STICKER_SETS = COLOR_SETS;
@@ -65,6 +65,14 @@ export async function insertSpec(spec: Spec, at?: { x: number; y: number }) {
     } else if (spec.kind === 'photo') {
       toast('Đang tải ảnh…', 'info');
       const blob = await fetchPhoto(spec.photo);
+      if (/svg/i.test(blob.type) || /\.svg($|\?)/i.test(spec.photo.url)) {
+        // vector clipart (Wikimedia / Openverse SVGs): a crisp vector layer, never re-encoded to pixels
+        const svg = await blob.text();
+        const k = svgAspect(svg) || 1, w = k >= 1 ? 320 : Math.round(320 * k), h = k >= 1 ? Math.round(320 / k) : 320;
+        A.insertLayers([await vec(spec.photo.title || 'Minh hoạ', svg, Math.round(pt.x - w / 2), Math.round(pt.y - h / 2), w, h, null, 'sticker', { alt: `${spec.photo.title} · ${spec.photo.creator} · ${spec.photo.license}` })]);
+        if (/by/i.test(spec.photo.license)) toast(`Minh hoạ giấy phép ${spec.photo.license.toUpperCase()}: nên ghi nguồn "${spec.photo.creator}".`, 'info');
+        return;
+      }
       const a = await assets.add(blob, spec.photo.title || 'Ảnh', { src: { kind: 'stock', url: spec.photo.page, credit: `${spec.photo.title || 'Ảnh'} · ${spec.photo.creator || 'không rõ tác giả'} · ${spec.photo.license}` } });
       A.placeAsset(a.id, pt);
       if (/by/i.test(spec.photo.license)) toast(`Ảnh giấy phép ${spec.photo.license.toUpperCase()}: nên ghi nguồn "${spec.photo.creator}" ở footer.`, 'info');
@@ -81,6 +89,22 @@ async function fetchPhoto(ph: Photo): Promise<Blob> {
   for (const t of tries) { try { const r = await t(); if (r.ok) { const b = await r.blob(); if (b.type.startsWith('image/') && b.size > 2000) return b; } } catch { /* next */ } }
   throw new Error('nguồn ảnh không cho tải (thử ảnh khác)');
 }
+
+/** Illustrations, vectors and 3D renders from free libraries that allow use inside other apps: Pixabay (through the relay,
+ *  key kept there; searches Vietnamese too) and Openverse's illustration category (commercial-use licences). */
+async function searchIllustrations(q: string, page = 1): Promise<{ list: Photo[]; pixabay: boolean }> {
+  const relay = (get().settings.relayUrl || '').replace(/\/$/, '');
+  const px = (type: string) => (relay ? fetch(`${relay}/pixabay?q=${encodeURIComponent(q)}&type=${type}&page=${page}&lang=vi`, { headers: relayAuth() }).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null));
+  const ov = fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(enQuery(q))}&category=illustration,digitized_artwork&page_size=20&page=${page}&license=cc0,pdm,by&mature=false`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const [vec, ill, o] = await Promise.all([px('vector'), px('illustration'), ov]);
+  const fromPx = (j: { hits?: { id: number; w: number; h: number; thumb: string; preview: string; large: string; tags: string; user: string; page: string }[] } | null) => (j?.hits || []).map((x) => ({ id: `px${x.id}`, title: x.tags.split(',')[0] || 'Minh hoạ', url: x.large, thumb: x.preview || x.thumb, creator: x.user, license: 'Pixabay', page: x.page, w: x.w, h: x.h }));
+  const fromOv = ((o?.results || []) as { id: string; title?: string; url: string; thumbnail?: string; creator?: string; license: string; license_version?: string; foreign_landing_url?: string; width?: number; height?: number }[]).map((x) => ({ id: x.id, title: x.title || '', url: x.url, thumb: x.thumbnail || `https://api.openverse.org/v1/images/${x.id}/thumb/`, creator: x.creator || '', license: `${x.license} ${x.license_version || ''}`.trim(), page: x.foreign_landing_url || '', w: x.width || 0, h: x.height || 0 }));
+  // interleave the sources so one style does not swamp the grid
+  const a = fromPx(vec), b = fromPx(ill), c = fromOv; const list: Photo[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length, c.length); i++) for (const src of [a, b, c]) if (src[i]) list.push(src[i]);
+  return { list, pixabay: !!(vec || ill) };
+}
+const ILLUS_TOPICS = ['máy bay', 'hoa', 'cà phê', 'trẻ em', 'gia đình', 'Tết', 'Giáng sinh', 'sale', 'du lịch', 'đồ ăn', 'thể thao', 'trường học', 'động vật', 'công nghệ', 'văn phòng', 'nhà cửa', 'xe', 'cây', 'bánh', 'quà'];
 
 async function searchPhotos(q: string, page = 1): Promise<Photo[]> {
   const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=20&page=${page}&license_type=commercial,modification&mature=false`);
@@ -118,6 +142,8 @@ export function DesignPanel() {
   const [found, setFound] = useState<{ icons: string[]; stickers: string[]; d3: string[] }>({ icons: [], stickers: [], d3: [] });
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [photoQ, setPhotoQ] = useState('');
+  const [illus, setIllus] = useState<{ q: string; list: Photo[]; pixabay: boolean; page: number }>({ q: '', list: [], pixabay: true, page: 1 });
+  const runIllus = async (term: string, page = 1) => { const t = term.trim(); if (!t) return; try { const r = await searchIllustrations(t, page); setIllus((cur) => ({ q: t, list: page > 1 && cur.q === t ? [...cur.list, ...r.list] : r.list, pixabay: r.pixabay, page })); } catch { /* keep */ } };
   const [loading, setLoading] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [f3, setF3] = useState<Fluent3d | null>(null);
@@ -154,7 +180,9 @@ export function DesignPanel() {
       setLoading('Đang tìm…');
       try {
         const sets = cat === 'logo' ? ['logos', 'simple-icons'] : ICON_SETS;
-        const [icons, stickers] = await Promise.all([searchIcons(q, sets as readonly string[], 96).catch(() => []), cat === 'logo' ? Promise.resolve([] as string[]) : searchIcons(q, COLOR_SETS.map((x) => x.v), 96).catch(() => [])]);
+        const eq = cat === 'logo' ? q : enQuery(q);
+        if (cat === 'all' || cat === 'illus') void runIllus(q);
+        const [icons, stickers] = await Promise.all([searchIcons(eq, sets as readonly string[], 96).catch(() => []), cat === 'logo' ? Promise.resolve([] as string[]) : searchIcons(eq, COLOR_SETS.map((x) => x.v), 96).catch(() => [])]);
         const idx = f3 || (await loadFluent3d().catch(() => null));
         setFound({ icons: icons.filter((x) => !/-(thin|light)$/.test(x)), stickers: stickers.filter((x) => !/-(light|medium|dark|medium-light|medium-dark)$/.test(x)), d3: idx && cat !== 'logo' ? searchFluent3d(idx, q) : [] });
       } finally { setLoading(''); }
@@ -315,6 +343,23 @@ export function DesignPanel() {
             </>
           )}
           {(cat === 'all' || cat === 'text') && <>{head('Chữ', 'text')}<div class="el-grid text">{els('text', cat === 'all' ? 4 : undefined).map(tile)}</div></>}
+          {(cat === 'illus' || (cat === 'all' && q.trim() && illus.list.length > 0)) && (
+            <>
+              {cat === 'illus' && <div class="dp-cats">{ILLUS_TOPICS.map((t) => <button key={t} class={`chip ${illus.q === t ? 'on' : ''}`} onClick={() => { setQ(''); void runIllus(t); }}>{t}</button>)}</div>}
+              <Eyebrow action={cat === 'all' ? { label: 'Xem tất cả', onClick: () => setCat('illus') } : undefined}>Minh hoạ 2D/3D{illus.q ? ` · "${illus.q}"` : ''}</Eyebrow>
+              {cat === 'illus' && !illus.q && <div class="dim small">Gõ từ khoá ở ô tìm (tiếng Việt được) hoặc chọn một chủ đề: máy bay, hoa, Tết…</div>}
+              <div class="photo-grid illus">
+                {(cat === 'all' ? illus.list.slice(0, 12) : illus.list).map((ph) => (
+                  <button key={ph.id} class="ph-tile il" title={`${ph.title} · ${ph.creator} · ${ph.license}`} draggable onDragStart={drag({ kind: 'photo', photo: ph })} onClick={() => void put({ kind: 'photo', photo: ph }, ph.id)}>
+                    <img src={ph.thumb} alt="" loading="lazy" referrerpolicy="no-referrer" onError={(e) => { const i = e.currentTarget; if (i.src !== ph.url) i.src = ph.url; else (i.closest('.ph-tile') as HTMLElement | null)?.remove(); }} />
+                    <span class="lic">{ph.license === 'Pixabay' ? 'Pixabay' : ph.license.toUpperCase()}</span>
+                  </button>
+                ))}
+              </div>
+              {cat === 'illus' && illus.q && illus.list.length > 0 && <Btn sm kind="ghost" onClick={() => void runIllus(illus.q, illus.page + 1)}>Xem thêm</Btn>}
+              {cat === 'illus' && <div class="dim small">Minh hoạ, vector và ảnh 3D từ Pixabay (giấy phép Pixabay, dùng thương mại) và Openverse (minh hoạ giấy phép mở).{!illus.pixabay ? ' Pixabay chưa bật trên relay: thêm PIXABAY_API_KEY (miễn phí) để có thêm hàng triệu minh hoạ.' : ''}</div>}
+            </>
+          )}
           {cat === 'photo' && (
             <>
               <div class="dp-cats">{PHOTO_TOPICS.map((t) => <button key={t.q} class={`chip ${photoQ === t.q ? 'on' : ''}`} onClick={() => { setQ(''); void runPhotos(t.q); }}>{t.label}</button>)}</div>

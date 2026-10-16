@@ -38,6 +38,9 @@ export function fluent3dUrl(idx: Fluent3d, id: string): string | null {
 const VI_EN: Record<string, string> = {
   'tim': 'heart', 'trái tim': 'heart', 'quà': 'gift', 'lửa': 'fire', 'sao': 'star', 'tiền': 'money', 'cà phê': 'coffee', 'trà': 'tea', 'bánh': 'cake', 'hoa': 'flower', 'cây': 'plant', 'mèo': 'cat', 'chó': 'dog', 'xe': 'car', 'nhà': 'house', 'điện thoại': 'phone', 'máy tính': 'laptop', 'sách': 'book', 'âm nhạc': 'music', 'nhạc': 'music', 'game': 'game', 'bóng': 'ball', 'tết': 'red envelope', 'lì xì': 'red envelope', 'giáng sinh': 'christmas', 'đồng hồ': 'clock', 'lịch': 'calendar', 'giỏ hàng': 'cart', 'túi': 'bag', 'áo': 'shirt', 'giày': 'shoe', 'son': 'lipstick', 'mặt trời': 'sun', 'trăng': 'moon', 'mưa': 'rain', 'cầu vồng': 'rainbow', 'tên lửa': 'rocket', 'cúp': 'trophy', 'vương miện': 'crown', 'kim cương': 'gem', 'bóng đèn': 'light bulb', 'thư': 'envelope', 'máy ảnh': 'camera', 'pháo hoa': 'fireworks', 'bong bóng': 'balloon', 'trái cây': 'fruit', 'dâu': 'strawberry', 'chanh': 'lemon', 'kem': 'ice cream', 'pizza': 'pizza', 'bia': 'beer', 'rượu': 'wine', 'gà': 'chicken', 'cá': 'fish', 'bướm': 'butterfly', 'ong': 'bee', 'máy bay': 'airplane', 'biển': 'beach', 'núi': 'mountain', 'khiên': 'shield', 'khoá': 'lock', 'chìa khoá': 'key', 'loa': 'megaphone', 'chuông': 'bell', 'đèn': 'light', 'sách vở': 'books', 'tốt nghiệp': 'graduation', 'thể thao': 'sport', 'gym': 'muscle', 'robot': 'robot', 'ma': 'ghost', 'kỳ lân': 'unicorn',
 };
+/** English for a Vietnamese search word when the dictionary knows it (Iconify and Openverse search in English). */
+export const enQuery = (q: string) => VI_EN[q.trim().toLowerCase()] || q.trim();
+
 export function searchFluent3d(idx: Fluent3d, q: string): string[] {
   const t = q.trim().toLowerCase(); if (!t) return [];
   const words = [t, VI_EN[t]].filter(Boolean) as string[];

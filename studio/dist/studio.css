@@ -7798,3 +7798,7 @@ select.in {
   background: color-mix(in srgb, var(--neon) 14%, transparent);
   color: var(--neon);
 }
+.photo-grid.illus .ph-tile.il img {
+  object-fit: contain;
+  background: #fff;
+}

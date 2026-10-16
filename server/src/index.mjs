@@ -35,6 +35,8 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CF_AI_TOKEN = process.env.CF_AI_TOKEN || '';
+// Pixabay API (free key): millions of vectors and illustrations usable commercially; searched through the relay so the key stays here.
+const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY || '';
 const CF_ACCOUNT = CF_AI_TOKEN ? cfAccountId() : '';
 const CF_IMAGE_MODEL = process.env.CF_IMAGE_MODEL || '@cf/black-forest-labs/flux-2-klein-4b';
 const IMAGE_PROVIDER = (process.env.IMAGE_PROVIDER || (GEMINI_API_KEY ? 'google' : OPENAI_API_KEY ? 'openai' : '')).toLowerCase();
@@ -117,6 +119,7 @@ const server = createServer(async (req, res) => {
         klaviyoRevision: KLAVIYO_REVISION,
         ai: !!anthropic,
         imageAi: IMAGE_AI || null,
+        pixabay: !!PIXABAY_API_KEY,
         imageModel: [CF_ACCOUNT ? `${CF_IMAGE_MODEL.split('/').pop()}${cfResting > Date.now() ? ' (hết lượt free hôm nay)' : ''}` : '', IMAGE_PROVIDER === 'google' ? (googleModel ? googleModel.name.replace('models/', '') : googleModel === null ? 'none' : 'auto') : IMAGE_PROVIDER === 'openai' ? (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1') : ''].filter(Boolean).join(' → ') || null,
         auth: true,
         db: true,
@@ -144,6 +147,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/site' && req.method === 'POST') { if (!gate(req, res)) return; return await siteRoute(await body(req), res); }
     if (url.pathname === '/drive' && req.method === 'POST') { if (!gate(req, res)) return; try { const p = await body(req); const files = await listDrive(String(p?.url || ''), async (u) => (await safeGet(u, { accept: 'text/html', limit: 3 * 1024 * 1024, timeout: 15_000, truncate: true })).buf.toString('utf8')); return json(res, 200, { files }); } catch (e) { return json(res, e.status || 502, { error: e.message }); } }
     if (url.pathname === '/csv' && req.method === 'POST') { if (!gate(req, res)) return; return await csvRoute(await body(req), res); }
+    if (url.pathname === '/pixabay' && req.method === 'GET') { if (!gate(req, res)) return; return await pixabay(url.searchParams, res); }
     if (url.pathname === '/image' && req.method === 'GET') { if (!gate(req, res)) return; return await imageRoute(url.searchParams.get('url') || '', res); }
     if (url.pathname === '/proxy' && req.method === 'POST') { if (!RELAY_TOKEN && !AUTH.me(bearer(req)) && throttled(`proxy:${ipOf(req)}`, 400, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều request qua relay. Đăng nhập tài khoản relay để không bị giới hạn.' }); return await proxy(await body(req), res); }
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
@@ -854,6 +858,24 @@ async function csvRoute(p, res) {
     return json(res, 200, { text: buf.toString('utf8').slice(0, 5 * 1024 * 1024) });
   } catch (e) { return json(res, e.status || 502, { error: e.message }); }
 }
+/** Pixabay search (vectors / illustrations / photos), cached 24 h as Pixabay asks. Returns { hits:[{ id, w, h, thumb, preview, large, tags, user, page }] }. */
+const pixabayCache = new Map();
+async function pixabay(sp, res) {
+  if (!PIXABAY_API_KEY) return json(res, 503, { error: 'Relay chưa có PIXABAY_API_KEY (lấy miễn phí ở pixabay.com/api/docs, dán vào Render → Environment).', code: 'no_pixabay' });
+  const q = String(sp.get('q') || '').slice(0, 100), type = ['vector', 'illustration', 'photo', 'all'].includes(sp.get('type')) ? sp.get('type') : 'vector';
+  const page = Math.max(1, Math.min(20, Number(sp.get('page')) || 1)), lang = /^[a-z]{2}$/.test(sp.get('lang') || '') ? sp.get('lang') : 'vi';
+  const key = `${q}|${type}|${page}|${lang}`;
+  const hit = pixabayCache.get(key);
+  if (hit && hit.at > Date.now() - 24 * 3600e3) return json(res, 200, hit.body);
+  const r = await fetch(`https://pixabay.com/api/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(q)}&image_type=${type}&lang=${lang}&safesearch=true&per_page=40&page=${page}`, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  if (!r || !r.ok) return json(res, 502, { error: `Pixabay HTTP ${r ? r.status : 'lỗi mạng'}` });
+  const j = await r.json().catch(() => ({}));
+  const body = { total: j.totalHits || 0, hits: (j.hits || []).map((x) => ({ id: x.id, w: x.imageWidth, h: x.imageHeight, thumb: x.previewURL, preview: x.webformatURL, large: x.largeImageURL, tags: x.tags, user: x.user, page: x.pageURL })) };
+  if (pixabayCache.size > 500) pixabayCache.clear();
+  pixabayCache.set(key, { at: Date.now(), body });
+  return json(res, 200, body);
+}
+
 async function imageRoute(target, res) {
   try { const { type, buf } = await fetchImage(target); res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Cache-Control', 'public, max-age=3600'); return res.end(buf); }
   catch (e) { return json(res, e.status || 502, { error: e.message }); }
