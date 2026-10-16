@@ -266,29 +266,41 @@ export async function designEmail(inp: GenInput, base: Brand, cb: { onPlan: (v: 
   ensureFonts(dirs.flatMap((d) => [d.headingFont, d.bodyFont]));
   cb.onPlan(dirs.map((dir) => ({ dir, html: '', stage: 'queued' })));
   cb.onStage('Đang vẽ 3 phương án cùng lúc…');
-  await Promise.all(dirs.map(async (dir, i) => {
+  lastCtx = { ctx, base };
+  await Promise.all(dirs.map((dir, i) => drawOne(ctx, dir, i, base, cb, opts)));
+}
+
+/** The context of the last run, so one failed direction can be drawn again without redoing the others. */
+let lastCtx: { ctx: Ctx; base: Brand } | null = null;
+
+/** Draw (again) one direction of the last run: draw, convert, creative-director review. */
+export async function redrawDirection(dir: Direction, i: number, cb: { onUpdate: (i: number, patch: Partial<DesignVariant>) => void }, opts: { review: boolean; signal?: AbortSignal }): Promise<void> {
+  if (!lastCtx) throw new Error('Phiên vẽ đã hết, bấm Tạo lại.');
+  await drawOne(lastCtx.ctx, dir, i, lastCtx.base, cb, opts);
+}
+
+async function drawOne(ctx: Ctx, dir: Direction, i: number, base: Brand, cb: { onUpdate: (i: number, patch: Partial<DesignVariant>) => void }, opts: { review: boolean; signal?: AbortSignal }): Promise<void> {
+  try {
+    cb.onUpdate(i, { stage: 'drawing', error: undefined, html: '' });
+    let last = 0;
+    let html = await drawDirection(ctx, dir, (h) => { const now = Date.now(); if (now - last > 900) { last = now; cb.onUpdate(i, { html: h }); } }, opts.signal);
+    cb.onUpdate(i, { html, stage: 'converting' });
+    let conv = await convertDesign(html, dir, base, ctx.validIds);
+    await readyDoc(conv.doc);
+    cb.onUpdate(i, { doc: conv.doc, mobile: conv.mobile, brand: conv.brand, warnings: conv.warnings, thumb: thumbOfDoc(conv.doc, conv.brand), stage: opts.review ? 'reviewing' : 'ready' });
+    if (!opts.review) return;
     try {
-      cb.onUpdate(i, { stage: 'drawing' });
-      let last = 0;
-      let html = await drawDirection(ctx, dir, (h) => { const now = Date.now(); if (now - last > 900) { last = now; cb.onUpdate(i, { html: h }); } }, opts.signal);
-      cb.onUpdate(i, { html, stage: 'converting' });
-      let conv = await convertDesign(html, dir, base, ctx.validIds);
-      await readyDoc(conv.doc);
-      cb.onUpdate(i, { doc: conv.doc, mobile: conv.mobile, brand: conv.brand, warnings: conv.warnings, thumb: thumbOfDoc(conv.doc, conv.brand), stage: opts.review ? 'reviewing' : 'ready' });
-      if (!opts.review) return;
-      try {
-        const better = await reviewDirection(ctx, dir, html, conv.doc, conv.brand, conv.warnings, (h) => { const now = Date.now(); if (now - last > 900) { last = now; cb.onUpdate(i, { html: h }); } }, opts.signal);
-        if (better !== html) {
-          const c2 = await convertDesign(better, dir, base, ctx.validIds);
-          await readyDoc(c2.doc);
-          html = better; conv = c2;
-        }
-      } catch (e) { if (opts.signal?.aborted) throw e; /* keep the first version */ }
-      cb.onUpdate(i, { html, doc: conv.doc, mobile: conv.mobile, brand: conv.brand, warnings: conv.warnings, thumb: thumbOfDoc(conv.doc, conv.brand), stage: 'ready', reviewed: true });
-    } catch (e) {
-      cb.onUpdate(i, { stage: 'error', error: (e as Error).message });
-    }
-  }));
+      const better = await reviewDirection(ctx, dir, html, conv.doc, conv.brand, conv.warnings, (h) => { const now = Date.now(); if (now - last > 900) { last = now; cb.onUpdate(i, { html: h }); } }, opts.signal);
+      if (better !== html) {
+        const c2 = await convertDesign(better, dir, base, ctx.validIds);
+        await readyDoc(c2.doc);
+        html = better; conv = c2;
+      }
+    } catch (e) { if (opts.signal?.aborted) throw e; /* keep the first version */ }
+    cb.onUpdate(i, { html, doc: conv.doc, mobile: conv.mobile, brand: conv.brand, warnings: conv.warnings, thumb: thumbOfDoc(conv.doc, conv.brand), stage: 'ready', reviewed: true });
+  } catch (e) {
+    cb.onUpdate(i, { stage: 'error', error: opts.signal?.aborted ? 'Đã dừng.' : (e as Error).message });
+  }
 }
 
 /** "AI tự chỉnh" on an untouched free-form design: the creative director reviews the current render and redraws it. */

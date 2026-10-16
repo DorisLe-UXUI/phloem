@@ -9,7 +9,7 @@ import * as A from '../pipeline/actions';
 import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type GenInput, type Variant } from '../ai/generate';
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
-import { designEmail, docHash, type DesignVariant } from '../ai/design';
+import { designEmail, docHash, redrawDirection, type DesignVariant } from '../ai/design';
 import { capitalizeSentences, prepareHtml } from '../ai/htmlToDoc';
 import * as ops from '../model/ops';
 import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, linksFromSite, type SiteProduct, type SiteProfile } from '../ai/site';
@@ -27,7 +27,10 @@ const TONES = [{ v: 'thân thiện, gần gũi', label: 'Thân thiện' }, { v: 
 
 const LS = 'phloem.ai.form';
 
-export function AiModal({ onClose }: { onClose: () => void }) {
+/** The last free-form designs survive closing the dialog (reopen "Dựng bằng AI" to pick one); cleared once one is used. */
+let keptDesigns: DesignVariant[] = [];
+
+export function AiModal({ onClose: close0 }: { onClose: () => void }) {
   const s = useStore();
   const [form, setForm] = useState<GenInput>(() => {
     const base: GenInput = { goal: 'promo', brandName: '', brief: '', content: '', tone: TONES[0].v, imageIds: [], palette: 'auto', website: '', site: null, webBrand: null, logoAssetId: null, logoLightAssetId: null, language: 'auto', products: [] };
@@ -38,10 +41,27 @@ export function AiModal({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'design' | 'blocks'>(() => { try { return localStorage.getItem('phloem.ai.mode') === 'blocks' ? 'blocks' : 'design'; } catch { return 'design'; } });
   const pickMode = (m: 'design' | 'blocks') => { setMode(m); try { localStorage.setItem('phloem.ai.mode', m); } catch { /* ignore */ } };
   const [review, setReview] = useState(true);
-  const [designs, setDesigns] = useState<DesignVariant[]>([]);
+  const [designs, setDesigns0] = useState<DesignVariant[]>(() => keptDesigns);
+  const setDesigns = (v: DesignVariant[]) => { keptDesigns = v; setDesigns0(v); };
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
   const [busy, setBusy] = useState(false);
+  /** Closing while the AI draws would throw the work away: ask first (a stray click outside the dialog used to do it). */
+  const onClose = async () => {
+    const drawing = busy || designs.some((d) => ['queued', 'drawing', 'converting', 'reviewing'].includes(d.stage));
+    if (drawing && !(await ask('AI đang vẽ email. Đóng bây giờ sẽ dừng các phương án chưa xong (phương án đã xong vẫn được giữ, mở lại Dựng bằng AI để dùng). Đóng?', 'Đóng', true))) return;
+    abort.current?.abort(); close0();
+  };
+  const [redrawing, setRedrawing] = useState<number | null>(null);
+  /** Draw again only the direction that failed, keeping the other two. */
+  const redraw = async (i: number) => {
+    const v = designs[i]; if (!v) return;
+    const ac = new AbortController(); abort.current = ac; setRedrawing(i);
+    let list = designs;
+    try { await redrawDirection(v.dir, i, { onUpdate: (k, patch) => { list = list.map((x, j) => (j === k ? { ...x, ...patch } : x)); setDesigns(list); } }, { review, signal: ac.signal }); }
+    catch (e) { toast((e as Error).message, 'err'); }
+    finally { setRedrawing(null); }
+  };
   const [variants, setVariants] = useState<Variant[]>([]);
   const [stage, setStage] = useState('');
   // Full-size preview of one variant before choosing it.
@@ -177,7 +197,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       tagForProject(s.project.id);
       toast(`Đã áp dụng "${v.name}". Chỉnh tiếp trên canvas.`, 'ok');
     } else {
-      onClose();
+      close0();
       await A.newProject('blank', brand, v.fields.campaignName || v.name);
       A.commit(doc, false);
       A.patchProject({ fields: v.fields });
@@ -206,9 +226,11 @@ export function AiModal({ onClose }: { onClose: () => void }) {
       A.patchProject({ brand, fields: v.dir.fields, mobile: v.mobile ?? null });
       set({ selection: [], modal: null });
       await land(s.project.id);
+      keptDesigns = [];
       toast(`Đã áp dụng "${v.dir.name}"${v.mobile ? ' (kèm bản mobile 375px)' : ''}. Bấm vào chữ, ảnh, icon để chỉnh.`, 'ok');
     } else {
-      onClose();
+      keptDesigns = [];
+      close0();
       await A.newProject('blank', brand, v.dir.fields.campaignName || v.dir.name);
       A.commit(v.doc, false);
       A.patchProject({ fields: v.dir.fields, mobile: v.mobile ?? null });
@@ -332,7 +354,7 @@ export function AiModal({ onClose }: { onClose: () => void }) {
                   <div class="row"><div class="nm grow">{v.dir.name}</div><span class="chip">{v.dir.aesthetic}</span></div>
                   <div class="row" style={{ gap: 4 }}>{Object.values(v.dir.palette).slice(0, 6).map((c, k) => <i key={k} title={c} style={{ width: 14, height: 14, borderRadius: '50%', background: c, border: '1px solid rgba(255,255,255,.18)', display: 'inline-block' }} />)}<span class="ds mono" style={{ marginLeft: 6 }}>{v.dir.headingFont} + {v.dir.bodyFont}</span></div>
                   <div class="ds">{v.dir.why}</div>
-                  {v.error && <div class="check err"><span class="lv">LỖI</span><span class="m">{v.error}</span></div>}
+                  {v.error && <div class="check err"><span class="lv">LỖI</span><span class="m">{v.error}</span><Btn sm kind="primary" icon="sparkle" disabled={redrawing !== null || busy} onClick={() => void redraw(i)}>{redrawing === i ? 'Đang vẽ lại…' : 'Vẽ lại phương án này'}</Btn></div>}
                   {v.warnings && v.warnings.length > 0 && <div class="ds muted">{v.warnings.slice(0, 2).join(' · ')}</div>}
                   <div class="row" style={{ marginTop: 8 }}><Btn sm icon="eye" disabled={!v.doc} onClick={() => { setPvMode('desktop'); setPreview(i); }}>Xem thử</Btn><Btn sm kind="primary" block disabled={!v.doc} onClick={() => void useDesign(v)}>{!v.doc ? 'Đang vẽ…' : s.project ? 'Dùng, thay nội dung hiện tại' : 'Tạo project từ thiết kế này'}</Btn></div>
                 </div>

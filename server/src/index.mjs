@@ -248,7 +248,9 @@ async function aiStream(p, req, res) {
   const send = (o) => { try { res.write(`data: ${JSON.stringify(o)}\n\n`); } catch { /* client gone */ } };
   const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* gone */ } }, 15_000);
   let stream = null;
-  req.on('close', () => { try { stream?.abort(); } catch { /* done */ } });
+  // the browser left (tab closed, dialog stopped): stop paying for the rest of the answer. res 'close' fires on disconnect;
+  // req 'close' fires as soon as the request body has been read, so it never caught a disconnect.
+  res.on('close', () => { if (!res.writableFinished) { try { stream?.abort(); } catch { /* done */ } } });
   try {
     stream = anthropic.beta.messages.stream({
       model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),

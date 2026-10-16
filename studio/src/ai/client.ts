@@ -155,37 +155,17 @@ export async function streamClaude(req: AiRequest, onText: (text: string) => voi
     }
   }
   if (t === 'relay') {
-    await wakeRelay(s.relayUrl, relayAuth());
-    const r = await fetch(s.relayUrl.replace(/\/$/, '') + '/ai/stream', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, signal,
-      body: JSON.stringify({ model, max_tokens: maxTokens, effort: req.effort ?? 'medium', system: req.system, messages: messagesOf(req) }),
-    });
-    if (r.status === 404) { const txt = await askClaude(req); onText(txt); return txt; } // relay from before streaming
-    if (!r.ok || !r.body) {
-      const j = await r.json().catch(() => ({} as Record<string, string>));
-      if (r.status === 401) throw expired();
-      if (r.status === 403 && j.code === 'ai_locked') { set({ modal: 'aicode' }); throw new Error(j.error || 'AI cần mã truy cập.'); }
-      throw new Error(j.error || `Relay /ai/stream trả HTTP ${r.status}`);
-    }
-    const reader = r.body.getReader(); const dec = new TextDecoder();
-    let buf = '', acc = '', done = false;
-    while (!done) {
-      const { value, done: end } = await reader.read();
-      if (end) break;
-      buf += dec.decode(value, { stream: true });
-      let i: number;
-      while ((i = buf.indexOf('\n\n')) >= 0) {
-        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-        const line = chunk.split('\n').find((l) => l.startsWith('data: '));
-        if (!line) continue; // keep-alive comment
-        const ev = JSON.parse(line.slice(6)) as { t?: string; done?: boolean; error?: string; stop?: string };
-        if (ev.error) throw new Error(ev.error);
-        if (ev.t) { acc += ev.t; onText(acc); }
-        if (ev.done) done = true;
+    // A long design stream can be cut by an overloaded model, a rate limit or a dropped connection: try again (up to 2 more
+    // times) instead of failing the whole design, and never hand back half a document as if it were finished.
+    for (let attempt = 0; ; attempt++) {
+      try { return await relayStream(s.relayUrl, model, maxTokens, req, onText, signal); }
+      catch (e) {
+        const msg = (e as Error).message || '';
+        if (signal?.aborted || attempt >= 2 || !/overload|529|429|503|502|500|quá tải|giới hạn|rate|ngắt kết nối|chưa xong|network|failed to fetch|load failed|terminated/i.test(msg)) throw e;
+        onText('');
+        await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
       }
     }
-    if (!done && !acc) throw new Error('Relay ngắt kết nối giữa chừng. Thử lại.');
-    return acc;
   }
   if (t === 'sample') {
     const claude = (window as unknown as { claude: { use: (n: string) => Promise<any> } }).claude;
@@ -240,4 +220,39 @@ export function extractJson<T = unknown>(text: string): T {
   const open = candidate[start], close = open === '{' ? '}' : ']';
   const end = candidate.lastIndexOf(close);
   return JSON.parse(candidate.slice(start, end + 1)) as T;
+}
+
+/** One streaming call through the relay (SSE: {t} deltas, {done}, {error}). */
+async function relayStream(relayUrl: string, model: string, maxTokens: number, req: AiRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<string> {
+  await wakeRelay(relayUrl, relayAuth());
+  const r = await fetch(relayUrl.replace(/\/$/, '') + '/ai/stream', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, signal,
+    body: JSON.stringify({ model, max_tokens: maxTokens, effort: req.effort ?? 'medium', system: req.system, messages: messagesOf(req) }),
+  });
+  if (r.status === 404) { const txt = await askClaude(req); onText(txt); return txt; } // relay from before streaming
+  if (!r.ok || !r.body) {
+    const j = await r.json().catch(() => ({} as Record<string, string>));
+    if (r.status === 401) throw expired();
+    if (r.status === 403 && j.code === 'ai_locked') { set({ modal: 'aicode' }); throw new Error(j.error || 'AI cần mã truy cập.'); }
+    throw new Error(j.error || `Relay /ai/stream trả HTTP ${r.status}`);
+  }
+  const reader = r.body.getReader(); const dec = new TextDecoder();
+  let buf = '', acc = '', done = false;
+  while (!done) {
+    const { value, done: end } = await reader.read();
+    if (end) break;
+    buf += dec.decode(value, { stream: true });
+    let i: number;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const line = chunk.split('\n').find((l) => l.startsWith('data: '));
+      if (!line) continue; // keep-alive comment
+      const ev = JSON.parse(line.slice(6)) as { t?: string; done?: boolean; error?: string; stop?: string };
+      if (ev.error) throw new Error(ev.error);
+      if (ev.t) { acc += ev.t; onText(acc); }
+      if (ev.done) done = true;
+    }
+  }
+  if (!done) throw new Error(acc ? 'Relay ngắt kết nối giữa chừng (stream chưa xong).' : 'Relay ngắt kết nối giữa chừng. Thử lại.');
+  return acc;
 }
