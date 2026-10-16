@@ -190,7 +190,7 @@ function NodeProps({ n }: { n: Node }) {
       <Effects n={n} />
       <Eyebrow>Chuyển động</Eyebrow>
       <div class="row">
-        <div class="grow"><Select value={(n.anim?.kind || 'none') as AnimKind | 'none'} options={[{ v: 'none', label: 'Không' }, { v: 'fade', label: 'Hiện dần' }, { v: 'up', label: 'Trượt lên' }, { v: 'down', label: 'Trượt xuống' }, { v: 'left', label: 'Trượt từ phải' }, { v: 'right', label: 'Trượt từ trái' }, { v: 'pop', label: 'Nảy ra' }, { v: 'wipe', label: 'Mở dần (ảnh)' }, ...(n.type === 'text' ? [{ v: 'marquee' as const, label: 'Chữ chạy (lặp)' }, { v: 'type' as const, label: 'Gõ từng chữ' }] : []), { v: 'pulse', label: 'Nhịp đập (lặp)' }, { v: 'float', label: 'Lơ lửng (lặp)' }, { v: 'spin', label: 'Xoay tròn (lặp)' }, { v: 'shake', label: 'Lắc (lặp)' }, { v: 'blink', label: 'Nhấp nháy (lặp)' }]} onChange={(v) => up({ anim: v === 'none' ? null : LOOP_KINDS.has(v) && v !== 'marquee' ? { kind: v, delay: 0, dur: v === 'float' || v === 'spin' ? 2.4 : 1.2 } : { kind: v, delay: n.anim?.delay ?? 0, dur: n.anim?.dur ?? 0.8 } })} /></div>
+        <div class="grow"><Select value={(n.anim?.kind || 'none') as AnimKind | 'none'} options={[{ v: 'none', label: 'Không' }, { v: 'fade', label: 'Hiện dần' }, { v: 'up', label: 'Trượt lên' }, { v: 'down', label: 'Trượt xuống' }, { v: 'left', label: 'Trượt từ phải' }, { v: 'right', label: 'Trượt từ trái' }, { v: 'pop', label: 'Nảy ra' }, { v: 'wipe', label: 'Mở dần (ảnh)' }, ...(n.type === 'text' ? [{ v: 'marquee' as const, label: 'Chữ chạy (lặp)' }, { v: 'type' as const, label: 'Gõ từng chữ' }] : []), { v: 'pulse', label: 'Nhịp đập (lặp)' }, { v: 'float', label: 'Lơ lửng (lặp)' }, { v: 'spin', label: 'Xoay tròn (lặp)' }, { v: 'shake', label: 'Lắc (lặp)' }, { v: 'blink', label: 'Nhấp nháy (lặp)' }]} onChange={(v) => { if (v !== 'none') A.setMotion(true); up({ anim: v === 'none' ? null : LOOP_KINDS.has(v) && v !== 'marquee' ? { kind: v, delay: 0, dur: v === 'float' || v === 'spin' ? 2.4 : 1.2 } : { kind: v, delay: n.anim?.delay ?? 0, dur: n.anim?.dur ?? 0.8 } }); }} /></div>
         {n.anim && !LOOP_KINDS.has(n.anim.kind) && <div style={{ width: 86 }}><Num label="Trễ" value={n.anim.delay ?? 0} min={0} max={6} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, delay: v } })} /></div>}
         {n.anim && n.anim.kind !== 'marquee' && <div style={{ width: 86 }}><Num label={LOOP_KINDS.has(n.anim.kind) ? 'Chu kỳ' : 'Dài'} value={n.anim.dur ?? 0.8} min={0.1} max={4} step={0.1} suffix="s" onChange={(v) => up({ anim: { ...n.anim!, dur: v } })} /></div>}
       </div>
@@ -420,6 +420,7 @@ function EmailTab() {
             <Btn sm kind="ghost" icon="bolt" onClick={() => setChanges(A.make3D())} title="Chữ đùn khối, sản phẩm nghiêng + bóng nổi, vầng sáng, phụ kiện tách nền">3D</Btn>
             <Btn sm kind="ghost" onClick={() => setChanges(A.optimize())} title="Chiều rộng 600, làm tròn toạ độ, khớp chiều cao">Tối ưu</Btn>
           </div>
+          {A.docHasAnim() && <MotionSwitch />}
           <div class="score"><Ring score={a.score} /><div class="grow small muted">{a.score >= 90 ? 'Sẵn sàng gửi. Luật cố định, không AI: cùng thiết kế luôn cùng kết quả.' : a.score >= 70 ? 'Ổn. Vài điểm nên chỉnh trước khi gửi.' : 'Nên sửa các mục “SỬA” trước.'}</div></div>
           {changes && <div class="check ok"><span class="lv">ĐÃ SỬA</span><span class="m">{changes.length ? changes.join(' · ') : 'Artboard đã chuẩn, không cần đổi gì.'}</span></div>}
           <div class="col" style={{ gap: 4 }}>{a.suggestions.map((g) => <SuggestionRow key={g.id} g={g} />)}</div>
@@ -466,6 +467,7 @@ function ExportTab() {
   const art = isArtifact();
   return (
     <div class="props">
+      {A.docHasAnim() && <MotionSwitch />}
       {art && <div class="check info"><span class="lv">ONLINE</span><span class="m">Bản chạy trên claude.ai không gọi được Mailchimp/Klaviyo (trình duyệt khoá mạng ra ngoài). Ở đây dùng <b>Xem trước</b> và <b>Tải .zip</b>; để tạo draft, chạy Studio local hoặc deploy kèm relay (xem README).</span></div>}
       <Eyebrow action={{ label: 'Quản lý', onClick: () => set({ modal: 'clients' }) }}>Client</Eyebrow>
       <select class="in" value={prof?.id || ''} onChange={(e) => set({ settings: { ...s.settings, activeProfileId: (e.target as HTMLSelectElement).value || null } })}>
@@ -519,6 +521,19 @@ function BlockBg({ g }: { g: GroupNode }) {
   );
 }
 
+
+/** Motion in the sent email: off = still 2D pictures, sharp at 2x (default for AI designs); on = moving parts as GIF. */
+function MotionSwitch() {
+  useStore();
+  const on = A.motionOn();
+  return (
+    <div class={`check ${on ? 'ok' : ''}`} style={{ alignItems: 'center' }}>
+      <span class="lv">{on ? 'ĐỘNG' : '2D'}</span>
+      <span class="m grow">{on ? 'Email gửi kèm chuyển động: phần có hiệu ứng thành GIF (256 màu, nhẹ hơn ảnh tĩnh về độ nét).' : 'Email gửi ảnh tĩnh 2D, sắc nét (2x). Hiệu ứng chỉ để xem trên canvas (▶ Phát).'}</span>
+      <Toggle checked={on} onChange={(v) => A.setMotion(v)} label="" />
+    </div>
+  );
+}
 
 /** Google Analytics: UTM tags on every link, so GA4 shows visits and orders under "phloem / email · <campaign>". */
 function UtmBox() {

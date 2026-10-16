@@ -22,6 +22,7 @@ import { get, history, set, toast, type Scrap, type State, type Variant } from '
 import { polishDesign } from './polish';
 import { redesignDoc } from '../ai/redesign';
 import { aiTransport } from '../ai/client';
+import { motionOn as motionOf } from './motion';
 import { capText, endsSentence } from '../ai/htmlToDoc';
 import { ask } from '../ui/confirm';
 import { downloadBytes } from '../../../src/ui/clipboard';
@@ -283,6 +284,7 @@ export function animateSelection(kind: Anim['kind'] | 'none'): number {
     const loop = LOOP_KINDS.has(kind);
     return { ...x, anim: { kind, delay: loop ? 0 : x.anim?.delay ?? 0, dur: loop ? (kind === 'float' || kind === 'spin' ? 2.4 : 1.2) : x.anim?.dur ?? 0.8 } };
   });
+  if (n && kind !== 'none') patchProject({ motion: true }); // asked for motion: the email sends it
   return n;
 }
 
@@ -511,7 +513,7 @@ function addUnsubscribe(d: Doc, b: Brand, p: Project, changes: string[]): Doc | 
 /** Checker score for a doc as it would be exported. */
 function scoreOf(d: Doc, b: Brand, fields: Project['fields'], hasMobile: boolean): { score: number; suggestions: Suggestion[] } {
   const root = docToNNode(d, b);
-  const plan = planSlices(root, { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: ops.animBlocks(d.nodes) });
+  const plan = planSlices(root, { maxSliceHeight: get().settings.maxSliceHeight, mergeRows: get().settings.mergeRows, keep: motionOn() ? ops.animBlocks(d.nodes) : [] });
   const sg = suggest({ root, plan, fields: { ...fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile });
   return { score: sg.score, suggestions: sg.suggestions };
 }
@@ -752,7 +754,7 @@ export function animateDoc(): string[] {
     reveal(g.children, 0.2 + revealed * 0.15); revealed++;
   }
   if (revealed) changes.push(`${revealed} block còn lại hiện ra từ từ${pics ? ` (${pics} ảnh mở dần)` : ''}`);
-  commit(d);
+  commit(d); patchProject({ motion: true }); // "Làm động" = the email sends with motion
   toast(changes.length ? `Đã làm động: ${changes.join(' · ')}. Bấm ▶ Phát để xem; khi xuất, mỗi block thành GIF.` : 'Không có gì để làm động.', 'ok');
   return changes;
 }
@@ -764,10 +766,13 @@ export function clearAnimations(): string[] {
   let n = 0;
   const d = ops.mapNodes(doc(), (x) => { if (x.anim) { n++; return { ...x, anim: null }; } return x; });
   if (!n) return [];
-  commit(d); set({ playing: false });
+  commit(d); set({ playing: false }); patchProject({ motion: false });
   return [`Bỏ hoạt ảnh của ${n} layer: email xuất thành ảnh tĩnh`];
 }
 export function docHasAnim(): boolean { return ops.hasAnimIn(doc().nodes); }
+/** Does this email go out with motion (GIF slices)? See pipeline/motion.ts. */
+export function motionOn(p: Project | null = get().project): boolean { return motionOf(p); }
+export function setMotion(on: boolean) { patchProject({ motion: on }); }
 
 export function optimize(): string[] {
   const d = doc();
@@ -844,14 +849,15 @@ const A_fixText = (n: Node): Node => fixTextHeight(n);
 
 // ---------- analysis (shared engine) ----------
 export interface Analysis { root: NNode; plan: SlicePlan; checks: Check[]; suggestions: Suggestion[]; score: number }
-let cache: { doc: Doc; brand: Brand; fields: string; mobile: boolean; a: Analysis } | null = null;
+let cache: { doc: Doc; brand: Brand; fields: string; mobile: boolean; motion: boolean; a: Analysis } | null = null;
 export function analyze(): Analysis | null {
   const s = get();
   if (!s.project) return null;
   const d = doc(), b = s.project.brand, f = JSON.stringify(s.project.fields), hasMobile = !!s.project.mobile;
-  if (cache && cache.doc === d && cache.brand === b && cache.fields === f && cache.mobile === hasMobile) return cache.a;
+  const mo = motionOn(s.project);
+  if (cache && cache.doc === d && cache.brand === b && cache.fields === f && cache.mobile === hasMobile && cache.motion === mo) return cache.a;
   const root = docToNNode(d, b);
-  const plan = planSlices(root, { maxSliceHeight: s.settings.maxSliceHeight, mergeRows: s.settings.mergeRows, keep: ops.animBlocks(d.nodes) });
+  const plan = planSlices(root, { maxSliceHeight: s.settings.maxSliceHeight, mergeRows: s.settings.mergeRows, keep: motionOn(s.project) ? ops.animBlocks(d.nodes) : [] });
   // HTML weight as an ESP would host it (Mailchimp-length image URLs), so the Gmail 102 KB clip warns before export
   const fake: Record<string, string> = {}; for (const sl of plan.slices) fake[sl.key] = `https://mcusercontent.com/0123456789abcdef0123456789abcdef/images/0123456789abcdef0123456789abcdef-${sl.key}.jpg`;
   const htmlBytes = htmlSizeBytes(buildEmailHtml({ plan, images: fake, mobile: null, title: s.project.fields.subject || s.project.name, preheader: s.project.fields.preheader, includePreheader: true, fullDocument: true, footerHtml: '', bgColor: resolveColor(d.bg, b), provider: null, utm: null }));
@@ -861,7 +867,7 @@ export function analyze(): Analysis | null {
   if (placeholders.length) checks.unshift({ level: 'warn', code: 'placeholder', message: `${placeholders.length} ảnh placeholder chưa thay (${placeholders.slice(0, 3).map((n) => n.name).join(', ')}${placeholders.length > 3 ? '…' : ''}). Kéo ảnh thật vào trước khi gửi.`, nodeId: placeholders[0].id });
   const sg = suggest({ root, plan, fields: { ...s.project.fields, mobileFrameId: hasMobile ? 'm' : null }, hasMobile });
   const a = { root, plan, checks, suggestions: sg.suggestions, score: sg.score };
-  cache = { doc: d, brand: b, fields: f, mobile: hasMobile, a };
+  cache = { doc: d, brand: b, fields: f, mobile: hasMobile, motion: mo, a };
   return a;
 }
 

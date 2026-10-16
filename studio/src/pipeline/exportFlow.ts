@@ -1,5 +1,6 @@
 // Export pipeline for Studio: draft (Mailchimp/Klaviyo) · copy HTML · zip. Mirrors the plugin flow, minus Figma.
 import { applyLiveText, liveFontLinks } from './liveText';
+import { exportDocOf } from './motion';
 import { cloud } from '../storage/sync';
 import type { DraftFile, DraftRecord, ExportedSlice, Profile, Provider, SlicePlan } from '../../../src/shared/types';
 import { buildEmailHtml, htmlSizeBytes, solidHex } from '../../../src/shared/html';
@@ -132,14 +133,16 @@ export async function exportProject(p: Project, prof: Profile | null): Promise<E
   const s = get().settings;
   const planFor = (d: Doc) => { const pl = planSlices(docToNNode(d, p.brand), { maxSliceHeight: s.maxSliceHeight, mergeRows: s.mergeRows, keep: animBlocks(d.nodes) }); return s.liveText === false ? pl : applyLiveText(pl, d, p.brand); };
   busy('Cắt & xuất ảnh…');
-  const plan = planFor(p.desktop);
-  const raw = await exportDocSlices(p.desktop, p.brand, plan, scale, (d, t) => busy('Cắt & xuất ảnh…', d, t));
+  // still email unless motion was asked for: no GIF (256 colours, 1x), every slice a sharp 2x picture
+  const desk = exportDocOf(p.desktop, p), mob = p.mobile ? exportDocOf(p.mobile, p) : null;
+  const plan = planFor(desk);
+  const raw = await exportDocSlices(desk, p.brand, plan, scale, (d, t) => busy('Cắt & xuất ảnh…', d, t));
   busy('Nén ảnh…');
   const slices = await finalizeSlices(raw, format, q, bg);
   let mobile: Exported['mobile'] = null;
-  if (p.mobile) {
-    const mp = planFor(p.mobile);
-    const mr = await exportDocSlices(p.mobile, p.brand, mp, scale, (d, t) => busy('Xuất bản mobile…', d, t));
+  if (mob) {
+    const mp = planFor(mob);
+    const mr = await exportDocSlices(mob, p.brand, mp, scale, (d, t) => busy('Xuất bản mobile…', d, t));
     mobile = { plan: mp, slices: await finalizeSlices(mr, format, q, bg) };
   }
   const bytes = slices.reduce((a, x) => a + x.bytes.length, 0) + (mobile ? mobile.slices.reduce((a, x) => a + x.bytes.length, 0) : 0);

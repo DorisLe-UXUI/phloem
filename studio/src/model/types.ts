@@ -192,6 +192,9 @@ export interface Project {
   drafts: Record<string, unknown>;
   /** Phloem MKT: the client workspace this email belongs to (none = a plain Phloem Email project). */
   clientId?: string;
+  /** Send the layers' motion as GIFs. Off: the email goes out as sharp still pictures (2x), whatever motion the layers
+   *  carry. Unset: on only for an email someone animated by hand (AI designs come with motion but send still). */
+  motion?: boolean;
   /** Google Analytics tags added to every link (on unless turned off): utm_source / utm_medium / utm_campaign. */
   utm?: { on?: boolean; source?: string; medium?: string; campaign?: string } | null;
   /** Phloem MKT: 'design' = a social/ads design at a fixed channel size (no email export); default email. */
