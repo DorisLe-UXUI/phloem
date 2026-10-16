@@ -1,5 +1,5 @@
 // Durable data on ephemeral hosts (Render free, Fly without volumes…): the SQLite file and the auth secret are
-// restored from an S3-compatible bucket at boot and a consistent, gzipped snapshot is uploaded ~2 min after writes and on
+// restored from an S3-compatible bucket at boot and a consistent, gzipped snapshot is uploaded ~10 min after writes and on
 // shutdown, only when something changed (Render's free plan allows 5 GB of outbound traffic a month: full uploads on every
 // wake-up and sleep used it up). Asset bytes are separate objects in the same bucket (blobs.mjs). Zero dependencies: AWS Signature V4 by hand. Works with Cloudflare R2 (free 10 GB), Backblaze B2, AWS S3, MinIO.
 import { createHash, createHmac } from 'node:crypto';
@@ -14,7 +14,7 @@ export function backupConfig(env = process.env) {
   const endpoint = String(env.BACKUP_S3_ENDPOINT || '').replace(/\/$/, '');
   const bucket = env.BACKUP_S3_BUCKET, key = env.BACKUP_S3_KEY, secret = env.BACKUP_S3_SECRET;
   if (!endpoint || !bucket || !key || !secret) return null;
-  return { endpoint, bucket, key, secret, region: env.BACKUP_S3_REGION || 'auto', prefix: String(env.BACKUP_S3_PREFIX || 'phloem/').replace(/^\/+/, ''), every: Math.max(1, Number(env.BACKUP_EVERY_MIN || 60)), debounce: Math.max(1, Number(env.BACKUP_DEBOUNCE_SEC || 120)) };
+  return { endpoint, bucket, key, secret, region: env.BACKUP_S3_REGION || 'auto', prefix: String(env.BACKUP_S3_PREFIX || 'phloem/').replace(/^\/+/, ''), every: Math.max(1, Number(env.BACKUP_EVERY_MIN || 60)), debounce: Math.max(1, Number(env.BACKUP_DEBOUNCE_SEC || 600)) };
 }
 
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -93,7 +93,7 @@ export async function restoreBackup(cfg, dataDir, log = console.log, { tries = 3
  *  Asset bytes are not in the database (blobs.mjs), so the snapshot is small and the shutdown upload finishes in time.
  *  `paused` (the boot restore failed): never upload, so an empty fresh database can't overwrite the good copy. */
 export function startBackups(cfg, db, dataDir, log = console.log, opts = {}) {
-  const debounce = Math.max(0, Number(opts.debounceSec ?? cfg?.debounce ?? 120)) * 1000;
+  const debounce = Math.max(0, Number(opts.debounceSec ?? cfg?.debounce ?? 600)) * 1000;
   // the bucket already holds this database (just restored, or a warm container): nothing to upload until a write
   const inBucket = opts.restored === 'restored' || opts.restored === 'local';
   const state = { enabled: !!cfg, at: null, error: null, bytes: 0, ms: 0, dirty: false, uploading: null, paused: !!opts.paused, daily: '' };
