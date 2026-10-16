@@ -10,7 +10,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { createAuth } from './auth.mjs';
 import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
-import { createAssetStore, createBlobStore } from './blobs.mjs';
+import { createAssetStore, createBlobStore, createProjectStore } from './blobs.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
 import { cfAccountId, fluxSize, pickLiteImageModel, sniffMime, nextUtcMidnight } from './imagegen.mjs';
 import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
@@ -54,10 +54,17 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || ''; // optional: e-mail the
 const DB = AUTH.db;
 const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR, console.log, { paused: RESTORED === 'failed', restored: RESTORED });
 // Asset bytes: files under DATA_DIR/blobs + one object each in the backup bucket; rows from before 2026-10-15 move out in the background
-const ASSETS = createAssetStore({ db: DB, blobs: createBlobStore({ cfg: BACKUP, dir: join(DATA_DIR, 'blobs') }) });
-if (!BACKUPS.paused) setTimeout(() => { void ASSETS.migrate(() => { try { DB.raw.exec('VACUUM'); } catch { /* busy: next boot */ } void BACKUPS.now?.('assets moved out'); }); }, 5_000).unref();
+const BLOBS = createBlobStore({ cfg: BACKUP, dir: join(DATA_DIR, 'blobs') });
+const ASSETS = createAssetStore({ db: DB, blobs: BLOBS });
+// Project thumbnails: same blob store; rows from before 2026-10-16 keep them in-row until the migration below moves them out
+const PROJECTS = createProjectStore({ db: DB, blobs: BLOBS });
+if (!BACKUPS.paused) setTimeout(async () => {
+  let moved = false; const done = () => { moved = true; };
+  await ASSETS.migrate(done); await PROJECTS.migrate(done);
+  if (moved) { try { DB.raw.exec('VACUUM'); } catch { /* busy: next boot */ } void BACKUPS.now?.('moved out of the database'); }
+}, 5_000).unref();
 /** What health and the admin page show about durability. */
-const backupInfo = () => BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), bytes: BACKUPS.bytes, ms: BACKUPS.ms, pending: BACKUPS.dirty, restore: RESTORED, error: BACKUPS.error, assetsInDb: ASSETS.migration.pending } : null;
+const backupInfo = () => BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), bytes: BACKUPS.bytes, ms: BACKUPS.ms, pending: BACKUPS.dirty, restore: RESTORED, error: BACKUPS.error, assetsInDb: ASSETS.migration.pending, thumbsInDb: PROJECTS.migration.pending } : null;
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 // Unsubscribe + suppression list, open/click tracking, hosted email images, sending accounts and the server-side queue.
 const MAIL_HOOKS = {};
@@ -455,9 +462,9 @@ async function adminRoute(sub, req, res) {
     if (sub === '/user/delete' && req.method === 'POST') {
       const p = await body(req); const id = String(p?.userId || '');
       if (id === row.id) return json(res, 400, { error: 'Không tự xoá tài khoản admin đang dùng.' });
-      const keys = ASSETS.keysOf(id); // rows cascade away with the user; their bytes are separate objects
+      const keys = ASSETS.keysOf(id), thumbs = PROJECTS.keysOf(id); // rows cascade away with the user; their bytes are separate objects
       if (!DB.admin.deleteUser(id)) return json(res, 404, { error: 'không có người dùng này' });
-      await ASSETS.removeKeys(keys);
+      await ASSETS.removeKeys(keys); await PROJECTS.removeKeys(thumbs);
       return json(res, 200, { ok: true });
     }
     return json(res, 404, { error: 'không có route admin này' });
@@ -638,10 +645,10 @@ async function dbRoute(url, req, res) {
   try {
     if (kind === 'clients' || kind === 'client') return await clientsRoute(u, kind, id, rest, url, req, res);
     if (kind === 'projects') {
-      if (m === 'GET' && !id) return json(res, 200, { projects: DB.projects.list(u.id), deleted: DB.projects.tombstones(u.id) });
-      if (m === 'GET') { const p = DB.projects.get(u.id, id); return p ? json(res, 200, { project: p }) : json(res, 404, { error: 'không có project này' }); }
-      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); const prev = DB.projects.list(u.id).find((x) => x.id === id); if (!checkQuota(res, u.id, JSON.stringify(p).length - (prev?.size || 0))) return; const r = DB.projects.put(u.id, p); return r.stale ? json(res, 409, { error: 'Bản trên relay mới hơn.', code: 'stale', updatedAt: r.updatedAt }) : json(res, 200, r); }
-      if (m === 'DELETE' && id) { DB.projects.remove(u.id, id); return json(res, 200, { ok: true }); }
+      if (m === 'GET' && !id) return json(res, 200, { projects: PROJECTS.list(u.id), deleted: PROJECTS.tombstones(u.id) });
+      if (m === 'GET') { const p = await PROJECTS.get(u.id, id); return p ? json(res, 200, { project: p }) : json(res, 404, { error: 'không có project này' }); }
+      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); const prev = DB.projects.list(u.id).find((x) => x.id === id); if (!checkQuota(res, u.id, JSON.stringify(p).length - (prev?.size || 0))) return; const r = await PROJECTS.put(u.id, p); return r.stale ? json(res, 409, { error: 'Bản trên relay mới hơn.', code: 'stale', updatedAt: r.updatedAt }) : json(res, 200, r); }
+      if (m === 'DELETE' && id) { await PROJECTS.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'assets') {
       if (m === 'GET' && !id) return json(res, 200, { assets: ASSETS.list(u.id) });
@@ -722,7 +729,8 @@ async function clientsRoute(u, kind, id, rest, url, req, res) {
       const c = DB.clients.get(u.id, id);
       const typed = String(url.searchParams.get('confirm') || '').trim().toLowerCase();
       if (!c || typed !== c.name.trim().toLowerCase()) return json(res, 400, { error: 'Gõ đúng tên khách hàng để xác nhận xoá.', code: 'confirm' });
-      DB.clients.remove(u.id, id);
+      const thumbs = PROJECTS.keysOf(u.id, id); // the client's email projects go with it
+      if (DB.clients.remove(u.id, id)) await PROJECTS.removeKeys(thumbs);
       console.log(`[mkt] client ${id} removed by ${u.email}`);
       return json(res, 200, { ok: true });
     }
@@ -757,7 +765,7 @@ async function clientsRoute(u, kind, id, rest, url, req, res) {
   if (sub === 'export' && m === 'GET') {
     if (!can(acc, 'manage')) return json(res, 403, { error: 'Chỉ chủ workspace hoặc quản lý được xuất dữ liệu.' });
     DB.audit.add(owner, id, actor, 'client.export', '');
-    const projects = DB.projects.list(owner).filter((p) => p.clientId === id).map((p) => DB.projects.get(owner, p.id));
+    const projects = await Promise.all(DB.projects.list(owner).filter((p) => p.clientId === id).map((p) => PROJECTS.get(owner, p.id)));
     return json(res, 200, { exportedAt: new Date().toISOString(), client: DB.clients.get(owner, id), items: DB.items.list(owner, id), audit: DB.audit.list(owner, id), members: DB.members.list(owner, id), shares: DB.shares.list(owner, id), projects });
   }
   if (sub === 'share') {

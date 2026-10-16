@@ -1,5 +1,5 @@
 // The app database: SQLite via node:sqlite (Node ≥ 22.13), one file, WAL mode, zero dependencies.
-// Tables: users, sessions, projects, assets (metadata + blob key; bytes live in blobs.mjs), profiles (client credentials, encrypted at rest).
+// Tables: users, sessions, projects (thumbnail bytes in blobs.mjs), assets (metadata + blob key; bytes live in blobs.mjs), profiles (client credentials, encrypted at rest).
 import { DatabaseSync } from 'node:sqlite';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
@@ -103,6 +103,9 @@ export function openDb(file) {
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users(google_sub) WHERE google_sub IS NOT NULL'); } catch { /* exists */ }
   // Phloem MKT (2026-10): an email project may belong to one client of its owner
   try { db.exec('ALTER TABLE projects ADD COLUMN client_id TEXT'); } catch { /* column exists */ }
+  // 2026-10-16: thumbnails (base64 JPEG, barely compressible) moved to the blob store; `thumb` stays for legacy/non-image values
+  try { db.exec('ALTER TABLE projects ADD COLUMN thumb_blob TEXT'); } catch { /* column exists */ }
+  try { db.exec('ALTER TABLE projects ADD COLUMN thumb_mobile_blob TEXT'); } catch { /* column exists */ }
   // housekeeping: sessions idle for 30 days and tombstones older than 90 days are gone
   try { db.prepare("DELETE FROM sessions WHERE last_seen < ?").run(new Date(Date.now() - 30 * 86400e3).toISOString()); db.prepare('DELETE FROM project_tombstones WHERE at < ?').run(new Date(Date.now() - 90 * 86400e3).toISOString()); } catch { /* ignore */ }
   const q = (sql) => db.prepare(sql);
@@ -134,7 +137,8 @@ export function openDb(file) {
     sessGet: q('SELECT * FROM sessions WHERE token_hash = ?'), sessTouch: q('UPDATE sessions SET last_seen = ? WHERE token_hash = ?'),
     sessDel: q('DELETE FROM sessions WHERE token_hash = ?'), sessDelUser: q('DELETE FROM sessions WHERE user_id = ?'),
     sessList: q('SELECT token_hash, agent, created_at, last_seen FROM sessions WHERE user_id = ? ORDER BY last_seen DESC'),
-    projList: q('SELECT id, name, updated_at, created_at, thumb, thumb_mobile, provider, client_id, length(json) AS size FROM projects WHERE owner = ? ORDER BY updated_at DESC'),
+    // no thumbnails in the list: no client reads them there (each device keeps its own from the full project), and they were most of its bytes
+    projList: q('SELECT id, name, updated_at, created_at, provider, client_id, length(json) AS size FROM projects WHERE owner = ? ORDER BY updated_at DESC'),
     projSetClient: q('UPDATE projects SET client_id = ? WHERE owner = ? AND id = ?'),
     // ---- clients: every statement below carries the owner, so one account can never touch another's client ----
     cliList: q('SELECT * FROM clients WHERE owner = ? ORDER BY updated_at DESC'),
@@ -163,8 +167,17 @@ export function openDb(file) {
     memOf: q('SELECT c.*, m.role FROM client_members m JOIN clients c ON c.id = m.client_id WHERE m.user_id = ? ORDER BY c.updated_at DESC'),
     access: q("SELECT c.owner, CASE WHEN c.owner = ? THEN 'owner' ELSE m.role END AS role FROM clients c LEFT JOIN client_members m ON m.client_id = c.id AND m.user_id = ? WHERE c.id = ? AND (c.owner = ? OR m.user_id IS NOT NULL)"),
     projGet: q('SELECT * FROM projects WHERE owner = ? AND id = ?'),
-    projPut: q(`INSERT INTO projects (id, owner, name, json, thumb, thumb_mobile, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at WHERE projects.owner = excluded.owner AND excluded.updated_at >= projects.updated_at`),
+    projPut: q(`INSERT INTO projects (id, owner, name, json, thumb, thumb_mobile, provider, created_at, updated_at, thumb_blob, thumb_mobile_blob) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, json = excluded.json, thumb = excluded.thumb, thumb_mobile = excluded.thumb_mobile, provider = excluded.provider, updated_at = excluded.updated_at, thumb_blob = excluded.thumb_blob, thumb_mobile_blob = excluded.thumb_mobile_blob WHERE projects.owner = excluded.owner AND excluded.updated_at >= projects.updated_at`),
+    projThumbs: q('SELECT owner, thumb, thumb_mobile, thumb_blob, thumb_mobile_blob FROM projects WHERE owner = ? AND id = ?'),
+    projThumbKeys: q('SELECT thumb_blob, thumb_mobile_blob FROM projects WHERE owner = ? AND (thumb_blob IS NOT NULL OR thumb_mobile_blob IS NOT NULL)'),
+    projThumbKeysClient: q('SELECT thumb_blob, thumb_mobile_blob FROM projects WHERE owner = ? AND client_id = ? AND (thumb_blob IS NOT NULL OR thumb_mobile_blob IS NOT NULL)'),
+    // in-row image thumbnails worth moving (blobs.mjs keeps ones under 1 KB in-row), walked by rowid so a skipped one can't stall the walk
+    projInlineCount: q("SELECT (SELECT COUNT(*) FROM projects WHERE thumb LIKE 'data:image/%' AND length(thumb) >= 1024) + (SELECT COUNT(*) FROM projects WHERE thumb_mobile LIKE 'data:image/%' AND length(thumb_mobile) >= 1024) AS n"),
+    projInlineNext: q("SELECT rowid AS rid, owner, id, thumb AS value FROM projects WHERE rowid > ? AND thumb LIKE 'data:image/%' AND length(thumb) >= 1024 ORDER BY rowid LIMIT 1"),
+    projInlineNextMobile: q("SELECT rowid AS rid, owner, id, thumb_mobile AS value FROM projects WHERE rowid > ? AND thumb_mobile LIKE 'data:image/%' AND length(thumb_mobile) >= 1024 ORDER BY rowid LIMIT 1"),
+    projDropThumb: q('UPDATE projects SET thumb = NULL, thumb_blob = ? WHERE owner = ? AND id = ? AND thumb = ?'),
+    projDropThumbMobile: q('UPDATE projects SET thumb_mobile = NULL, thumb_mobile_blob = ? WHERE owner = ? AND id = ? AND thumb_mobile = ?'),
     projDel: q('DELETE FROM projects WHERE owner = ? AND id = ?'),
     tombPut: q('INSERT INTO project_tombstones (id, owner, at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, at = excluded.at'), tombDel: q('DELETE FROM project_tombstones WHERE id = ?'), tombList: q('SELECT id, at FROM project_tombstones WHERE owner = ?'),
     projCount: q('SELECT COUNT(*) AS n, COALESCE(SUM(length(json)), 0) AS bytes FROM projects WHERE owner = ?'),
@@ -215,13 +228,14 @@ export function openDb(file) {
     projects: {
       list: (owner) => S.projList.all(owner).map(meta),
       get: (owner, id) => { const p = S.projGet.get(owner, id); return p ? { ...JSON.parse(p.json), thumb: p.thumb || undefined, thumbMobile: p.thumb_mobile || undefined, provider: p.provider || undefined, updatedAt: p.updated_at, createdAt: p.created_at } : null; },
-      /** Upsert; a body older than the stored copy is refused (`stale`, with the stored updatedAt) instead of silently ignored. */
-      put: (owner, p) => {
+      /** Upsert; a body older than the stored copy is refused (`stale`, with the stored updatedAt) instead of silently ignored.
+       *  `keys` = blob-store keys of thumbnails already stored (blobs.mjs createProjectStore); such a thumbnail is not kept in-row. */
+      put: (owner, p, keys = {}) => {
         const { thumb, thumbMobile, provider, ...rest } = p;
         // a project can only be filed under a client of the same owner
         if (p.clientId && !S.cliGet.get(owner, String(p.clientId))) return { id: p.id, forbidden: true };
         const updated = p.updatedAt || now();
-        const r = S.projPut.run(p.id, owner, String(p.name || 'Email').slice(0, 200), JSON.stringify(rest), thumb || null, thumbMobile || null, provider || null, p.createdAt || updated, updated);
+        const r = S.projPut.run(p.id, owner, String(p.name || 'Email').slice(0, 200), JSON.stringify(rest), keys.thumb ? null : thumb || null, keys.thumbMobile ? null : thumbMobile || null, provider || null, p.createdAt || updated, updated, keys.thumb || null, keys.thumbMobile || null);
         if (!Number(r.changes)) { const cur = S.projGet.get(owner, p.id); return { id: p.id, updatedAt: cur ? cur.updated_at : updated, stale: true }; }
         S.projSetClient.run(p.clientId ? String(p.clientId) : null, owner, p.id);
         S.tombDel.run(p.id); // re-saved after a delete elsewhere: it lives again
@@ -229,6 +243,14 @@ export function openDb(file) {
       },
       remove: (owner, id) => { S.projDel.run(owner, id); S.tombPut.run(id, owner, now()); },
       tombstones: (owner) => S.tombList.all(owner),
+      /** Where each thumbnail is: in-row (`thumb`, legacy or not an image data URL) or a blob-store key (`thumbBlob`). */
+      thumbs: (owner, id) => { const r = S.projThumbs.get(owner, id); return r ? { thumb: r.thumb || null, thumbMobile: r.thumb_mobile || null, thumbBlob: r.thumb_blob || null, thumbMobileBlob: r.thumb_mobile_blob || null } : null; },
+      thumbKeysOf: (owner, clientId) => (clientId ? S.projThumbKeysClient.all(owner, clientId) : S.projThumbKeys.all(owner)).flatMap((r) => [r.thumb_blob, r.thumb_mobile_blob]).filter(Boolean),
+      inlineThumbCount: () => Number(S.projInlineCount.get().n),
+      /** The next in-row thumbnail after rowid `after` (desktop or mobile column), with its rowid as the cursor for the next call. */
+      inlineThumbNext: (mobile, after = 0) => { const r = (mobile ? S.projInlineNextMobile : S.projInlineNext).get(after); return r ? { rid: Number(r.rid), owner: r.owner, id: r.id, mobile, value: r.value } : null; },
+      /** Swap an in-row thumbnail for its key, only if the row still holds that exact value (a save meanwhile wins). */
+      dropInlineThumb: (owner, id, mobile, value, key) => Number((mobile ? S.projDropThumbMobile : S.projDropThumb).run(key, owner, id, value).changes) > 0,
       count: (owner) => S.projCount.get(owner),
     },
     assets: {
