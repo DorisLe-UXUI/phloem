@@ -1,5 +1,6 @@
 // All modals: templates, brand kit, preview, clients, settings, shortcuts, Figma import.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { FontPicker } from './FontPicker';
 import type { Profile, Provider, TemplateKind } from '../../../src/shared/types';
 import { DEFAULT_UTM, newProfile } from '../../../src/shared/types';
 import type { Brand } from '../model/types';
@@ -140,8 +141,8 @@ function BrandModal({ onClose }: { onClose: () => void }) {
       </div>
       <Eyebrow>Chữ</Eyebrow>
       <div class="grid2">
-        <Field label="Font nội dung"><Select value={b.fontFamily} options={fontOpts} onChange={(v) => { ensureFonts([v]); up({ fontFamily: v }); }} /></Field>
-        <Field label="Font tiêu đề"><Select value={b.headingFamily} options={fontOpts} onChange={(v) => { ensureFonts([v]); up({ headingFamily: v }); }} /></Field>
+        <Field label="Font nội dung"><FontPicker value={b.fontFamily} onChange={(v) => { ensureFonts([v]); up({ fontFamily: v }); }} /></Field>
+        <Field label="Font tiêu đề"><FontPicker value={b.headingFamily} onChange={(v) => { ensureFonts([v]); up({ headingFamily: v }); }} /></Field>
       </div>
       <div class="dim small">Chữ trong email là ảnh, nên dùng font nào cũng hiển thị đúng ở mọi hộp thư. {FONTS.length} font Google tải tự động; font ghi "không có tiếng Việt" sẽ thiếu dấu.</div>
     </Modal>

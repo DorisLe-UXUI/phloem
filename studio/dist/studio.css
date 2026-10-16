@@ -7217,7 +7217,13 @@ select.in {
   gap: 6px;
 }
 .gen-grid.g-shape3d,
-.gen-grid.g-deco {
+.gen-grid.g-deco,
+.gen-grid.g-ribbon,
+.gen-grid.g-badge,
+.gen-grid.g-bubble,
+.gen-grid.g-line,
+.gen-grid.g-frame,
+.gen-grid.g-spark {
   grid-template-columns: repeat(3, 1fr);
 }
 .gen-tile {
@@ -7240,7 +7246,13 @@ select.in {
   background: #fff;
 }
 .gen-tile.g-shape3d img,
-.gen-tile.g-deco img {
+.gen-tile.g-deco img,
+.gen-tile.g-ribbon img,
+.gen-tile.g-badge img,
+.gen-tile.g-bubble img,
+.gen-tile.g-line img,
+.gen-tile.g-frame img,
+.gen-tile.g-spark img {
   aspect-ratio: 1;
   object-fit: contain;
   background: repeating-conic-gradient(#1a2a1e 0 25%, #0c120e 0 50%) 0 0 / 12px 12px;
@@ -7695,4 +7707,94 @@ select.in {
 .fx-p.on {
   outline: 2px solid var(--neon);
   outline-offset: 1px;
+}
+.fontpick {
+  position: relative;
+}
+.fp-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.fp-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fp-btn:hover {
+  border-color: var(--neon-line);
+}
+.fp-pop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 240px;
+  padding: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fp-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.fp-kinds .chip {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.fp-list {
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.fp-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 17px;
+  text-align: left;
+  cursor: pointer;
+}
+.fp-item span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fp-item em {
+  font: 10px var(--mono);
+  font-style: normal;
+  color: var(--dim);
+}
+.fp-item:hover {
+  background: var(--panel-2);
+}
+.fp-item.on {
+  background: color-mix(in srgb, var(--neon) 14%, transparent);
+  color: var(--neon);
 }

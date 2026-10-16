@@ -6,7 +6,7 @@
 import type { Anim, AnimKind, Color, Doc, GradStop, GroupNode, ImageNode, Node, Radii, RectNode, Shadow, TextEffect, TextNode } from '../model/types';
 import { DEFAULT_BRAND, FONTS, uid } from '../model/types';
 import { layoutText } from '../render/textLayout';
-import { ensureFonts } from '../render/fonts';
+import { ensureFonts, fontCatalogSync, googleSpec, knownFont, loadFontCatalog } from '../render/fonts';
 import { renderToCanvas } from '../render/renderer';
 import { assets } from '../storage/assets';
 import { colorSvg, iconSvg, iconUrl, vectorAsset, isColorSet } from '../design/vector';
@@ -34,7 +34,9 @@ const REPLACED = new Set(['IMG', 'SVG', 'CANVAS', 'INPUT', 'TEXTAREA', 'SELECT',
 /** Families from the Phloem font list that the HTML mentions (so the iframe and the canvas load the same files). */
 export function fontsIn(html: string): string[] {
   const low = html.toLowerCase();
-  return FONTS.filter((f) => f.google && low.includes(f.family.toLowerCase())).map((f) => f.family);
+  const fam = [...low.matchAll(/font-family\s*:\s*([^;"}]+)/g)].flatMap((m) => m[1].split(',').map((x) => x.trim().replace(/^["']|["']$/g, '')));
+  const extra = (fontCatalogSync() || []).filter((g) => fam.includes(g.f.toLowerCase())).map((g) => g.f);
+  return [...new Set([...FONTS.filter((f) => f.google && low.includes(f.family.toLowerCase())).map((f) => f.family), ...extra])];
 }
 
 /** Pull the HTML document out of a model reply (```html fences, or the first <!doctype / <html / <div …). */
@@ -101,7 +103,7 @@ export function prepareHtml(html: string, validIds: Set<string>, width: number):
     if (!/^(data:image\/|blob:)/i.test(src)) { img.setAttribute('data-missing', '1'); img.removeAttribute('src'); }
   });
   const fams = fontsIn(html);
-  const specs = fams.map((f) => FONTS.find((x) => x.family === f)?.google).filter(Boolean);
+  const specs = fams.map((f) => googleSpec(f)).filter(Boolean);
   const head = doc.head || doc.documentElement.insertBefore(doc.createElement('head'), doc.body);
   if (specs.length) { const l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = `https://fonts.googleapis.com/css2?${specs.map((s) => `family=${s}`).join('&')}&display=block`; head.prepend(l); }
   const st = doc.createElement('style');
@@ -291,8 +293,8 @@ function filterBlur(cs: CSSStyleDeclaration): number { const m = /blur\(([\d.]+)
 function familyOf(list: string): string {
   for (const raw of list.split(',')) {
     const f = raw.trim().replace(/^["']|["']$/g, '');
-    const hit = FONTS.find((x) => x.family.toLowerCase() === f.toLowerCase());
-    if (hit) return hit.family;
+    const hit = knownFont(f);
+    if (hit) return hit;
     if (/^(serif|ui-serif|times)/i.test(f)) return 'Georgia';
     if (/^(monospace|ui-monospace|courier)/i.test(f)) return 'Courier New';
     if (/^(arial|helvetica)/i.test(f)) return 'Helvetica';
@@ -325,6 +327,7 @@ interface Ctx { clip: { x: number; y: number; w: number; h: number; radii: Radii
 export async function htmlToDoc(rawHtml: string, opt: ConvertOptions): Promise<Converted> {
   const W = opt.width;
   const warnings: string[] = [];
+  await loadFontCatalog().catch(() => []); // brand fonts recognised from past posts can be any Google Font
   const fams = fontsIn(rawHtml);
   ensureFonts(fams);
   await Promise.race([Promise.all(fams.flatMap((f) => ['400', '700', '800'].map((w) => document.fonts.load(`${w} 32px "${f}"`).catch(() => [])))), new Promise((r) => setTimeout(r, 5000))]);

@@ -5,6 +5,7 @@ import type { Check, Suggestion } from '../../../src/shared/types';
 import type { AnimKind, ImageNode, Node, RectNode, TextEffect, TextEffectKind, TextNode, GroupNode } from '../model/types';
 import { FONTS, LOOP_KINDS } from '../model/types';
 import { ensureFonts } from '../render/fonts';
+import { FontPicker } from './FontPicker';
 import { reraster, vectorAsset } from '../design/vector';
 import { GEN_PALETTES, genSvg } from '../design/generators';
 import { colorChoices } from '../design/elements';
@@ -215,7 +216,7 @@ function TextProps({ n }: { n: TextNode }) {
     <div class="section">
       <Eyebrow>Chữ</Eyebrow>
       <TextArea class="textarea-text" value={n.text} rows={3} onCommit={(v) => up({ text: v })} onInput={(v) => A.patchTextFlow(n.id, { text: v }, false)} />
-      <Select value={n.fontFamily} options={fontOpts} onChange={(v) => { ensureFont(v); up({ fontFamily: v }); }} />
+      <FontPicker value={n.fontFamily} extra={fontOpts.slice(0, 2)} onChange={(v) => { ensureFont(v); up({ fontFamily: v }); }} />
       <div class="grid2">
         <Num label="Cỡ" value={n.fontSize} min={6} max={200} suffix="px" onChange={(v) => up({ fontSize: v })} />
         <Select value={String(n.fontWeight)} options={[['400', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'Extrabold']].map(([v, l]) => ({ v, label: l }))} onChange={(v) => up({ fontWeight: Number(v) })} />

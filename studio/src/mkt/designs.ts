@@ -7,7 +7,7 @@ import { htmlToDoc, extractHtml, tokenize } from '../ai/htmlToDoc';
 import { DESIGN_TECH, readyDoc } from '../ai/design';
 import { askClaude, streamClaude, relayAuth, wakeRelay, type AiImage } from '../ai/client';
 import { renderToCanvas } from '../render/renderer';
-import { ensureFonts } from '../render/fonts';
+import { ensureFonts, knownFont, loadFontCatalog } from '../render/fonts';
 import { assets } from '../storage/assets';
 import { get, set, toast } from '../store';
 import { history } from '../store';
@@ -452,12 +452,17 @@ async function aiDesign(client: Client, brand: Brand, size: DesignSize, row: Pla
     const role = id === hero ? ' · HERO: painted for this post, use it as the main visual, big' : id === logo ? ' · LOGO' : a.src?.kind === 'reference' ? ' · PAST POST published by this brand: copy its layout system and style' : '';
     lines.push(`- "${id}": ${a.name} · ${a.w}×${a.h}${role}${t ? ` (attached image #${images.length})` : ''}`);
   }
-  const fonts = FONTS.filter((f) => f.google && f.vi).map((f) => f.family).join(', ');
+  await loadFontCatalog().catch(() => []);
+  const accent = /Chữ trang trí[^:]*:\s*([^.]+)/.exec(book?.styleNotes || '')?.[1]?.trim();
+  const brandFonts = [...new Set([book?.fonts.heading, book?.fonts.body, accent].filter((x): x is string => !!x && !!knownFont(x)))];
+  ensureFonts(brandFonts);
+  const fonts = [...new Set([...brandFonts, ...FONTS.filter((f) => f.google && f.vi).map((f) => f.family)])].join(', ');
   const brief = [
     `Client: ${client.name}${client.industry ? ` (${client.industry})` : ''}`,
     audienceLine(client),
     book ? `Brand: tagline "${book.tagline}"; voice ${book.voice.traits.join(', ')}; colours ${book.palette.map((c) => `${c.name} ${c.hex} (${c.role})`).join(', ')}; fonts ${book.fonts.heading} / ${book.fonts.body}; imagery: ${book.imagery.join('; ')}` : `Brand colours: primary ${brand.primary}, accent ${brand.accent}, ink ${brand.ink}, bg ${brand.bg}; fonts ${brand.headingFamily} / ${brand.fontFamily}`,
     styleNotesOf(client.id) ? `HOUSE STYLE from the client's past posts (match it): ${styleNotesOf(client.id)}` : '',
+    brandFonts.length ? `BRAND FONTS recognised in the past posts (use exactly these for the matching roles): ${brandFonts.join(', ')}.` : '',
     ids.some((id) => assets.get(id)?.src?.kind === 'reference') ? "PAST POSTS: the attached pictures marked PAST POST are this brand's real published posts. Design the NEXT post of that same feed: same layout grid and margins, same headline treatment (weight, size ratio, colour, outline / shadow / highlight), same illustration or photo style, same palette, same logo spot and CTA pill style, same decorative motifs. Do not invent a new style; only the content changes." : '',
     row ? `Post: ${channelOf(row.channel).label} ${row.format}, ${row.date}. Topic: ${row.topic}. Hook: ${row.hook}. CTA: ${row.cta}. Visual idea from the plan: ${row.visual}` : 'Post: a general brand post.',
     slide ? `CAROUSEL: this is slide ${slide.i} of ${slide.n} (${slide.role}). All slides share ONE design system: same background treatment, type, colours, margins and logo spot, so they read as one swipeable set. Put a small "${slide.i}/${slide.n}" in a corner${slide.i < slide.n ? ' and a subtle swipe cue (arrow) on the right edge' : ''}. ${slide.role === 'cover' ? 'Cover: the hook, huge, plus the hero picture.' : slide.role === 'cta' ? 'Last slide: the call to action and the brand, calm and clear.' : 'Content slide: ONE point, a short headline and at most two short lines; reuse the hero picture smaller or cropped, or an icon / 3D object.'}` : '',

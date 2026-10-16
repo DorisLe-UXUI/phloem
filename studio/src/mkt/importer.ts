@@ -260,22 +260,31 @@ export async function learnStyle(client: Client, onStage: (m: string) => void): 
   if (refs.length < 2) throw new Error('Cần ít nhất 2 ảnh đã làm của khách trong kho (nhập từ Drive, web, hoặc tải lên).');
   onStage(`AI đang xem ${refs.length} ảnh đã làm của khách…`);
   const images = (await Promise.all(refs.map((a) => thumb(a.id)))).filter(Boolean) as AiImage[];
+  const { loadFontCatalog } = await import('../render/fonts');
+  const catalog = await loadFontCatalog().catch(() => []);
+  const fontList = catalog.filter((f) => f.c !== 'mono').map((f) => f.f).join(', ');
   const out = await streamClaude({
-    system: `You are an art director studying a brand's past social posts. Describe the HOUSE STYLE precisely so a designer can reproduce it: layout patterns, typography (weight, case, size contrast), colour use, photo treatment, graphic devices (badges, frames, stickers, 3D, textures), copy length on images, logo placement, mood. Write in the client's content language. Return ONLY JSON {"styleNotes":"5-8 sentences","imagery":["…"],"layout":["…"],"do":["…"],"dont":["…"]}.`,
-    turns: [{ role: 'user', text: `${client.name}${client.industry ? ` (${client.industry})` : ''}. ${audienceLine(client)}\nThe ${images.length} attached images are the client's past posts / pictures.`, images }],
-    maxTokens: 4000, effort: 'medium',
+    system: `You are an art director studying a brand's past social posts. Describe the HOUSE STYLE precisely so a designer can reproduce it: layout patterns, typography (weight, case, size contrast), colour use, photo treatment, graphic devices (badges, frames, stickers, 3D, textures), copy length on images, logo placement, mood. Write in the client's content language.
+Also identify the typefaces by their letter shapes (stroke contrast, terminals, roundness, width, weight) and pick the CLOSEST match from the Google Fonts list given: one for headlines, one for body text, one accent/script face if the posts use one (else ""). Also list the 4–6 colours the posts really use, as hex.
+Return ONLY JSON {"styleNotes":"5-8 sentences","imagery":["…"],"layout":["…"],"do":["…"],"dont":["…"],"fonts":{"heading":"exact name from the list","body":"exact name","accent":"exact name or empty","why":"one short line"},"colors":["#RRGGBB"]}.`,
+    turns: [{ role: 'user', text: `${client.name}${client.industry ? ` (${client.industry})` : ''}. ${audienceLine(client)}\nThe ${images.length} attached images are the client's past posts / pictures.${fontList ? `\n\nGOOGLE FONTS (all draw Vietnamese):\n${fontList}` : ''}`, images }],
+    maxTokens: 5000, effort: 'medium',
   }, (t) => onStage(`AI đang rút ra phong cách… ${Math.round(t.length / 100) / 10}k ký tự`));
-  const j = extractJson<{ styleNotes?: string; imagery?: string[]; layout?: string[]; do?: string[]; dont?: string[] }>(out);
+  const j = extractJson<{ styleNotes?: string; imagery?: string[]; layout?: string[]; do?: string[]; dont?: string[]; fonts?: { heading?: string; body?: string; accent?: string; why?: string }; colors?: string[] }>(out);
+  // fonts the AI recognised in the past posts, kept only when they really exist in the catalog
+  const known = (n?: string) => (n && catalog.some((f) => f.f === n) ? n : '');
+  const fh = known(j.fonts?.heading), fb = known(j.fonts?.body), fa = known(j.fonts?.accent);
   const notes = String(j.styleNotes || '').slice(0, 1500);
   if (!notes) throw new Error('AI chưa rút ra được phong cách, thử lại.');
   const book = brandBookOf(client.id);
   if (book) {
     const merge = (a: string[], b?: string[]) => [...new Set([...(b || []).map(String), ...a])].slice(0, 10);
     const version = (book.version || 1) + 1;
-    const next: BrandBook = { ...book, styleNotes: notes, imagery: merge(book.imagery, j.imagery), layout: merge(book.layout, j.layout), examples: { do: merge(book.examples.do, j.do), dont: merge(book.examples.dont, j.dont) }, version, versions: [...(book.versions || []), { version, at: new Date().toISOString(), by: get().user?.name || 'Bạn', note: `AI học phong cách từ ${images.length} ảnh đã làm` }].slice(-30) };
+    const fonts = fh || fb ? { heading: fh || book.fonts.heading, body: fb || book.fonts.body, note: [fa ? `Chữ trang trí: ${fa}` : '', j.fonts?.why ? `Nhận diện từ bài đã đăng: ${j.fonts.why}` : 'Nhận diện từ bài đã đăng'].filter(Boolean).join('. ') } : book.fonts;
+    const next: BrandBook = { ...book, fonts, styleNotes: [notes, fa ? `Chữ trang trí trong bài cũ: ${fa}.` : ''].filter(Boolean).join(' '), imagery: merge(book.imagery, j.imagery), layout: merge(book.layout, j.layout), examples: { do: merge(book.examples.do, j.do), dont: merge(book.examples.dont, j.dont) }, version, versions: [...(book.versions || []), { version, at: new Date().toISOString(), by: get().user?.name || 'Bạn', note: `AI học phong cách từ ${images.length} ảnh đã làm` }].slice(-30) };
     await putItem(client.id, 'brand', 'main', next);
   } else {
-    await putItem(client.id, 'note', 'style', { title: 'Phong cách từ ảnh đã làm', styleNotes: notes, imagery: j.imagery || [], layout: j.layout || [] });
+    await putItem(client.id, 'note', 'style', { title: 'Phong cách từ ảnh đã làm', styleNotes: notes, imagery: j.imagery || [], layout: j.layout || [], fonts: { heading: fh, body: fb, accent: fa } });
   }
-  return notes;
+  return fh || fb ? `${notes} (Font: ${[fh, fb, fa].filter(Boolean).join(' / ')})` : notes;
 }

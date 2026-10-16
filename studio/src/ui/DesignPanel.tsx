@@ -17,12 +17,15 @@ import { PEOPLE_STYLES, peopleLayer, peopleSeeds, peopleUrl } from '../design/pe
 import { Btn, Eyebrow } from './components';
 import { Icon } from './icons';
 
-type Cat = 'all' | 'shape' | 'graphic' | 'bg' | '3d' | 'people' | 'sticker' | 'icon' | 'logo' | 'text' | 'photo' | 'anim';
+type Cat = 'all' | 'shape' | 'graphic' | 'elem' | 'bg' | '3d' | 'people' | 'sticker' | 'icon' | 'logo' | 'text' | 'photo' | 'anim';
 const CATS: { v: Cat; label: string }[] = [
-  { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'people', label: 'Người & nhân vật' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' },
+  { v: 'all', label: 'Tất cả' }, { v: '3d', label: 'Vật thể 3D' }, { v: 'people', label: 'Người & nhân vật' }, { v: 'bg', label: 'Nền & hoạ tiết' }, { v: 'shape', label: 'Hình khối' }, { v: 'graphic', label: 'Đồ hoạ' }, { v: 'elem', label: 'Phần tử' },
   { v: 'sticker', label: 'Sticker' }, { v: 'icon', label: 'Icon' }, { v: 'logo', label: 'Logo' }, { v: 'text', label: 'Chữ' }, { v: 'photo', label: 'Ảnh' }, { v: 'anim', label: 'Hoạt ảnh' },
 ];
 const STICKER_SETS = COLOR_SETS;
+/** Generated pieces that are objects (drawn whole on a transparent tile), not full backgrounds or patterns. */
+const OBJ = (g: GenGroup) => g !== 'bg' && g !== 'pattern';
+const ELEM_GROUPS = GEN_GROUPS.filter((g) => ['ribbon', 'badge', 'bubble', 'line', 'frame', 'spark', 'deco'].includes(g.v));
 
 /** What a tile inserts; also the drag payload (text/phloem-el). */
 export type Spec =
@@ -128,6 +131,7 @@ export function DesignPanel() {
   const [pStyle, setPStyle] = useState('open-peeps');
   const [pRound, setPRound] = useState(1);
   const [genGroup, setGenGroup] = useState<GenGroup>('bg');
+  const [elGroup, setElGroup] = useState<GenGroup>('ribbon');
   const [palIdx, setPalIdx] = useState(-1); // -1 = brand
   const [seed, setSeed] = useState(1);
   const [more, setMore] = useState(1);
@@ -191,7 +195,7 @@ export function DesignPanel() {
   );
   const genTile = (gid: string, sd: number) => {
     const g = GENERATORS.find((x) => x.id === gid)!;
-    const svg = genSvg(gid, palette, sd, g.group === 'shape3d' || g.group === 'deco' ? g.w : 300, g.group === 'shape3d' || g.group === 'deco' ? g.h : Math.round(300 * (g.h / g.w)))!;
+    const svg = genSvg(gid, palette, sd, OBJ(g.group) ? g.w : 300, OBJ(g.group) ? g.h : Math.round(300 * (g.h / g.w)))!;
     return (
       <button key={`${gid}-${sd}`} class={`gen-tile g-${g.group} ${busy === `${gid}-${sd}` ? 'busy' : ''}`} title={`${g.label} · biến thể ${sd}`} draggable onDragStart={drag({ kind: 'gen', id: gid, seed: sd, palette })} onClick={() => void put({ kind: 'gen', id: gid, seed: sd, palette }, `${gid}-${sd}`)}>
         <img src={svgDataUrl(svg)} alt="" />
@@ -245,7 +249,7 @@ export function DesignPanel() {
           {(cat === 'all' || cat === 'bg') && (
             <>
               {head('Nền & hoạ tiết', 'bg')}
-              {cat === 'bg' && <div class="dp-cats">{GEN_GROUPS.map((g) => <button key={g.v} class={`chip ${genGroup === g.v ? 'on' : ''}`} onClick={() => setGenGroup(g.v)}>{g.label}</button>)}</div>}
+              {cat === 'bg' && <div class="dp-cats">{GEN_GROUPS.filter((g) => !ELEM_GROUPS.includes(g)).map((g) => <button key={g.v} class={`chip ${genGroup === g.v ? 'on' : ''}`} onClick={() => setGenGroup(g.v)}>{g.label}</button>)}</div>}
               <div class="dp-pals">
                 <button class={`pal ${palIdx < 0 ? 'on' : ''}`} title="Màu thương hiệu" onClick={() => setPalIdx(-1)}>{brandPal.slice(0, 4).map((c, i) => <i key={i} style={{ background: c }} />)}</button>
                 {GEN_PALETTES.map((p, i) => <button key={p.name} class={`pal ${palIdx === i ? 'on' : ''}`} title={p.name} onClick={() => setPalIdx(i)}>{p.p.slice(0, 4).map((c, k) => <i key={k} style={{ background: c }} />)}</button>)}
@@ -254,6 +258,21 @@ export function DesignPanel() {
               <div class={`gen-grid g-${cat === 'all' ? 'bg' : genGroup}`}>
                 {(cat === 'all' ? ['waves', 'blur', 'blobs', 'sunburst', 'sphere', 'memphis'] : GENERATORS.filter((g) => g.group === genGroup).map((g) => g.id)).flatMap((gid) => (cat === 'all' ? [genTile(gid, seed)] : [0, 1].map((k) => genTile(gid, seed + k * 101))))}
               </div>
+            </>
+          )}
+          {(cat === 'all' || cat === 'elem') && (
+            <>
+              {head('Phần tử: ruy băng, huy hiệu, bong bóng, khung…', 'elem')}
+              {cat === 'elem' && <div class="dp-cats">{ELEM_GROUPS.map((g) => <button key={g.v} class={`chip ${elGroup === g.v ? 'on' : ''}`} onClick={() => setElGroup(g.v)}>{g.label}</button>)}</div>}
+              {cat === 'elem' && <div class="dp-pals">
+                <button class={`pal ${palIdx < 0 ? 'on' : ''}`} title="Màu thương hiệu" onClick={() => setPalIdx(-1)}>{brandPal.slice(0, 4).map((c, i) => <i key={i} style={{ background: c }} />)}</button>
+                {GEN_PALETTES.map((p, i) => <button key={p.name} class={`pal ${palIdx === i ? 'on' : ''}`} title={p.name} onClick={() => setPalIdx(i)}>{p.p.slice(0, 4).map((c, k) => <i key={k} style={{ background: c }} />)}</button>)}
+                <button class="pal shuffle" title="Biến thể khác" onClick={() => setSeed((x) => x + 7)}>↻</button>
+              </div>}
+              <div class="gen-grid g-deco">
+                {(cat === 'all' ? ['title-plate', 'ribbon-fold', 'seal', 'bubble-round', 'arrow-curve', 'sparkle-cluster'] : GENERATORS.filter((g) => g.group === elGroup).map((g) => g.id)).flatMap((gid) => (cat === 'all' ? [genTile(gid, seed)] : [0, 1, 2].map((k) => genTile(gid, seed + k * 101))))}
+              </div>
+              {cat === 'elem' && <div class="dim small">Mọi phần tử đổi màu theo thương hiệu hoặc bảng màu chọn ở trên; bấm ↻ để ra biến thể mới. Chèn xong vẫn đổi màu, kích thước, xoay được.</div>}
             </>
           )}
           {(cat === 'all' || cat === 'shape') && <>{head('Hình khối', 'shape')}<div class="el-grid">{els(['shape', 'svg'], cat === 'all' ? 8 : undefined).map(tile)}</div></>}

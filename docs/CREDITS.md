@@ -12,6 +12,11 @@ Phloem chỉ dùng đồ hoạ được phép dùng thương mại. Icon và sti
 | Emojione | Emoji One (JoyPixels) | CC BY 4.0 |
 | Streamline Emojis, Color, Plump Color, Flex Color, Ultimate Color, Sharp Color, Freehand Color, Kameleon Color, Cyber Color, Stickies Color, Streamline icons | Streamline (https://streamlinehq.com) | CC BY 4.0 |
 | Solar Icons | 480 Design | CC BY 4.0 |
+| Pepicons Pop | CyCraft | CC BY 4.0 |
+| Streamline Freehand, Streamline Sharp | Streamline | CC BY 4.0 |
+| Pixelarticons | Gerrit Halfmann | MIT |
+| Phông chữ Google Fonts (hơn 500 font có tiếng Việt, studio/data/gfonts.json) | từng nhà thiết kế | SIL Open Font License 1.1 / Apache 2.0 |
+| Phần tử tự sinh (ruy băng, huy hiệu, bong bóng, khung, mũi tên, lấp lánh) | Phloem | vẽ bằng code, dùng tự do |
 | Fluent UI System Icons, Huge Icons, Boxicons, Iconoir, Bootstrap Icons, Marketeq, Meteocons, Circle Flags, Flag Icons, Flat UI | các tác giả tương ứng | MIT |
 | MingCute, Carbon, IconPark, Noto Emoji v1 | các tác giả tương ứng | Apache 2.0 |
 | Nhân vật & người minh hoạ (qua DiceBear, https://dicebear.com): Open Peeps (Pablo Stanley), Notionists (Zoish), Lorelei (Lisa Wischofsky), Clay, Voxel Art, Voxel Bot, Critters, Moods, Sprouts, Thumbs, Pixel Art, Planets, Landscape (DiceBear) | từng tác giả | CC0 1.0 |

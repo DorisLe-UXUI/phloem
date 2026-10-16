@@ -8,12 +8,14 @@ export const ICONIFY = 'https://api.iconify.design';
 const HOSTS = ['https://api.iconify.design', 'https://api.simplesvg.com', 'https://api.unisvg.com'];
 /** Icon sets the designer and the AI may use: permissive licences (MIT / ISC / Apache-2.0 / CC0). */
 export const ICON_SETS = ['ph', 'lucide', 'tabler', 'mdi', 'material-symbols', 'ri', 'game-icons', 'healthicons',
-  'fluent', 'solar', 'hugeicons', 'mingcute', 'boxicons', 'streamline', 'icon-park-outline', 'carbon', 'bi', 'iconoir'] as const;
+  'fluent', 'solar', 'hugeicons', 'mingcute', 'boxicons', 'streamline', 'icon-park-outline', 'carbon', 'bi', 'iconoir',
+  'pepicons-pop', 'streamline-freehand', 'pixelarticons', 'streamline-sharp'] as const;
 /** Icon sets to browse in the Icon tab (search covers all of ICON_SETS). Solar and Streamline are CC BY 4.0, the rest MIT / Apache-2.0 / ISC. */
 export const ICON_BROWSE: { v: string; label: string }[] = [
   { v: 'ph', label: 'Phosphor' }, { v: 'fluent', label: 'Fluent UI' }, { v: 'solar', label: 'Solar' }, { v: 'hugeicons', label: 'Huge' },
   { v: 'mingcute', label: 'MingCute' }, { v: 'tabler', label: 'Tabler' }, { v: 'lucide', label: 'Lucide' }, { v: 'boxicons', label: 'Boxicons' },
   { v: 'streamline', label: 'Streamline' }, { v: 'icon-park-outline', label: 'Icon Park' }, { v: 'carbon', label: 'Carbon' }, { v: 'iconoir', label: 'Iconoir' },
+  { v: 'pepicons-pop', label: 'Hoạt hình' }, { v: 'streamline-freehand', label: 'Vẽ tay' }, { v: 'pixelarticons', label: 'Pixel' }, { v: 'streamline-sharp', label: 'Sắc nét' },
   { v: 'game-icons', label: 'Game' }, { v: 'healthicons', label: 'Y tế' },
 ];
 /** Multicolour sets (stickers, coloured icons, illustrations): inserted as-is, never recoloured. All licensed for commercial use:
