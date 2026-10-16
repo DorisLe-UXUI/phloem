@@ -11,6 +11,7 @@ import { Btn, Eyebrow } from './components';
 import { Icon, type IconName } from './icons';
 import { ask } from './confirm';
 import { DesignPanel } from './DesignPanel';
+import { AppsPanel } from './AppsPanel';
 
 const ICON: Record<Node['type'], IconName> = { rect: 'rect', text: 'text', image: 'image', group: 'group' };
 
@@ -23,8 +24,9 @@ export function LeftPanel() {
         <button class={`ptab ${s.leftTab === 'layers' ? 'on' : ''}`} onClick={() => set({ leftTab: 'layers' })}><Icon name="layers" size={13} />Layer</button>
         {s.project?.kind !== 'design' && <button class={`ptab ${s.leftTab === 'blocks' ? 'on' : ''}`} onClick={() => set({ leftTab: 'blocks' })}><Icon name="blocks" size={13} />Block</button>}
         <button class={`ptab ${s.leftTab === 'assets' ? 'on' : ''}`} onClick={() => set({ leftTab: 'assets' })}><Icon name="image" size={13} />Ảnh</button>
+        <button class={`ptab ${s.leftTab === 'apps' ? 'on' : ''}`} onClick={() => set({ leftTab: 'apps' })} title="Mã QR, biểu đồ, dịch thiết kế, tạo hàng loạt, mẫu"><Icon name="grid" size={13} />Ứng dụng</button>
       </div>
-      <div class="pbody">{s.leftTab === 'design' ? <DesignPanel /> : s.leftTab === 'layers' ? <Layers /> : s.leftTab === 'blocks' && s.project?.kind !== 'design' ? <Blocks /> : <Assets />}</div>
+      <div class="pbody">{s.leftTab === 'apps' ? <AppsPanel /> : s.leftTab === 'design' ? <DesignPanel /> : s.leftTab === 'layers' ? <Layers /> : s.leftTab === 'blocks' && s.project?.kind !== 'design' ? <Blocks /> : <Assets />}</div>
     </div>
   );
 }

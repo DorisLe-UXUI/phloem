@@ -10,9 +10,9 @@ import { get, history, set, subscribe, toast, useStore } from '../store';
 import * as A from '../pipeline/actions';
 import { Btn } from './components';
 import { Icon } from './icons';
-import { boardFrames, frameAt, framePicture, openFrame } from './board';
+import { boardFrames, cancelFrameDrag, dragFrame, dropFrame, frameAt, framePicture, openFrame } from './board';
 
-type Mode = { kind: 'idle' } | { kind: 'pinch'; d0: number; z0: number; c0: { x: number; y: number }; pan0: { x: number; y: number } } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } } | { kind: 'rotate'; id: string; base: Doc; cx: number; cy: number; pushed?: boolean }
+type Mode = { kind: 'idle' } | { kind: 'pinch'; d0: number; z0: number; c0: { x: number; y: number }; pan0: { x: number; y: number } } | { kind: 'pan'; sx: number; sy: number; px: number; py: number } | { kind: 'move'; sx: number; sy: number; base: Doc; ids: string[]; moved: boolean } | { kind: 'resize'; handle: number; base: Doc; ids: string[]; start: ops.Rect; sx: number; sy: number } | { kind: 'marquee'; sx: number; sy: number; cur: { x: number; y: number }; additive: boolean } | { kind: 'draw'; sx: number; sy: number; cur: { x: number; y: number } } | { kind: 'rotate'; id: string; base: Doc; cx: number; cy: number; pushed?: boolean } | { kind: 'frame'; id: string; sx: number; sy: number; moved: boolean }
   // dragging a pasteboard image; `inside` = pointer over the artboard, `over` = image layer that would be replaced
   | { kind: 'scrap'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; inside: boolean; over: string | null }
   // crop mode: dragging pans the photo inside its frame
@@ -357,7 +357,7 @@ export function CanvasView() {
     const sc = hitScrap(d.x, d.y);
     if (sc) { set({ scrapSel: sc.id, selection: [], hover: null }); mode.current = { kind: 'scrap', id: sc.id, sx: d.x, sy: d.y, ox: sc.x, oy: sc.y, moved: false, inside: false, over: null }; return; }
     if (st.scrapSel) set({ scrapSel: null });
-    if (!insideArtboard(d.x, d.y)) { const f = frameAt(d.x, d.y); if (f) { frameHover.current = null; mode.current = { kind: 'idle' }; void openFrame(f); return; } }
+    if (!insideArtboard(d.x, d.y)) { const f = frameAt(d.x, d.y); if (f) { frameHover.current = null; if (f.kind === 'add' || get().project?.kind !== 'design') { mode.current = { kind: 'idle' }; void openFrame(f); } else mode.current = { kind: 'frame', id: f.id, sx: d.x, sy: d.y, moved: false }; return; } }
     const n = hit(d.x, d.y, e.metaKey || e.ctrlKey);
     if (n) {
       let ids = st.selection;
@@ -435,6 +435,12 @@ export function CanvasView() {
       A.commit(ops.moveBy(m.base, m.ids, Math.round(dx + sn.dx), Math.round(dy + sn.dy)), false);
       return;
     }
+    if (m.kind === 'frame') {
+      // drag another post's frame to a new place on the board (a click without moving opens it)
+      if (!m.moved && Math.hypot(d.x - m.sx, d.y - m.sy) * st.zoom < 4) return;
+      m.moved = true; dragFrame(m.id, d.x - m.sx, d.y - m.sy); wrap.current!.style.cursor = 'grabbing'; set({});
+      return;
+    }
     if (m.kind === 'rotate') {
       const deg = snapAngle((Math.atan2(d.y - m.cy, d.x - m.cx) * 180) / Math.PI + 90, e.shiftKey);
       if (!m.pushed) { m.pushed = true; history.push(m.base); }
@@ -476,6 +482,13 @@ export function CanvasView() {
     const m = mode.current; const p = local(e); const d = toDoc(p.x, p.y);
     wrap.current!.classList.remove('panning');
     guides.current = { v: [], h: [] };
+    if (m.kind === 'frame') {
+      wrap.current!.style.cursor = '';
+      if (m.moved) { const cid = get().project?.clientId; if (cid) dropFrame(cid); else cancelFrameDrag(); set({}); }
+      else { const f = frameAt(d.x, d.y); if (f && f.id === m.id) void openFrame(f); }
+      mode.current = { kind: 'idle' };
+      return;
+    }
     if (m.kind === 'marquee') {
       const r = { x: Math.min(m.sx, d.x), y: Math.min(m.sy, d.y), w: Math.abs(d.x - m.sx), h: Math.abs(d.y - m.sy) };
       if (r.w > 2 || r.h > 2) { const ids = ops.nodesInRect(docOf(), r); A.select(ids, m.additive); }

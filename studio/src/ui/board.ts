@@ -35,6 +35,25 @@ export function boardFrames(): Frame[] {
   return out;
 }
 
+// Frames the user dragged keep their place (per client, in this browser): an offset from the automatic layout.
+const posKey = (clientId: string) => `phloem.board.pos.${clientId}`;
+function offsets(clientId: string): Record<string, { dx: number; dy: number }> { try { return JSON.parse(localStorage.getItem(posKey(clientId)) || '{}'); } catch { return {}; } }
+/** A frame being dragged right now (drawn at its live position before it is saved). */
+let dragging: { id: string; dx: number; dy: number } | null = null;
+export function dragFrame(id: string, dx: number, dy: number) { dragging = { id, dx, dy }; }
+/** Save where a dragged frame was dropped. */
+export function dropFrame(clientId: string) {
+  if (!dragging) return;
+  const o = offsets(clientId); const cur = o[dragging.id] || { dx: 0, dy: 0 };
+  o[dragging.id] = { dx: Math.round(cur.dx + dragging.dx), dy: Math.round(cur.dy + dragging.dy) };
+  dragging = null;
+  try { localStorage.setItem(posKey(clientId), JSON.stringify(o)); } catch { /* private mode */ }
+}
+export function cancelFrameDrag() { dragging = null; }
+/** "Xếp gọn": back to the automatic layout. */
+export function resetBoardLayout(clientId: string) { try { localStorage.removeItem(posKey(clientId)); } catch { /* private mode */ } }
+export const hasCustomLayout = (clientId: string) => Object.keys(offsets(clientId)).length > 0;
+
 /** Designs laid out like a Figma page: one row per post in posting order (the open design's row in the middle, earlier
  *  posts above, later ones below), a carousel's slides and a post's other versions side by side, slide 1 of every post in
  *  one column. Designs not tied to a post close the board. */
@@ -58,7 +77,13 @@ function designBoard(): Frame[] {
   const x0 = -ci * col;
   const rowH = (g: { list: ProjectMeta[] }) => Math.max(...g.list.map((m) => size(m).h));
   const out: Frame[] = [];
-  const place = (g: { list: ProjectMeta[] }, y: number) => g.list.forEach((m, i) => { if (m.id === p.id) return; const z = size(m); out.push({ id: m.id, name: m.name, x: x0 + i * col, y, w: z.w, h: z.h, meta: m, kind: 'email' }); });
+  // dragged frames: their saved offset, minus the open design's own offset (it always sits at 0,0)
+  const off = offsets(p.clientId!); const me = off[p.id] || { dx: 0, dy: 0 };
+  const place = (g: { list: ProjectMeta[] }, y: number) => g.list.forEach((m, i) => {
+    if (m.id === p.id) return;
+    const z = size(m); const o = off[m.id] || { dx: 0, dy: 0 }; const d = dragging?.id === m.id ? dragging : { dx: 0, dy: 0 };
+    out.push({ id: m.id, name: m.name, x: x0 + i * col + o.dx - me.dx + d.dx, y: y + o.dy - me.dy + d.dy, w: z.w, h: z.h, meta: m, kind: 'email' });
+  });
   place(ordered[gi], 0);
   let y = 0; for (let i = gi - 1; i >= 0; i--) { y -= rowH(ordered[i]) + GY; place(ordered[i], y); }
   y = rowH(ordered[gi]) + GY; for (let i = gi + 1; i < ordered.length; i++) { place(ordered[i], y); y += rowH(ordered[i]) + GY; }

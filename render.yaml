@@ -27,6 +27,14 @@ services:
         sync: false
       - key: AUTH_SECRET
         sync: false
+      # AI pictures (any one is enough; cheapest first): Cloudflare Workers AI token (free daily allowance), Gemini key
+      - key: CF_AI_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Pixabay API key (free at pixabay.com/api/docs): vectors and illustrations in the design panel
+      - key: PIXABAY_API_KEY
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: MAILCHIMP_CLIENT_ID

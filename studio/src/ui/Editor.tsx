@@ -5,6 +5,7 @@ import * as A from '../pipeline/actions';
 import { activeProfile, providerName } from '../pipeline/exportFlow';
 import { CanvasView } from './CanvasView';
 import { LeftPanel } from './LeftPanel';
+import { resetBoardLayout } from './board';
 import { RightPanel } from './RightPanel';
 import { Btn } from './components';
 import { Icon, Logo, type IconName } from './icons';
@@ -108,7 +109,7 @@ function TopBar() {
       <div class="c">
         <div class="tools">{tools.map((t) => <button key={t.t} class={`tool ${s.tool === t.t ? 'on' : ''}`} title={t.title} onClick={() => set({ tool: t.t })}><Icon name={t.icon} /><span class="k">{t.k}</span></button>)}</div>
         <div class="row" style={{ gap: 2 }}><Btn kind="ghost" sm icon="undo" title="Hoàn tác (⌘Z)" onClick={() => A.undo()} /><Btn kind="ghost" sm icon="redo" title="Làm lại (⇧⌘Z)" onClick={() => A.redo()} /></div>
-        <div class="zoomc"><button class="tool" title="Thu nhỏ (⌘−)" onClick={() => zoomEvt('out')}><Icon name="zoomOut" /></button><span class="z" title="100% (⌘0)" onClick={() => zoomEvt('reset')}>{Math.round(s.zoom * 100)}%</span><button class="tool" title="Phóng to (⌘+)" onClick={() => zoomEvt('in')}><Icon name="zoomIn" /></button><button class="tool" title="Vừa màn hình (⌘1)" onClick={() => zoomEvt('fit')}><Icon name="fit" /></button><button class="tool" title="Xem tất cả: mọi khung và ảnh nháp (⇧1)" onClick={() => zoomEvt('all')}><Icon name="grid" /></button></div>
+        <div class="zoomc"><button class="tool" title="Thu nhỏ (⌘−)" onClick={() => zoomEvt('out')}><Icon name="zoomOut" /></button><span class="z" title="100% (⌘0)" onClick={() => zoomEvt('reset')}>{Math.round(s.zoom * 100)}%</span><button class="tool" title="Phóng to (⌘+)" onClick={() => zoomEvt('in')}><Icon name="zoomIn" /></button><button class="tool" title="Vừa màn hình (⌘1)" onClick={() => zoomEvt('fit')}><Icon name="fit" /></button><button class="tool" title="Xem tất cả: mọi khung và ảnh nháp (⇧1)" onClick={() => zoomEvt('all')}><Icon name="grid" /></button>{s.project?.kind === 'design' && s.project.clientId && <button class="tool" title="Xếp gọn: đưa các bài đã kéo về bố cục theo ngày đăng" onClick={() => { resetBoardLayout(s.project!.clientId!); set({}); zoomEvt('all'); }}><Icon name="blocks" /></button>}</div>
         <div class="variant" style={{ marginRight: 6 }}>
           <button class={s.playing ? 'on' : ''} title="Xem thử chuyển động (các layer có 'Chuyển động'); khi xuất, lát đó thành GIF động" onClick={() => set({ playing: !s.playing })}><Icon name="play" size={13} />{s.playing ? 'Đang phát' : 'Phát'}</button>
         </div>
