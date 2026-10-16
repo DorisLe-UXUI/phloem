@@ -978,6 +978,8 @@ export async function switchBoardFrame(id: string, cam: { zoom: number; pan: { x
   set({ zoom: cam.zoom, pan: cam.pan });
 }
 export function takeBoardCamera() { const c = boardCamera; boardCamera = null; return c; }
+/** Hand CanvasView a camera to use on the next open instead of zoom-to-fit (board switches, reopening where the user left off). */
+export function setBoardCamera(c: { zoom: number; pan: { x: number; y: number } } | null) { boardCamera = c; }
 
 export async function deleteProject(id: string) { try { await db.deleteProject(id); await cloud.deleteProject(id); await refreshProjects(); } catch (e) { toast((e as Error).message, 'err'); } }
 export async function duplicateProject(id: string) {

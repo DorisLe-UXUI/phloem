@@ -9,6 +9,7 @@ import { docToNNode } from './model/toNNode';
 import { exportDocSlices } from './render/exportSlices';
 import { get, set } from './store';
 import { startRouter } from './mkt/router';
+import { resumeOnBoot } from './pipeline/resume';
 
 if (get().app === 'mkt') startRouter(); // Phloem MKT: same bundle, routes in the URL fragment
 
@@ -28,6 +29,7 @@ void assets.ready.then(async () => {
     const def = T.find((x) => x.kind === t);
     if (def) { history.replaceState(null, '', location.pathname); await newProject(def.kind, templateBrand(def, DEFAULT_BRAND, BRAND_PRESETS)); }
   }
+  await resumeOnBoot(); // reopen the email (and tabs) the user was working on
 });
 render(<App />, document.getElementById('root')!);
 
