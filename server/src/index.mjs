@@ -127,6 +127,7 @@ const server = createServer(async (req, res) => {
         ai: !!anthropic,
         imageAi: IMAGE_AI || null,
         pixabay: !!PIXABAY_API_KEY,
+        video: !!GEMINI_API_KEY,
         imageModel: [CF_ACCOUNT ? `${CF_IMAGE_MODEL.split('/').pop()}${cfResting > Date.now() ? ' (hết lượt free hôm nay)' : ''}` : '', IMAGE_PROVIDER === 'google' ? (googleModel ? googleModel.name.replace('models/', '') : googleModel === null ? 'none' : 'auto') : IMAGE_PROVIDER === 'openai' ? (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1') : ''].filter(Boolean).join(' → ') || null,
         auth: true,
         db: true,
@@ -159,6 +160,9 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/proxy' && req.method === 'POST') { if (!RELAY_TOKEN && !AUTH.me(bearer(req)) && throttled(`proxy:${ipOf(req)}`, 400, 10 * 60_000)) return json(res, 429, { error: 'Quá nhiều request qua relay. Đăng nhập tài khoản relay để không bị giới hạn.' }); return await proxy(await body(req), res); }
     if (url.pathname === '/fetch' && req.method === 'GET') return await fetchAsset(url.searchParams.get('url') || '', res);
     if (url.pathname === '/ai' && req.method === 'POST') { if (!aiGate(req, res)) return; return await ai(await body(req), res); }
+    if (url.pathname === '/ai/video' && req.method === 'POST') { if (!aiGate(req, res)) return; if (throttled(`vid:${ipOf(req)}`, 6, 60 * 60_000)) return json(res, 429, { error: 'Tạo video quá nhiều trong 1 giờ (tối đa 6). Đợi một chút.' }); return await aiVideoStart(await body(req), res); }
+    if (url.pathname === '/ai/video/op' && req.method === 'GET') { if (!aiGate(req, res)) return; return await aiVideoPoll(url.searchParams.get('name') || '', res); }
+    if (url.pathname === '/ai/video/file' && req.method === 'GET') { if (!aiGate(req, res)) return; return await aiVideoFile(url.searchParams.get('uri') || '', res); }
     if (url.pathname === '/ai/image' && req.method === 'POST') { if (!aiGate(req, res)) return; if (throttled(`img:${ipOf(req)}`, 30, 10 * 60_000)) return json(res, 429, { error: 'Tạo ảnh quá nhiều trong 10 phút. Đợi một chút.' }); return await aiImage(await body(req), res); }
     if (url.pathname === '/ai/stream' && req.method === 'POST') { if (!aiGate(req, res)) return; return await aiStream(await body(req), req, res); }
     if (url.pathname.startsWith('/aiaccess')) return await aiAccessRoute(url.pathname.slice('/aiaccess'.length) || '/', req, res);
@@ -322,6 +326,68 @@ async function cloudflareImage(prompt, aspect, refs = []) {
   console.log('[image] cloudflare error:', r.status, msg.slice(0, 200));
   return { error: `Cloudflare: ${msg.slice(0, 200)}`, status: r.status === 400 ? 422 : 502 };
 }
+// ---------- AI video (Google Veo, cheapest model first) ----------
+// POST /ai/video {prompt, aspect:'9:16'|'16:9', seconds:4|6|8, image?:{b64,mime}} → {op, model}; GET /ai/video/op?name= → {done, uri?};
+// GET /ai/video/file?uri= streams the finished MP4. VEO_MODEL pins a model; otherwise Veo 3.1 Lite, then Fast, from ListModels.
+let veoModel; // undefined = not looked up, null = none
+async function googleVideoModel() {
+  if (veoModel !== undefined) return veoModel;
+  if (process.env.VEO_MODEL) return (veoModel = `models/${process.env.VEO_MODEL.replace(/^models\//, '')}`);
+  const all = [];
+  try {
+    let page = '';
+    for (let i = 0; i < 5; i++) {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, { headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal: AbortSignal.timeout(20_000) });
+      const j = await r.json().catch(() => ({})); if (!r.ok) break;
+      all.push(...(j.models || [])); if (!j.nextPageToken) break; page = j.nextPageToken;
+    }
+  } catch { return null; }
+  const veo = all.filter((m) => /veo/i.test(m.name) && (m.supportedGenerationMethods || []).includes('predictLongRunning'));
+  const pick = veo.find((m) => /lite/i.test(m.name)) || veo.find((m) => /fast/i.test(m.name)) || veo[0];
+  veoModel = pick ? pick.name : null;
+  console.log(`[video] google model: ${veoModel || 'none'} (veo models: ${veo.map((m) => m.name.replace('models/', '')).join(', ') || 'none'})`);
+  return veoModel;
+}
+async function aiVideoStart(p, res) {
+  if (!GEMINI_API_KEY) return json(res, 503, { error: 'Relay chưa có GEMINI_API_KEY để tạo video.', code: 'no_video_key' });
+  const prompt = String(p?.prompt || '').trim().slice(0, 2000);
+  if (!prompt) return json(res, 400, { error: 'Thiếu mô tả video.' });
+  const aspect = p?.aspect === '16:9' ? '16:9' : '9:16';
+  const seconds = [4, 6, 8].includes(Number(p?.seconds)) ? Number(p.seconds) : 6;
+  const model = await googleVideoModel();
+  if (!model) return json(res, 502, { error: 'Key Google này chưa có model Veo. Bật thanh toán và Veo cho project của key trong Google AI Studio.' });
+  const instance = { prompt };
+  if (p?.image?.b64) instance.image = { inlineData: { mimeType: /^image\/(png|jpeg|webp)$/.test(p.image.mime) ? p.image.mime : 'image/jpeg', data: String(p.image.b64).replace(/^data:[^,]+,/, '') } };
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/${model}:predictLongRunning`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify({ instances: [instance], parameters: { aspectRatio: aspect, durationSeconds: String(seconds), resolution: '720p' } }), signal: AbortSignal.timeout(60_000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { if (r.status === 404) veoModel = undefined; return json(res, r.status === 429 ? 429 : 502, { error: `Google (${model.replace('models/', '')}): ${String(j?.error?.message || `HTTP ${r.status}`).slice(0, 300)}` }); }
+    return json(res, 200, { op: j.name, model: model.replace('models/', ''), seconds });
+  } catch (e) { return json(res, 502, { error: `Không tạo được video: ${e?.message || e}` }); }
+}
+async function aiVideoPoll(name, res) {
+  if (!/^models\/[\w.-]+\/operations\/[\w-]+$/.test(name) && !/^operations\/[\w-]+$/.test(name)) return json(res, 400, { error: 'operation không hợp lệ' });
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/${name}`, { headers: { 'x-goog-api-key': GEMINI_API_KEY }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
+  if (!r) return json(res, 502, { error: 'Google không trả lời' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return json(res, 502, { error: String(j?.error?.message || `HTTP ${r.status}`).slice(0, 300) });
+  if (!j.done) return json(res, 200, { done: false });
+  if (j.error) return json(res, 200, { done: true, error: String(j.error.message || 'Google từ chối tạo video').slice(0, 300) });
+  const s0 = j.response?.generateVideoResponse?.generatedSamples?.[0];
+  const uri = s0?.video?.uri;
+  if (!uri) return json(res, 200, { done: true, error: 'Google không trả video (có thể bị bộ lọc an toàn chặn). Đổi mô tả rồi thử lại.' });
+  return json(res, 200, { done: true, uri });
+}
+async function aiVideoFile(uri, res) {
+  let u; try { u = new URL(uri); } catch { return json(res, 400, { error: 'uri không hợp lệ' }); }
+  if (u.protocol !== 'https:' || !/(^|\.)googleapis\.com$/.test(u.hostname)) return json(res, 400, { error: 'uri không hợp lệ' });
+  const r = await fetch(u, { headers: { 'x-goog-api-key': GEMINI_API_KEY }, redirect: 'follow', signal: AbortSignal.timeout(120_000) }).catch(() => null);
+  if (!r || !r.ok || !r.body) return json(res, 502, { error: `Không tải được video (HTTP ${r?.status || 'mạng'})` });
+  res.writeHead(200, { 'Content-Type': r.headers.get('content-type') || 'video/mp4', 'Cache-Control': 'no-store' });
+  const { Readable } = await import('node:stream');
+  Readable.fromWeb(r.body).pipe(res);
+}
+
 async function aiImage(p, res) {
   const prompt = String(p?.prompt || '').trim().slice(0, 2000);
   const aspect = ASPECTS.has(p?.aspect) ? p.aspect : '1:1';

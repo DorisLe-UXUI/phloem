@@ -15,6 +15,8 @@ import { Icon } from '../icons';
 import { ask } from '../confirm';
 import { Empty, PageHead, StatusChip, fmtDate } from './bits';
 import { ClientLibrary } from './ClientLibrary';
+import { VideoStudio, isVideoRow, videoOf } from './VideoStudio';
+import type { VideoDoc } from '../../mkt/video';
 
 type Row = PlanRow & { planId: string };
 
@@ -25,6 +27,8 @@ export function DesignHub({ client }: { client: Client }) {
   const [picker, setPicker] = useState<Row | null | 'new'>(null);
   const [own, setOwn] = useState<Row | null>(null);
   const [importing, setImporting] = useState(false);
+  const [video, setVideo] = useState<Row | 'new' | { id: string } | null>(null);
+  const looseVideos = ((cachedItems(client.id) || []).filter((i) => i.kind === 'video' && !(i.data as VideoDoc).rowRef) as Item<VideoDoc>[]);
   const [busy, setBusy] = useState<{ label: string; done?: number; total?: number } | null>(null);
   const [scope, setScope] = useState<'approved' | 'all'>('approved');
   const [days, setDays] = useState(14);
@@ -82,7 +86,7 @@ export function DesignHub({ client }: { client: Client }) {
   return (
     <>
       <PageHead title="Thiết kế" sub="Mỗi bài trong kế hoạch có ảnh riêng, xếp theo ngày đăng. Ảnh nào chưa đẹp: bấm Chỉnh sửa để mở trang edit (layer như Figma, kéo thả đồ hoạ như Canva)."
-        actions={write ? <><Btn icon="download" onClick={() => setImporting(true)} title="Nhập kế hoạch từ Google Sheet, ảnh đã làm từ Drive/web">Nhập từ link</Btn>{week.length > 0 && <Btn icon="sparkle" onClick={() => void batch()}>AI thiết kế cả tuần · {week.length}</Btn>}<Btn kind="primary" icon="plus" onClick={() => setPicker('new')}>Thiết kế mới</Btn></> : undefined} />
+        actions={write ? <><Btn icon="download" onClick={() => setImporting(true)} title="Nhập kế hoạch từ Google Sheet, ảnh đã làm từ Drive/web">Nhập từ link</Btn>{week.length > 0 && <Btn icon="sparkle" onClick={() => void batch()}>AI thiết kế cả tuần · {week.length}</Btn>}<Btn icon="play" onClick={() => setVideo('new')} title="Dựng video ngắn 9:16 từ footage">Video mới</Btn><Btn kind="primary" icon="plus" onClick={() => setPicker('new')}>Thiết kế mới</Btn></> : undefined} />
 
       <div class="row wrap" style={{ marginBottom: 12 }}>
         <div class="seg"><button class={layout === 'table' ? 'on' : ''} onClick={() => setLayout('table')}><Icon name="grid" size={13} /> Bảng</button><button class={layout === 'cards' ? 'on' : ''} onClick={() => setLayout('cards')}><Icon name="blocks" size={13} /> Thẻ</button></div>
@@ -122,6 +126,7 @@ export function DesignHub({ client }: { client: Client }) {
                         </button>
                         {slidesOf(r).length > 1 && <div class="mk-slides">{slidesOf(r).slice(1).map((d, k) => <button key={d.id} title={`Slide ${k + 2}`} onClick={() => void A.openProject(d.id)}>{d.thumb ? <img src={d.thumb} alt={`Slide ${k + 2}`} loading="lazy" /> : k + 2}</button>)}</div>}
                         {write && <div class="mk-imgacts">
+                          {isVideoRow(r) && <button class="ai" onClick={() => setVideo(r)} title="Dựng video Reel/TikTok từ footage thật (và cảnh AI) theo công thức video triệu view"><Icon name="play" size={12} />{videoOf(client.id, r) ? 'Mở video' : 'Dựng video'}</button>}
                           {des
                             ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sz(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>
                             : <button class="ai" onClick={() => void make(sz(r), r, true)} title="AI vẽ ảnh và dựng bố cục theo nội dung bài"><Icon name="sparkle" size={12} />AI thiết kế</button>}
@@ -164,6 +169,7 @@ export function DesignHub({ client }: { client: Client }) {
                   <b class="mk-clamp">{r.topic}</b>
                   {(r.hook || r.caption) && <p class="small muted mk-clamp">{r.hook || r.caption}</p>}
                   {write && <div class="row wrap">
+                    {isVideoRow(r) && <Btn xs icon="play" onClick={() => setVideo(r)}>{videoOf(client.id, r) ? 'Mở video' : 'Dựng video'}</Btn>}
                     {des ? <>
                       <Btn xs icon="text" onClick={() => void A.openProject(des.id)}>Chỉnh sửa</Btn>
                       <Btn xs icon="sparkle" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sz(r), r, true); }}>AI gen lại</Btn>
@@ -183,6 +189,19 @@ export function DesignHub({ client }: { client: Client }) {
       {!visibleDates.length && plans.length ? <div class="mk-none">Không có bài nào từ hôm nay{scope === 'approved' ? ' đã được duyệt. Chọn "Tất cả bài" hoặc duyệt bài trong Kế hoạch.' : '.'}</div> : null}
       {dates.length > days && <div class="row" style={{ justifyContent: 'center', margin: '8px 0 16px' }}><Btn sm onClick={() => setDays(days + 14)}>Xem thêm {Math.min(14, dates.length - days)} ngày</Btn></div>}
 
+      {looseVideos.length > 0 && (
+        <section class="mk-card">
+          <div class="mk-card-h"><b>Video</b><span class="dim small">không gắn với bài nào · {looseVideos.length}</span></div>
+          <div class="mk-designs">
+            {looseVideos.map((i) => (
+              <div key={i.id} class="mk-design" onClick={() => setVideo({ id: i.id })} role="button" tabIndex={0}>
+                <div class="pv" style={{ aspectRatio: '9 / 16' }}>{i.data.thumb ? <img src={i.data.thumb} alt="" /> : <Icon name="play" size={24} />}</div>
+                <div class="meta"><b class="mk-ell">{i.data.title}</b><span class="dim small">{i.data.segs.length} cảnh · {fmtDate(i.updatedAt)}</span></div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {loose.length > 0 && (
         <section class="mk-card">
           <div class="mk-card-h"><b>Thiết kế khác</b><span class="dim small">không gắn với bài nào · {loose.length}</span></div>
@@ -208,6 +227,7 @@ export function DesignHub({ client }: { client: Client }) {
 
       {!plans.length && <Empty icon="layers" title="Chưa có kế hoạch" action={<Btn onClick={() => go({ view: 'client', id: client.id, tab: 'plan' })}>Soạn kế hoạch</Btn>}>Bài trong kế hoạch tự thành ô ảnh theo ngày ở đây.</Empty>}
 
+      {video && <VideoStudio client={client} row={video === 'new' || !('planId' in video) ? null : video} openId={typeof video === 'object' && !('planId' in video) ? video.id : undefined} onClose={() => setVideo(null)} />}
       {importing && <ImportData client={client} onClose={() => setImporting(false)} />}
       {own && <OwnImage client={client} row={own} onClose={() => setOwn(null)} />}
       {picker && <SizePicker row={picker === 'new' ? null : picker} onClose={() => setPicker(null)} onPick={(z, ai) => void make(z, picker === 'new' ? null : picker, ai)} />}

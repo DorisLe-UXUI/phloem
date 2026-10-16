@@ -70,7 +70,7 @@ CREATE INDEX IF NOT EXISTS client_members_user ON client_members(user_id);
 /** Roles a teammate can hold in one client's workspace (the agency account that created the client is its owner). */
 export const CLIENT_ROLES = ['manager', 'designer', 'content', 'ads', 'client_viewer'];
 /** Kinds of per-client records the API accepts (anything else is refused). */
-export const CLIENT_KINDS = new Set(['brand', 'plan', 'review', 'post', 'campaign', 'report', 'note']);
+export const CLIENT_KINDS = new Set(['brand', 'plan', 'review', 'post', 'campaign', 'report', 'note', 'video']);
 
 export const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const now = () => new Date().toISOString();

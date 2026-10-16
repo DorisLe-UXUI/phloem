@@ -63,6 +63,9 @@ export const db = {
   putAsset: (a: Asset, blob: Blob) => txAll<void>(['assets', 'blobs'], 'readwrite', (t) => { t.objectStore('assets').put(a); t.objectStore('blobs').put(blob, a.id); }), // one commit: never a meta row without its bytes
   putAssetMeta: (a: Asset) => tx('assets', 'readwrite', (s) => s.put(a)),
   getBlob: (id: string) => tx<Blob | undefined>('blobs', 'readonly', (s) => s.get(id)),
+  /** Raw blobs under a key of our own (video clips: 'vclip:<id>'), kept in this browser only. */
+  putBlob: (key: string, blob: Blob) => tx<IDBValidKey>('blobs', 'readwrite', (s) => s.put(blob, key)),
+  deleteBlob: (key: string) => tx<undefined>('blobs', 'readwrite', (s) => s.delete(key)),
   listAssets: () => tx<Asset[]>('assets', 'readonly', (s) => s.getAll()),
   deleteAsset: (id: string) => txAll<void>(['assets', 'blobs'], 'readwrite', (t) => { t.objectStore('assets').delete(id); t.objectStore('blobs').delete(id); }),
 };

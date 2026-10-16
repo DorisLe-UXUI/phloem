@@ -32,7 +32,7 @@ export function audienceLine(c: Pick<Client, 'language' | 'market'>): string {
   return `Public copy language: ${lang}. Target market: ${c.market || 'Việt Nam'} (use that market's culture, holidays, currency, units and platforms).`;
 }
 
-export type ItemKind = 'brand' | 'plan' | 'review' | 'post' | 'campaign' | 'report' | 'note';
+export type ItemKind = 'brand' | 'plan' | 'review' | 'post' | 'campaign' | 'report' | 'note' | 'video';
 export interface Item<T = unknown> { kind: ItemKind; id: string; data: T; updatedAt: string }
 export interface AuditRow { actor: string; action: string; detail: string; at: string }
 export interface ShareLink { id: string; kind: string; itemId: string; createdAt: string; expiresAt: string }
