@@ -116,3 +116,18 @@ test('sheet import: Vietnamese and English headers, dates, channels, statuses', 
   assert.equal(parseSheetDate('12/25/2026'), '2026-12-25', 'a day > 12 flips to month/day');
   assert.equal(normChannel('Google Business Profile'), 'google_business');
 });
+
+test('sheet dates without a year: the sheet\'s year, rolling Dec → Jan, never 2001, never a day off', async () => {
+  const { postsFromSheet, parseSheetDate, parseSheetDateInfo, sheetYear } = await import('../dist/shared.mjs');
+  assert.equal(parseSheetDate('Wed, Dec 31', false, 2026), '2026-12-31');
+  assert.equal(parseSheetDate('Thu, Jan 1', false, 2027), '2027-01-01', 'no time-zone shift to Dec 31');
+  assert.equal(parseSheetDate('December 31st, 2026'), '2026-12-31');
+  assert.equal(parseSheetDate('31 Dec', false, 2026), '2026-12-31');
+  assert.equal(parseSheetDate('12 tháng 10 năm 2026'), '2026-10-12');
+  assert.equal(parseSheetDate('46022'), '2025-12-31', 'Sheets serial day');
+  assert.equal(parseSheetDateInfo('Jan 2', false, 2026).hasYear, false);
+  assert.equal(parseSheetDate('Hello'), '');
+  assert.equal(sheetYear([['Tool Mart Marketing Plan: Oct 2026 – Jan 2027'], ['Date', 'Topic']]), 2026);
+  const rows = [['Tool Mart Marketing Plan: Oct 2026 – Jan 2027'], ['Date', 'Channel', 'Topic'], ['Wed, Dec 30', 'Facebook', 'Holiday deals'], ['Thu, Dec 31', 'Facebook', 'Happy New Year'], ['Fri, Jan 2', 'Facebook', 'Light it your way'], ['Mon, Jan 5', 'Facebook', 'Back to work']];
+  assert.deepEqual(postsFromSheet(rows).map((p) => p.date), ['2026-12-30', '2026-12-31', '2027-01-02', '2027-01-05']);
+});

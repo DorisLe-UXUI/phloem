@@ -4,7 +4,7 @@ import { getSession } from '../auth/core';
 import { extractJson, streamClaude, relayAuth, wakeRelay, type AiImage } from '../ai/client';
 import { analyzeSite, importSiteImages } from '../ai/site';
 import { parseCsv, sheetCsvUrl } from '../catalog/catalog';
-import { postsFromSheet, type SheetPost } from '../../../src/shared/mkt';
+import { postsFromSheet, sheetYear, type SheetPost } from '../../../src/shared/mkt';
 import { assets } from '../storage/assets';
 import { get } from '../store';
 import { newId, putItem } from './data';
@@ -42,16 +42,16 @@ export async function importSheet(client: Client, link: string, onStage: (m: str
   const rows = parseCsv(text).filter((r) => r.some((c) => c.trim()));
   if (rows.length < 2) throw new Error('Sheet trống, hoặc chưa chia sẻ "Bất kỳ ai có đường liên kết".');
   const usDates = /hoa kỳ|mỹ|united states|usa|canada|philippines/i.test(client.market || '');
-  let posts: SheetPost[] | null = postsFromSheet(rows, { usDates, fallbackStatus: 'approved' });
+  const year = sheetYear(rows) ?? new Date().getFullYear();
+  let posts: SheetPost[] | null = postsFromSheet(rows, { usDates, fallbackStatus: 'approved', year });
   let ai = false;
   if (!posts || !posts.length) {
     // a layout the column names do not explain: the AI maps it, in chunks
     ai = true; posts = [];
-    const year = new Date().getFullYear();
     for (let i = 0; i < Math.min(rows.length, 600); i += 60) {
       onStage(`AI đang đọc bố cục Sheet (${Math.min(i + 60, rows.length)}/${rows.length} hàng)…`);
       const chunk = rows.slice(i, i + 60).map((r) => r.map((c) => c.replace(/\s+/g, ' ').slice(0, 400)).join(' | ')).join('\n');
-      const out = await streamClaude({ system: MAP_SYSTEM, turns: [{ role: 'user', text: `Year: ${year}. Market: ${client.market || 'Việt Nam'}.\nHeader: ${rows[0].join(' | ')}\nRows:\n${chunk}` }], maxTokens: 16000, effort: 'low' }, () => {});
+      const out = await streamClaude({ system: MAP_SYSTEM, turns: [{ role: 'user', text: `Year of the plan (for dates written without a year; a calendar that goes Dec → Jan moves to the next year): ${year}. Market: ${client.market || 'Việt Nam'}.\nHeader: ${rows[0].join(' | ')}\nRows:\n${chunk}` }], maxTokens: 16000, effort: 'low' }, () => {});
       try { const j = extractJson<{ posts?: SheetPost[] }>(out); posts.push(...(j.posts || []).filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(String(p.date)) && (p.topic || p.caption))); } catch { /* skip a bad chunk */ }
     }
     if (!posts.length) throw new Error('Không tìm thấy bài đăng nào trong Sheet (cần ít nhất cột ngày và chủ đề/nội dung).');

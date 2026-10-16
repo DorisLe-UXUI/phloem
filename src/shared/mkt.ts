@@ -186,19 +186,45 @@ export function mapSheetColumns(header: string[]): Partial<Record<keyof SheetPos
   return out;
 }
 /** A sheet date → YYYY-MM-DD. dd/mm/yyyy by default (Vietnam); mm/dd/yyyy when `usDates` or when the day cannot be a month. */
-export function parseSheetDate(v: string, usDates = false, fallbackYear = new Date().getFullYear()): string {
+const MONTH_NAMES: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+const ymd = (y: number, m: number, d: number) => (m >= 1 && m <= 12 && d >= 1 && d <= 31 ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '');
+
+/** A sheet cell → { date: 'YYYY-MM-DD', hasYear } ('' when it is not a date). Reads ISO, d/m/y (m/d/y for US markets),
+ *  month names ("Wed, Dec 31", "31 December 2026", "Jan 2"), Vietnamese ("12 tháng 10 năm 2026") and Excel serial days.
+ *  A date written without a year gets `fallbackYear`; never the JavaScript default (2001), never shifted by the time zone. */
+export function parseSheetDateInfo(v: string, usDates = false, fallbackYear = new Date().getFullYear()): { date: string; hasYear: boolean } {
   const s = String(v || '').trim();
+  const none = { date: '', hasYear: false };
+  if (!s) return none;
   let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(s);
-  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
-  m = /^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?/.exec(s);
+  if (m) return { date: ymd(+m[1], +m[2], +m[3]), hasYear: true };
+  m = /^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?(?!\d)/.exec(s);
   if (m) {
     let a = Number(m[1]), b = Number(m[2]); const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : fallbackYear;
     if (usDates && a <= 12 && b <= 31) [a, b] = [b, a]; else if (!usDates && b > 12 && a <= 12) [a, b] = [b, a];
-    if (b < 1 || b > 12 || a < 1 || a > 31) return '';
-    return `${y}-${String(b).padStart(2, '0')}-${String(a).padStart(2, '0')}`;
+    return { date: ymd(y, b, a), hasYear: !!m[3] };
   }
-  const t = Date.parse(s); if (!Number.isNaN(t)) return new Date(t).toISOString().slice(0, 10);
-  return '';
+  const yr = /\b(19|20)\d{2}\b/.exec(s);
+  const year = yr ? Number(yr[0]) : fallbackYear;
+  // "12 tháng 10 (năm 2026)" / "ngày 12/10"
+  m = /(\d{1,2})\s*(?:th[áa]ng|thg)\s*(\d{1,2})/i.exec(s);
+  if (m) return { date: ymd(year, +m[2], +m[1]), hasYear: !!yr };
+  // month names, day before or after: "Wed, Dec 31", "December 31st, 2026", "31 Dec"
+  m = /(?:(\d{1,2})(?:st|nd|rd|th)?\s+)?\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?(?:\s+(\d{1,2})(?:st|nd|rd|th)?\b)?/i.exec(s);
+  if (m && (m[1] || m[3])) return { date: ymd(year, MONTH_NAMES[m[2].toLowerCase()], Number(m[3] || m[1])), hasYear: !!yr };
+  // Excel / Sheets serial day number
+  if (/^\d{5}(\.\d+)?$/.test(s)) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(Number(s)) * 86400e3); return { date: d.toISOString().slice(0, 10), hasYear: true }; }
+  const t = Date.parse(s);
+  if (!Number.isNaN(t)) { const d = new Date(t); return { date: ymd(yr ? d.getFullYear() : fallbackYear, d.getMonth() + 1, d.getDate()), hasYear: !!yr }; }
+  return none;
+}
+export function parseSheetDate(v: string, usDates = false, fallbackYear = new Date().getFullYear()): string {
+  return parseSheetDateInfo(v, usDates, fallbackYear).date;
+}
+/** The year a plan sheet is about, from its text ("Oct 2026 – Jan 2027" → 2026), else null. */
+export function sheetYear(rows: string[][]): number | null {
+  for (const r of rows.slice(0, 400)) for (const c of r) { const m = /\b(20[2-9]\d)\b/.exec(c || ''); if (m) return Number(m[1]); }
+  return null;
 }
 export function normChannel(v: string): string {
   const s = fold(v);
@@ -228,14 +254,20 @@ export function normStatus(v: string, fallback = 'approved'): string {
   return fallback;
 }
 /** Rows of a sheet (first row = header) → posts, or null when the columns cannot be recognised (then the AI maps them). */
-export function postsFromSheet(rows: string[][], opts: { usDates?: boolean; fallbackStatus?: string } = {}): SheetPost[] | null {
+export function postsFromSheet(rows: string[][], opts: { usDates?: boolean; fallbackStatus?: string; year?: number } = {}): SheetPost[] | null {
   const hi = rows.findIndex((r) => { const m = mapSheetColumns(r); return m.date !== undefined && (m.topic !== undefined || m.caption !== undefined); });
   if (hi < 0) return null;
   const col = mapSheetColumns(rows[hi]);
   const get = (r: string[], k: keyof SheetPost) => (col[k] === undefined ? '' : String(r[col[k]!] ?? '').trim());
   const out: SheetPost[] = [];
+  // dates written without a year follow the sheet's year and roll into the next one when the calendar wraps (Dec → Jan)
+  let year = opts.year ?? sheetYear(rows) ?? new Date().getFullYear();
+  let prev = '';
   for (const r of rows.slice(hi + 1)) {
-    const date = parseSheetDate(get(r, 'date'), opts.usDates);
+    let { date, hasYear } = parseSheetDateInfo(get(r, 'date'), opts.usDates, year);
+    if (date && hasYear) year = Number(date.slice(0, 4));
+    else if (date && prev && date < prev && Number(prev.slice(5, 7)) - Number(date.slice(5, 7)) >= 6) { year += 1; date = parseSheetDateInfo(get(r, 'date'), opts.usDates, year).date; }
+    if (date) prev = date;
     const topic = get(r, 'topic') || get(r, 'caption').split('\n')[0].slice(0, 120);
     if (!date || !topic) continue;
     const time = (/(\d{1,2})[:h](\d{2})?/.exec(get(r, 'time')) || [] as string[]);
