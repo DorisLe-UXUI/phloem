@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems } from '../../mkt/data';
-import { SIZES, addClientImages, clientImages, designFromImage, designPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
@@ -117,7 +117,7 @@ export function DesignHub({ client }: { client: Client }) {
                         {(() => { const j = J.jobOf(jobKey(r)); return j ? <div class={`mk-job ${j.state}`}>{j.state === 'running' || j.state === 'queued' ? <div class="mk-spin" /> : <Icon name={j.state === 'done' ? 'check' : 'warn'} size={14} />}<span title={j.stage}>{j.stage}</span>{(j.state === 'running' || j.state === 'queued') && <button onClick={() => cancelJob(j.key)} title="Huỷ việc này">Huỷ</button>}</div> : null; })()}
                         <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sz(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
                           {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>{r.format === 'carousel' ? 'Carousel · chưa có' : 'Chưa có ảnh'}</em></span>}
-                          {slidesOf(r).length > 1 && <i class="mk-slide-n">1/{slidesOf(r).length}</i>}
+                          {(slidesOf(r).length > 1 || (r.slidePlan?.length || 0) > 1) && <i class="mk-slide-n" title={r.slidePlan && slidesOf(r).length < r.slidePlan.length ? `Mới có ${slidesOf(r).length}/${r.slidePlan.length} slide` : `${slidesOf(r).length} slide`}>{r.slidePlan && slidesOf(r).length < r.slidePlan.length ? `${slidesOf(r).length}/${r.slidePlan.length} slide` : `1/${slidesOf(r).length}`}</i>}
                           {des?.size && <i class="mk-size-n" title={des.size.label}>{des.size.w}×{des.size.h}</i>}
                         </button>
                         {slidesOf(r).length > 1 && <div class="mk-slides">{slidesOf(r).slice(1).map((d, k) => <button key={d.id} title={`Slide ${k + 2}`} onClick={() => void A.openProject(d.id)}>{d.thumb ? <img src={d.thumb} alt={`Slide ${k + 2}`} loading="lazy" /> : k + 2}</button>)}</div>}
@@ -125,6 +125,8 @@ export function DesignHub({ client }: { client: Client }) {
                           {des
                             ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sz(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>
                             : <button class="ai" onClick={() => void make(sz(r), r, true)} title="AI vẽ ảnh và dựng bố cục theo nội dung bài"><Icon name="sparkle" size={12} />AI thiết kế</button>}
+                          {r.format === 'carousel' && r.slidePlan && (r.slides?.length || 0) < r.slidePlan.length && (r.slides?.length || 0) > 0 && <button class="ai" onClick={() => enqueue(jobKey(r), title(r), (onStage, signal) => designPost(client, sz(r), r, { ai: true, open: false, onStage, signal, resume: true }))} title="Làm nốt các slide carousel còn thiếu, giữ các slide đã có"><Icon name="sparkle" size={12} />Làm tiếp {r.slidePlan.length - (r.slides?.length || 0)} slide</button>}
+                          {des && <button onClick={async () => { const ids = slidesOf(r).length > 1 ? slidesOf(r).map((d) => d.id) : [des.id]; toast(ids.length > 1 ? `Đang xuất ${ids.length} slide HD…` : 'Đang xuất ảnh HD…', 'info'); try { await downloadPost(ids, title(r)); } catch (e) { toast((e as Error).message, 'err'); } }} title="Tải ảnh HD (PNG gấp đôi khung, ví dụ 2160×2700); carousel tải cả bộ slide trong 1 file ZIP"><Icon name="download" size={12} />{slidesOf(r).length > 1 ? `Tải ${slidesOf(r).length} slide HD` : 'Tải ảnh HD'}</button>}
                           <button class="ai" onClick={() => void full(r)} title="AI vẽ nguyên bài hoàn chỉnh, có sẵn toàn bộ chữ, giống phong cách các bài cũ của khách"><Icon name="image" size={12} />AI vẽ cả bài</button>
                           <button onClick={() => (des ? void A.openProject(des.id) : void make(sz(r), r, false))} title={des ? 'Mở trang chỉnh sửa (layer, chữ, đồ hoạ)' : 'Dựng bố cục trống theo thương hiệu rồi tự chỉnh'}><Icon name="text" size={12} />Tự thiết kế</button>
                           <button onClick={() => setOwn(r)} title="Dùng ảnh có sẵn: tải lên, dán, hoặc chọn từ kho"><Icon name="upload" size={12} />{des ? 'Đổi ảnh' : 'Ảnh của bạn'}</button>

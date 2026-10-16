@@ -87,8 +87,8 @@ export function CanvasView() {
     // the customer's other emails, as frames beside this one
     const frames = boardFrames();
     for (const f of frames) {
-      const r = { x: px + f.x * z, y: py, w: f.w * z, h: f.h * z };
-      if (r.x > cw + 40 || r.x + r.w < -40) continue;
+      const r = { x: px + f.x * z, y: py + f.y * z, w: f.w * z, h: f.h * z };
+      if (r.x > cw + 40 || r.x + r.w < -40 || r.y > ch + 40 || r.y + r.h < -40) continue;
       const hot = frameHover.current === f.id;
       ctx.font = '600 11px JetBrains Mono, monospace'; ctx.textBaseline = 'bottom'; ctx.fillStyle = hot ? '#39ff14' : '#5d7265';
       if (f.kind === 'add') {
@@ -243,7 +243,7 @@ export function CanvasView() {
   function zoomFitAll() {
     const w = wrap.current; if (!w) return;
     const doc = docOf(); const st = get();
-    const boxes = [{ x: 0, y: 0, w: doc.width, h: Math.max(doc.height, ops.contentHeight(doc)) }, ...boardFrames().map((f) => ({ x: f.x, y: (f as { y?: number }).y ?? 0, w: f.w, h: f.h })), ...st.scraps.map((sc) => ({ x: sc.x, y: sc.y, w: sc.w, h: sc.h }))];
+    const boxes = [{ x: 0, y: 0, w: doc.width, h: Math.max(doc.height, ops.contentHeight(doc)) }, ...boardFrames().map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h })), ...st.scraps.map((sc) => ({ x: sc.x, y: sc.y, w: sc.w, h: sc.h }))];
     const x0 = Math.min(...boxes.map((b) => b.x)), y0 = Math.min(...boxes.map((b) => b.y)), x1 = Math.max(...boxes.map((b) => b.x + b.w)), y1 = Math.max(...boxes.map((b) => b.y + b.h));
     const cw = w.clientWidth, ch = w.clientHeight;
     const z = Math.min(1.5, Math.max(0.02, Math.min((cw - 80) / (x1 - x0), (ch - 100) / (y1 - y0))));

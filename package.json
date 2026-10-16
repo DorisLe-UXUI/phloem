@@ -23,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "gifenc": "^1.0.3",
-    "preact": "^10.24.3"
+    "preact": "^10.24.3",
+    "qrcode-generator": "^1.4.4"
   }
 }

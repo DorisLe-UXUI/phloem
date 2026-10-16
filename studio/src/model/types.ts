@@ -117,7 +117,7 @@ export interface ImageNode extends BaseNode {
   /** Pure decoration (a clipped glow, a converted shape): no alt text needed, never counts as a photo. */
   decor?: boolean;
   /** Source of a vector graphic (icon, sticker, shape) so it can be recoloured and re-rasterised crisply. */
-  vector?: { svg: string; color?: string | null; kind?: 'icon' | 'sticker' | 'shape' | 'graphic'; /** procedural graphic: regenerate with another palette / variant */ gen?: { id: string; seed: number; palette: string[] } | null } | null;
+  vector?: { svg: string; color?: string | null; kind?: 'icon' | 'sticker' | 'shape' | 'graphic'; /** procedural graphic: regenerate with another palette / variant */ gen?: { id: string; seed: number; palette: string[] } | null; /** chart / QR made in Ứng dụng: re-open to edit */ chart?: ChartSpec | null; qr?: QrSpec | null } | null;
   /** Background behind contain-fit / placeholder. */
   fill: Color | null;
   /** Colour overlay (e.g. darken photo behind text). `gradient` fades from transparent at the top to the colour at the bottom. */
@@ -174,6 +174,11 @@ export interface Doc {
   autoHeight?: boolean;
 }
 
+/** A chart drawn as vector art (Ứng dụng → Biểu đồ); kept on the layer so it can be edited. */
+export interface ChartSpec { kind: 'bar' | 'hbar' | 'line' | 'area' | 'pie' | 'donut' | 'progress'; data: { label: string; value: number }[]; colors: string[]; ink: string; showValues: boolean; title?: string; unit?: string }
+/** A QR code layer (Ứng dụng → Mã QR). */
+export interface QrSpec { text: string; color: string; bg: string | null; style: 'square' | 'dots' | 'rounded' }
+
 export interface Project {
   id: string;
   name: string;
@@ -198,6 +203,8 @@ export interface Project {
   /** Free-form AI design source: the HTML the layers were converted from, and a hash of the converted desktop doc
    *  (unchanged doc → "AI tự chỉnh" can revise the HTML and convert again without losing hand edits). */
   design?: { html: string; hash: string; name?: string; at: string; /** the art direction (design.ts Direction) */ dir?: unknown } | null;
+  /** Saved as a template (Ứng dụng → Mẫu): offered to start other designs from. */
+  template?: boolean;
 }
 
 

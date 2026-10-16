@@ -130,6 +130,8 @@ export interface PlanRow {
   designId?: string;
   /** Carousel: every slide's design, in order (slides[0] === designId). */
   slides?: string[];
+  /** Carousel outline the AI planned (one entry per slide); slides.length < slidePlan.length = some still to make. */
+  slidePlan?: { role: string; headline: string; body: string; visual: string }[];
 }
 export interface PlanMonth { month: string; theme: string; campaigns: { name: string; goal: string; channels: string[]; budget: number; note: string }[]; kpi: Record<string, number>; budget: Record<string, number> }
 export interface PlanSetup { months: number; start: string; channels: Channel[]; goals: Goal[]; budget: number; currency: string; events: string; postsPerWeek: number; brief: string }

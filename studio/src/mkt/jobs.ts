@@ -11,6 +11,8 @@ const CONCURRENCY = 3;
 const jobs = new Map<string, Job & { run: Run }>();
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
+// the jobs run in this tab: reloading or closing it would drop them, so the browser asks first
+if (typeof window !== 'undefined') window.addEventListener('beforeunload', (e) => { if (activeCount() > 0) { e.preventDefault(); e.returnValue = ''; } });
 
 /** Queue a job (ignored when the same key is already queued or running). */
 export function enqueue(key: string, title: string, run: Run) {

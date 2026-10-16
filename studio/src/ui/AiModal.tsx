@@ -53,6 +53,9 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
     abort.current?.abort(); close0();
   };
   const [redrawing, setRedrawing] = useState<number | null>(null);
+  /** Progress, results and errors live at the bottom of a long form: bring them into view (they were easy to miss). */
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const showResults = () => setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   /** Draw again only the direction that failed, keeping the other two. */
   const redraw = async (i: number) => {
     const v = designs[i]; if (!v) return;
@@ -153,7 +156,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
   const toggleImg = (id: string) => upd({ imageIds: form.imageIds.includes(id) ? form.imageIds.filter((x) => x !== id) : [...form.imageIds, id] });
 
   const run = async () => {
-    setBusy(true); setErr(''); setVariants([]); setThumbs([]); setDesigns([]);
+    setBusy(true); setErr(''); setVariants([]); setThumbs([]); setDesigns([]); showResults();
     abort.current?.abort(); const ac = new AbortController(); abort.current = ac;
     try {
       let input = form;
@@ -178,8 +181,8 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
       const render = () => vs.map((v) => { const br = brandForVariant(v, baseBrand(), form.webBrand); try { return thumbnail(variantToDoc(v, br), br, assets, 480, 2.1); } catch { return ''; } });
       setThumbs(render());
       setTimeout(() => setThumbs(render()), 2500); // once web fonts are in
-    } catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); setStage(''); }
+    } catch (e) { setErr((e as Error).message); toast(`AI chưa vẽ được: ${(e as Error).message}`.slice(0, 220), 'err'); }
+    finally { setBusy(false); setStage(''); showResults(); }
   };
 
   const use = async (v: Variant) => {
@@ -249,6 +252,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
   return (
     <Modal title="Dựng bằng AI" icon="sparkle" onClose={onClose} wide
       footer={<>
+        {err && !busy && <span class="small" style={{ color: 'var(--err, #ff6b6b)', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={err}>Lỗi: {err}</span>}
         <span class="grow small muted">{transport === 'checking' ? 'Đang kiểm tra AI…' : transport === 'key' ? 'Dùng API key của bạn' : transport === 'relay' ? 'Dùng qua relay' : transport === 'sample' ? 'Dùng Claude của claude.ai' : (relayUp ? 'Relay có AI nhưng bạn chưa đăng nhập' : 'Chưa có AI: vào Cài đặt → AI')}</span>
         {transport === null ? <>{relayUp && <Btn kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập relay để dùng AI</Btn>}<a class="btn sm" href="https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG" target="_blank" rel="noopener">Mở bản claude.ai (AI sẵn)</a><Btn kind="ghost" onClick={() => set({ modal: 'settings' })}>Dán API key</Btn></> : null}
         {busy && mode === 'design' && <Btn kind="ghost" onClick={() => { abort.current?.abort(); }}>Dừng</Btn>}
@@ -337,6 +341,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
         {form.webBrand && <button class={`preset ${form.palette === 'Web' ? 'on' : ''}`} onClick={() => upd({ palette: 'Web' })} title="Màu lấy từ website"><i style={{ background: form.webBrand.primary, borderColor: form.webBrand.accent }} />Web</button>}
         {BRAND_PRESETS.map((p) => <button key={p.name} class={`preset ${form.palette === p.name ? 'on' : ''}`} onClick={() => upd({ palette: p.name })}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}
       </div>
+      <div ref={resultsRef} />
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span>{/đăng nhập/i.test(err) && <Btn sm kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập</Btn>}</div>}
       {busy && mode === 'blocks' && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage === 'refine' ? 'Creative director AI đang duyệt và sửa lại 3 phương án…' : 'AI đang đọc nội dung và ảnh, dựng 3 phương án…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Thường mất 20–60 giây. Kết quả là block Phloem thật, không phải ảnh mockup.</div></div>}
       {busy && mode === 'design' && !designs.length && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage || 'Đang bắt đầu…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Bước lên ý tưởng mất khoảng 20–40 giây, sau đó 3 email được vẽ cùng lúc, bạn xem trực tiếp bên dưới.</div></div>}

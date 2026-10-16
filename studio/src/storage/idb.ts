@@ -3,7 +3,7 @@ import type { Asset, Project } from '../model/types';
 
 const DB = 'phloem-studio', VER = 2;
 
-export interface ProjectMeta { id: string; name: string; updatedAt: string; createdAt?: string; thumb?: string; thumbMobile?: string; provider?: string; clientId?: string; height?: number; kind?: 'email' | 'design'; size?: { id: string; label: string; w: number; h: number }; rowRef?: { planId: string; rowId: string } }
+export interface ProjectMeta { id: string; name: string; updatedAt: string; createdAt?: string; thumb?: string; thumbMobile?: string; provider?: string; clientId?: string; height?: number; kind?: 'email' | 'design'; size?: { id: string; label: string; w: number; h: number }; rowRef?: { planId: string; rowId: string }; template?: boolean }
 
 let conn: Promise<IDBDatabase> | null = null;
 function open(): Promise<IDBDatabase> {
@@ -50,7 +50,7 @@ export const db = {
   clearTombstone: (id: string) => tx<undefined>('tombstones', 'readwrite', (s) => s.delete(id)),
   listProjects: async (owner = ''): Promise<ProjectMeta[]> => {
     const all = await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll());
-    return all.filter((p) => (p.owner || '') === owner).map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, createdAt: p.createdAt, thumb: p.thumb, thumbMobile: p.thumbMobile, provider: p.provider, clientId: p.clientId, height: p.desktop?.height, kind: p.kind, size: p.size, rowRef: p.rowRef })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return all.filter((p) => (p.owner || '') === owner).map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, createdAt: p.createdAt, thumb: p.thumb, thumbMobile: p.thumbMobile, provider: p.provider, clientId: p.clientId, height: p.desktop?.height, kind: p.kind, size: p.size, rowRef: p.rowRef, template: p.template })).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   },
   allProjects: async (owner = ''): Promise<StoredProject[]> => (await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll())).filter((p) => (p.owner || '') === owner),
   countProjects: async (owner = ''): Promise<number> => (await tx<StoredProject[]>('projects', 'readonly', (s) => s.getAll())).filter((p) => (p.owner || '') === owner).length,

@@ -950,7 +950,9 @@ export async function setProjectClient(projectId: string, clientId: string | nul
 /** Emails on a customer's board, in a stable order (oldest first, like frames added left to right). */
 export function boardOf(clientId: string | null | undefined) {
   if (!clientId) return [];
-  return get().projects.filter((m) => m.clientId === clientId).sort((a, b) => (a.createdAt || a.updatedAt).localeCompare(b.createdAt || b.updatedAt) || a.id.localeCompare(b.id));
+  // a design's board shows the client's designs, an email's board the client's emails: never mixed
+  const kind = get().project?.kind === 'design' ? 'design' : 'email';
+  return get().projects.filter((m) => m.clientId === clientId && (m.kind === 'design' ? 'design' : 'email') === kind).sort((a, b) => (a.createdAt || a.updatedAt).localeCompare(b.createdAt || b.updatedAt) || a.id.localeCompare(b.id));
 }
 /** Open a customer's board on their most recently edited email. */
 export async function openBoard(clientId: string) {

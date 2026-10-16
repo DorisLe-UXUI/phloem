@@ -4,6 +4,7 @@
 import type { Brand, Doc, Node, Project } from '../model/types';
 import { DEFAULT_BRAND, FONTS, uid } from '../model/types';
 import { htmlToDoc, extractHtml, tokenize } from '../ai/htmlToDoc';
+import { flat as flatNodes } from '../model/ops';
 import { DESIGN_TECH, readyDoc } from '../ai/design';
 import { askClaude, streamClaude, relayAuth, wakeRelay, type AiImage } from '../ai/client';
 import { renderToCanvas } from '../render/renderer';
@@ -144,31 +145,46 @@ Reply with JSON only: {"slides":[{"role":"cover|content|cta","headline":"…","b
 
 /** A carousel post designed slide by slide: the AI plans the slides, the cover paints the key visual, the other slides reuse it
  *  so the set reads as one; all slides are pinned to the post in order. Returns the slide design ids. */
-export async function newCarousel(client: Client, size: DesignSize, row: PlanRow & { planId: string }, opts: { onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos } = {}): Promise<string[]> {
-  opts.onStage?.('AI đang lên dàn ý các slide carousel…');
-  let slides: { role: string; headline: string; body: string; visual: string }[] = [];
-  try {
-    const out = await askClaude({ system: CAROUSEL_PLAN, turns: [{ role: 'user', text: `${audienceLine(client)}\nBrand: ${client.name}.\nTopic: ${row.topic}\nHook: ${row.hook}\nCaption: ${row.caption}\nCTA: ${row.cta}\nVisual idea: ${row.visual}` }], maxTokens: 3000, effort: 'low' });
-    const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]);
-    slides = (Array.isArray(j.slides) ? j.slides : []).slice(0, 10).map((x: any) => ({ role: String(x?.role || 'content'), headline: String(x?.headline || '').slice(0, 140), body: String(x?.body || '').slice(0, 280), visual: String(x?.visual || '').slice(0, 300) })).filter((x: { headline: string }) => x.headline);
-  } catch (e) { if (opts.signal?.aborted) throw e; }
-  if (slides.length < 2) slides = [{ role: 'cover', headline: row.hook || row.topic, body: '', visual: row.visual }, { role: 'content', headline: row.topic, body: (row.caption || '').slice(0, 120), visual: row.visual }, { role: 'cta', headline: row.cta || client.name, body: '', visual: '' }];
+export async function newCarousel(client: Client, size: DesignSize, row: PlanRow & { planId: string }, opts: { onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos; resume?: boolean } = {}): Promise<string[]> {
+  // resume: keep the slides already made and the outline, make the rest
+  const resume = !!(opts.resume && row.slidePlan?.length && row.slides?.length && row.slides.length < row.slidePlan.length);
+  let slides: { role: string; headline: string; body: string; visual: string }[] = resume ? row.slidePlan! : [];
+  if (!resume) {
+    opts.onStage?.('AI đang lên dàn ý các slide carousel…');
+    try {
+      const out = await askClaude({ system: CAROUSEL_PLAN, turns: [{ role: 'user', text: `${audienceLine(client)}\nBrand: ${client.name}.\nTopic: ${row.topic}\nHook: ${row.hook}\nCaption: ${row.caption}\nCTA: ${row.cta}\nVisual idea: ${row.visual}` }], maxTokens: 3000, effort: 'low' });
+      const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]);
+      slides = (Array.isArray(j.slides) ? j.slides : []).slice(0, 10).map((x: any) => ({ role: String(x?.role || 'content'), headline: String(x?.headline || '').slice(0, 140), body: String(x?.body || '').slice(0, 280), visual: String(x?.visual || '').slice(0, 300) })).filter((x: { headline: string }) => x.headline);
+    } catch (e) { if (opts.signal?.aborted) throw e; }
+    if (slides.length < 2) slides = [{ role: 'cover', headline: row.hook || row.topic, body: '', visual: row.visual }, { role: 'content', headline: row.topic, body: (row.caption || '').slice(0, 120), visual: row.visual }, { role: 'cta', headline: row.cta || client.name, body: '', visual: '' }];
+  }
   const n = slides.length;
+  const ids: string[] = resume ? [...row.slides!] : [];
+  // the cover's painted picture, reused by the other slides (found again on resume)
   let hero: string | null = null;
-  const ids: string[] = [];
-  for (let i = 0; i < n; i++) {
+  if (resume) { try { const { db } = await import('../storage/idb'); const cover = await db.getProject(ids[0]); const img = cover ? flatNodes(cover.desktop.nodes).find((x: Node) => x.type === 'image' && x.assetId && assets.get(x.assetId)?.src?.kind === 'ai') : null; hero = (img as { assetId?: string } | null)?.assetId || null; } catch { /* draw a new one */ } }
+  // pin what exists right away, with the outline, so a stop part-way never leaves a carousel looking like a single picture
+  const pin = () => patchRows(client.id, row.planId, { [row.id]: { designId: ids[0], slides: [...ids], slidePlan: slides } }, `Carousel ${ids.length}/${n} slide`);
+  for (let i = ids.length; i < n; i++) {
     if (opts.signal?.aborted) throw new Error('Đã huỷ.');
     const s = slides[i];
     const slideRow = { ...row, topic: s.headline, hook: s.body, visual: [s.visual, row.visual].filter(Boolean).join(' · ') };
-    const p = await newDesign(client, size, slideRow, {
-      ai: true, open: false, attach: false, signal: opts.signal, askPhotos: i === 0 ? opts.askPhotos : undefined,
-      onStage: (m) => opts.onStage?.(`Slide ${i + 1}/${n} · ${m}`),
-      slide: { i: i + 1, n, role: i === 0 ? 'cover' : i === n - 1 ? 'cta' : s.role, hero: i === 0 ? null : hero, onHero: (id) => { hero = id; } },
-    });
-    ids.push(p.id);
+    let made = '';
+    for (let attempt = 0; attempt < 2 && !made; attempt++) {
+      try {
+        const p = await newDesign(client, size, slideRow, {
+          ai: true, open: false, attach: false, signal: opts.signal, askPhotos: i === 0 ? opts.askPhotos : undefined,
+          onStage: (m) => opts.onStage?.(`Slide ${i + 1}/${n}${attempt ? ' (thử lại)' : ''} · ${m}`),
+          slide: { i: i + 1, n, role: i === 0 ? 'cover' : i === n - 1 ? 'cta' : s.role, hero: i === 0 ? null : hero, onHero: (id) => { hero = id; } },
+        });
+        made = p.id;
+      } catch (e) { if (opts.signal?.aborted || /Đã huỷ/.test((e as Error).message)) { if (ids.length) await pin(); throw e; } }
+    }
+    if (!made) { if (ids.length) { await pin(); await A.refreshProjects(); } throw new Error(`Mới xong ${ids.length}/${n} slide (slide ${i + 1} lỗi). Bấm "Làm tiếp" ở bài này để làm nốt.`); }
+    ids.push(made);
+    await pin();
+    await A.refreshProjects();
   }
-  await attachMany(client.id, row.planId, { [row.id]: ids }, `Carousel ${n} slide`);
-  await A.refreshProjects();
   return ids;
 }
 
@@ -240,7 +256,7 @@ export async function paintFullPost(client: Client, size: DesignSize, row: PlanR
 }
 
 /** Design one post: a carousel gets all its slides, anything else one design. */
-export async function designPost(client: Client, size: DesignSize, row: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; open?: boolean; onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos } = {}) {
+export async function designPost(client: Client, size: DesignSize, row: (PlanRow & { planId: string }) | null, opts: { ai?: boolean; open?: boolean; onStage?: (m: string) => void; signal?: AbortSignal; askPhotos?: AskPhotos; resume?: boolean } = {}) {
   if (row && opts.ai && row.format === 'carousel') { const ids = await newCarousel(client, size, row, opts); if (opts.open !== false && ids[0]) await A.openProject(ids[0]); return ids; }
   const p = await newDesign(client, size, row, opts);
   return [p.id];
@@ -312,6 +328,18 @@ let attachChain: Promise<unknown> = Promise.resolve();
 export function attachMany(clientId: string, planId: string, map: Record<string, string[]>, note = 'Gắn thiết kế vào bài'): Promise<void> {
   // one plan write at a time: background jobs finishing together must not overwrite each other's pictures
   const run = attachChain.then(() => attachNow(clientId, planId, map, note));
+  attachChain = run.catch(() => undefined);
+  return run;
+}
+/** Patch plan rows (one plan write, queued behind the other plan writes). */
+export function patchRows(clientId: string, planId: string, patches: Record<string, Partial<PlanRow>>, note: string): Promise<void> {
+  const run = attachChain.then(async () => {
+    const { cachedItems, putItem } = await import('./data');
+    const it = cachedItems(clientId)?.find((i) => i.kind === 'plan' && i.id === planId); if (!it) return;
+    const plan = it.data as import('./types').Plan;
+    const version = (plan.version || 1) + 1;
+    await putItem(clientId, 'plan', planId, { ...plan, rows: plan.rows.map((r) => (patches[r.id] ? { ...r, ...patches[r.id] } : r)), version, versions: [...(plan.versions || []), { version, at: new Date().toISOString(), by: get().user?.name || 'Bạn', note }].slice(-40) });
+  });
   attachChain = run.catch(() => undefined);
   return run;
 }
@@ -391,6 +419,27 @@ export async function exportDesign(format: 'png' | 'jpg', scale = 1) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `${p.name.replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase().slice(0, 60)}-${p.desktop.width}x${p.desktop.height}.${format}`;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/** Download a post's pictures without opening the editor: one HD PNG, or a ZIP of every carousel slide in order.
+ *  scale 2 = twice the frame (1080 → 2160 px), sharp on any screen. */
+export async function downloadPost(ids: string[], baseName: string, scale = 2): Promise<void> {
+  const { db } = await import('../storage/idb');
+  const safe = baseName.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 60) || 'phloem';
+  const files: { name: string; data: Uint8Array; blob: Blob }[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const p = await db.getProject(ids[i]); if (!p) continue;
+    await readyDoc(p.desktop); await document.fonts.ready;
+    const c = renderToCanvas(p.desktop, p.brand, assets, scale);
+    const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, 'image/png'));
+    if (!blob) continue;
+    files.push({ name: `${safe}${ids.length > 1 ? `-${String(i + 1).padStart(2, '0')}` : ''}-${c.width}x${c.height}.png`, data: new Uint8Array(await blob.arrayBuffer()), blob });
+  }
+  if (!files.length) throw new Error('Không xuất được ảnh.');
+  const save = (b: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+  if (files.length === 1) { save(files[0].blob, files[0].name); return; }
+  const { makeZip } = await import('../../../src/shared/zip');
+  save(new Blob([makeZip(files.map((f) => ({ name: f.name, data: f.data }))) as Uint8Array<ArrayBuffer>], { type: 'application/zip' }), `${safe}-${files.length}-slide.zip`);
 }
 
 // ---------- AI ----------
