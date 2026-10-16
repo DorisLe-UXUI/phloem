@@ -52,7 +52,7 @@ const AUTH = createAuth({ dataDir: DATA_DIR, secret: process.env.AUTH_SECRET || 
 const STARTED_AT = new Date().toISOString();
 const RESEND_API_KEY = process.env.RESEND_API_KEY || ''; // optional: e-mail the admin when someone asks for AI access
 const DB = AUTH.db;
-const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR, console.log, { paused: RESTORED === 'failed' });
+const BACKUPS = startBackups(BACKUP, DB.raw, DATA_DIR, console.log, { paused: RESTORED === 'failed', restored: RESTORED });
 // Asset bytes: files under DATA_DIR/blobs + one object each in the backup bucket; rows from before 2026-10-15 move out in the background
 const ASSETS = createAssetStore({ db: DB, blobs: createBlobStore({ cfg: BACKUP, dir: join(DATA_DIR, 'blobs') }) });
 if (!BACKUPS.paused) setTimeout(() => { void ASSETS.migrate(() => { try { DB.raw.exec('VACUUM'); } catch { /* busy: next boot */ } void BACKUPS.now?.('assets moved out'); }); }, 5_000).unref();

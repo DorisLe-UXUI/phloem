@@ -114,13 +114,13 @@ test('snapshots: uploaded shortly after a write, small, skipped when unchanged, 
   const st = startBackups(s3.cfg, db.raw, dir, quiet, { debounceSec: 0.1, pollMs: 50, firstMs: 1e9, signals: false });
   try {
     db.raw.exec("INSERT INTO users (id, name, email, password, created_at) VALUES ('u1', 'U', 'u@x.vn', 'h', '2026')");
-    await until(() => s3.objects.has('phloem/phloem.db'));
+    await until(() => s3.objects.has('phloem/phloem.db.gz'));
     await until(() => st.at && !st.uploading);
     assert.ok(st.bytes > 0 && st.bytes < 1024 * 1024, `snapshot ${st.bytes} B`);
-    assert.ok(s3.objects.has(`phloem/snapshots/${new Date().toISOString().slice(0, 10)}.db`), 'daily copy');
+    assert.ok(s3.objects.has(`phloem/snapshots/${new Date().toISOString().slice(0, 10)}.db.gz`), 'daily copy');
     assert.equal(st.dirty, false);
     // a client created right after is in the next snapshot, without waiting for the 10-minute interval
-    const puts = () => s3.log.filter((l) => l === 'PUT phloem/phloem.db').length;
+    const puts = () => s3.log.filter((l) => l === 'PUT phloem/phloem.db.gz').length;
     const before = puts();
     db.raw.exec("INSERT INTO clients (id, owner, name, json, created_at, updated_at) VALUES ('c1', 'u1', 'Quán A', '{}', '2026', '2026')");
     await until(() => puts() > before && !st.uploading);
@@ -179,7 +179,7 @@ test('relay: a client and an image created seconds before the container dies are
     assert.equal((await call('/db/assets/img1', { token, method: 'PUT', raw: Buffer.from('fake png'), headers: { 'Content-Type': 'image/png', 'X-Asset-Name': 'logo.png' } })).status, 200);
     assert.equal((await call('/db/clients/c1', { token, method: 'PUT', body: { name: 'Quán cà phê A' } })).status, 200);
     // the debounced snapshot lands within a few seconds; health reports its size
-    const health = await until(async () => { const h = (await (await fetch(BASE + '/')).json()).backup; return h?.at && !h.pending && s3.log.some((l) => l === 'PUT phloem/phloem.db') ? h : null; });
+    const health = await until(async () => { const h = (await (await fetch(BASE + '/')).json()).backup; return h?.at && !h.pending && s3.log.some((l) => l === 'PUT phloem/phloem.db.gz') ? h : null; });
     assert.ok(health.bytes > 0 && health.bytes < 2 * 1024 * 1024, `snapshot ${health.bytes} B`);
     assert.equal(health.assetsInDb, 0);
     assert.equal(typeof health.ms, 'number');
@@ -228,7 +228,7 @@ test('relay: boot on a big legacy database (~120 MB of in-row images) stays well
     assert.ok(peak < 250 * 1024, `peak RSS ${Math.round(peak / 1024)} MB`);
     const objs = [...s3.objects.keys()].filter((k) => k.startsWith('phloem/assets/'));
     assert.equal(objs.length, N, 'every image exactly once in the bucket (the resumed run reused what the crashed one uploaded)');
-    assert.ok(s3.objects.get('phloem/phloem.db').length < 2 * 1024 * 1024, `snapshot ${s3.objects.get('phloem/phloem.db').length} B`);
+    assert.ok(s3.objects.get('phloem/phloem.db.gz').length < 2 * 1024 * 1024, `snapshot ${s3.objects.get('phloem/phloem.db.gz').length} B`);
     console.log(`# big legacy DB: peak RSS ${Math.round(peak / 1024)} MB, final snapshot ${Math.round(done.bytes / 1024)} KB`);
   } finally {
     clearInterval(sampler); relay?.kill('SIGKILL'); await s3.close();

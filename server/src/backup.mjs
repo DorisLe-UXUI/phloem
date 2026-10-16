@@ -1,9 +1,11 @@
 // Durable data on ephemeral hosts (Render free, Fly without volumes…): the SQLite file and the auth secret are
-// restored from an S3-compatible bucket at boot and a consistent snapshot is uploaded ~30 s after writes, every few
-// minutes, and on shutdown. Asset bytes are separate objects in the same bucket (blobs.mjs). Zero dependencies: AWS Signature V4 by hand. Works with Cloudflare R2 (free 10 GB), Backblaze B2, AWS S3, MinIO.
+// restored from an S3-compatible bucket at boot and a consistent, gzipped snapshot is uploaded ~2 min after writes and on
+// shutdown, only when something changed (Render's free plan allows 5 GB of outbound traffic a month: full uploads on every
+// wake-up and sleep used it up). Asset bytes are separate objects in the same bucket (blobs.mjs). Zero dependencies: AWS Signature V4 by hand. Works with Cloudflare R2 (free 10 GB), Backblaze B2, AWS S3, MinIO.
 import { createHash, createHmac } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, readFileSync, renameSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
+import { createGunzip, createGzip } from 'node:zlib';
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { join } from 'node:path';
@@ -12,7 +14,7 @@ export function backupConfig(env = process.env) {
   const endpoint = String(env.BACKUP_S3_ENDPOINT || '').replace(/\/$/, '');
   const bucket = env.BACKUP_S3_BUCKET, key = env.BACKUP_S3_KEY, secret = env.BACKUP_S3_SECRET;
   if (!endpoint || !bucket || !key || !secret) return null;
-  return { endpoint, bucket, key, secret, region: env.BACKUP_S3_REGION || 'auto', prefix: String(env.BACKUP_S3_PREFIX || 'phloem/').replace(/^\/+/, ''), every: Math.max(1, Number(env.BACKUP_EVERY_MIN || 10)), debounce: Math.max(1, Number(env.BACKUP_DEBOUNCE_SEC || 30)) };
+  return { endpoint, bucket, key, secret, region: env.BACKUP_S3_REGION || 'auto', prefix: String(env.BACKUP_S3_PREFIX || 'phloem/').replace(/^\/+/, ''), every: Math.max(1, Number(env.BACKUP_EVERY_MIN || 60)), debounce: Math.max(1, Number(env.BACKUP_DEBOUNCE_SEC || 120)) };
 }
 
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -71,7 +73,10 @@ export async function restoreBackup(cfg, dataDir, log = console.log, { tries = 3
   for (let i = 1; i <= tries; i++) {
     try {
       const t0 = Date.now();
-      const db = await call(cfg, 'GET', cfg.prefix + 'phloem.db', undefined, {}, { toFile: dbFile }); // streamed to disk: the snapshot may be bigger than the RAM
+      // gzipped snapshot first (current format), the plain one from older relays otherwise; streamed to disk either way
+      let db = await call(cfg, 'GET', cfg.prefix + 'phloem.db.gz', undefined, {}, { toFile: `${dbFile}.gz` });
+      if (db.status === 200) { await pipeline(createReadStream(`${dbFile}.gz`), createGunzip(), createWriteStream(dbFile)); unlinkSync(`${dbFile}.gz`); db = { ...db, size: statSync(dbFile).size }; }
+      else if (db.status === 404) db = await call(cfg, 'GET', cfg.prefix + 'phloem.db', undefined, {}, { toFile: dbFile });
       if (db.status === 404) { log('[backup] no snapshot in the bucket yet'); return 'empty'; }
       if (db.status !== 200) throw new Error(`GET phloem.db → HTTP ${db.status} ${db.body.toString('utf8').slice(0, 160)}`);
       const sec = await call(cfg, 'GET', cfg.prefix + 'auth-secret');
@@ -88,37 +93,47 @@ export async function restoreBackup(cfg, dataDir, log = console.log, { tries = 3
  *  Asset bytes are not in the database (blobs.mjs), so the snapshot is small and the shutdown upload finishes in time.
  *  `paused` (the boot restore failed): never upload, so an empty fresh database can't overwrite the good copy. */
 export function startBackups(cfg, db, dataDir, log = console.log, opts = {}) {
-  const debounce = Math.max(0, Number(opts.debounceSec ?? cfg?.debounce ?? 30)) * 1000;
+  const debounce = Math.max(0, Number(opts.debounceSec ?? cfg?.debounce ?? 120)) * 1000;
+  // the bucket already holds this database (just restored, or a warm container): nothing to upload until a write
+  const inBucket = opts.restored === 'restored' || opts.restored === 'local';
   const state = { enabled: !!cfg, at: null, error: null, bytes: 0, ms: 0, dirty: false, uploading: null, paused: !!opts.paused, daily: '' };
   if (!cfg) return state;
   if (state.paused) state.error = 'restore failed at boot; uploads paused so the bucket copy is not overwritten (redeploy to retry)';
   let lastHash = '';
   const changes = () => { try { return Number(db.prepare('SELECT total_changes() AS n').get().n); } catch { return 0; } };
   let seen = changes(), timer = null;
-  const snapshot = async (reason) => {
+  const snapshot = async (reason, force = false) => {
     if (state.paused) return;
+    if (!force && !state.dirty && (lastHash || inBucket)) return; // unchanged since the last upload (or the restore)
     if (state.uploading) { await state.uploading; if (!state.dirty) return; if (state.uploading) return state.uploading; } // a write landed during that upload: go again
     state.uploading = (async () => {
       const t0 = Date.now();
       const tmp = join(dataDir, `snapshot-${process.pid}.db`);
+      const gz = `${tmp}.gz`;
       try {
         state.dirty = false; seen = changes();
         try { unlinkSync(tmp); } catch { /* none */ }
         db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
-        const snap = { file: tmp, size: statSync(tmp).size, hash: await hashFile(tmp) }; // streamed from disk, never read whole
-        const h = snap.hash;
+        const h = await hashFile(tmp); // streamed from disk, never read whole
         if (h === lastHash) return;
-        const r = await call(cfg, 'PUT', cfg.prefix + 'phloem.db', snap, { 'content-type': 'application/octet-stream' });
-        if (r.status < 200 || r.status >= 300) throw new Error(`PUT phloem.db → HTTP ${r.status} ${r.body.toString('utf8').slice(0, 160)}`);
+        await pipeline(createReadStream(tmp), createGzip({ level: 9 }), createWriteStream(gz));
+        const snap = { file: gz, size: statSync(gz).size, hash: await hashFile(gz) };
+        const r = await call(cfg, 'PUT', cfg.prefix + 'phloem.db.gz', snap, { 'content-type': 'application/gzip' });
+        if (r.status < 200 || r.status >= 300) throw new Error(`PUT phloem.db.gz → HTTP ${r.status} ${r.body.toString('utf8').slice(0, 160)}`);
         const secFile = join(dataDir, 'auth-secret');
         if (existsSync(secFile) && !process.env.AUTH_SECRET) { const s = await call(cfg, 'PUT', cfg.prefix + 'auth-secret', readFileSync(secFile), { 'content-type': 'text/plain' }); if (s.status < 200 || s.status >= 300) throw new Error(`PUT auth-secret → HTTP ${s.status}`); }
         // one dated copy a day, so a bad snapshot can't wipe out the only good one
         const day = new Date().toISOString().slice(0, 10);
-        if (state.daily !== day) { const d = await call(cfg, 'PUT', `${cfg.prefix}snapshots/${day}.db`, snap, { 'content-type': 'application/octet-stream' }); if (d.status >= 200 && d.status < 300) state.daily = day; }
+        if (state.daily !== day) {
+          const key = `${cfg.prefix}snapshots/${day}.db.gz`;
+          const head = await call(cfg, 'HEAD', key); // a container that woke up today may already have made it
+          if (head.status === 200) state.daily = day;
+          else { const d = await call(cfg, 'PUT', key, snap, { 'content-type': 'application/gzip' }); if (d.status >= 200 && d.status < 300) state.daily = day; }
+        }
         lastHash = h; state.at = new Date().toISOString(); state.bytes = snap.size; state.ms = Date.now() - t0; state.error = null;
-        log(`[backup] uploaded ${(snap.size / 1024).toFixed(0)} KB in ${state.ms} ms (${reason})`);
+        log(`[backup] uploaded ${(snap.size / 1024).toFixed(0)} KB gzipped (${(statSync(tmp).size / 1024).toFixed(0)} KB raw) in ${state.ms} ms (${reason})`);
       } catch (e) { state.dirty = true; state.error = String(e?.message || e); log('[backup] upload failed:', state.error); }
-      finally { try { unlinkSync(tmp); } catch { /* gone */ } state.uploading = null; }
+      finally { for (const f of [tmp, gz]) { try { unlinkSync(f); } catch { /* gone */ } } state.uploading = null; }
     })();
     return state.uploading;
   };
