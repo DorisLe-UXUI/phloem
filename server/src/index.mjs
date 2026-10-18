@@ -65,7 +65,23 @@ if (!BACKUPS.paused) setTimeout(async () => {
 }, 5_000).unref();
 /** What health and the admin page show about durability. */
 const backupInfo = () => BACKUPS.enabled ? { at: BACKUPS.at, kb: Math.round(BACKUPS.bytes / 1024), bytes: BACKUPS.bytes, ms: BACKUPS.ms, pending: BACKUPS.dirty, restore: RESTORED, error: BACKUPS.error, assetsInDb: ASSETS.migration.pending, thumbsInDb: PROJECTS.migration.pending } : null;
-const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+// Up to two Claude keys: when the one in use runs out of credit (or is revoked / limited), calls move to the other.
+const CLAUDE_KEYS = [ANTHROPIC_API_KEY, process.env.ANTHROPIC_API_KEY_2 || ''].filter(Boolean);
+const claudes = CLAUDE_KEYS.map((apiKey) => new Anthropic({ apiKey }));
+const anthropic = claudes[0] || null;
+let claudeAt = 0; // the key that last worked
+/** Errors that another key may not have: billing, auth, permission, rate limit. */
+const keyProblem = (e) => [401, 403, 429].includes(e?.status) || (e?.status === 400 && /credit balance|billing/i.test(e?.message || ''));
+/** Run fn(client) on the key in use, then on the other key if this one has a key problem. */
+async function withClaude(fn) {
+  let last;
+  for (let k = 0; k < claudes.length; k++) {
+    const i = (claudeAt + k) % claudes.length;
+    try { const r = await fn(claudes[i]); if (i !== claudeAt) { console.log(`[ai] switched to Claude key ${i + 1}`); claudeAt = i; } return r; }
+    catch (e) { last = e; if (!keyProblem(e) || claudes.length < 2) throw e; console.log(`[ai] Claude key ${i + 1}: ${e?.status} ${String(e?.message || '').slice(0, 80)}`); }
+  }
+  throw last;
+}
 // Unsubscribe + suppression list, open/click tracking, hosted email images, sending accounts and the server-side queue.
 const MAIL_HOOKS = {};
 const MAIL = createMail({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_URL, json, body, rawBody: raw, requireUser, throttled, hooks: MAIL_HOOKS });
@@ -124,7 +140,7 @@ const server = createServer(async (req, res) => {
         oauth: { mailchimp: !!OAUTH.mailchimp.clientId, klaviyo: !!OAUTH.klaviyo.clientId },
         tokenRequired: !!RELAY_TOKEN,
         klaviyoRevision: KLAVIYO_REVISION,
-        ai: !!anthropic,
+        ai: !!anthropic, aiKeys: claudes.length,
         imageAi: IMAGE_AI || null,
         pixabay: !!PIXABAY_API_KEY,
         video: !!GEMINI_API_KEY,
@@ -239,12 +255,12 @@ async function ai(p, res) {
   const { model = 'claude-opus-5-5', max_tokens = 16000, effort = 'medium', system = '', messages = [] } = p || {};
   if (!Array.isArray(messages) || !messages.length) return json(res, 400, { error: 'thiếu messages' });
   try {
-    const r = await anthropic.beta.messages.create({
+    const r = await withClaude((c) => c.beta.messages.create({
       model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),
       ...fallbackOpts(model),
       output_config: { effort },
       system, messages,
-    });
+    }));
     if (r.stop_reason === 'refusal') return json(res, 200, { text: '', refused: true });
     json(res, 200, { text: r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n'), usage: r.usage });
   } catch (e) {
@@ -267,14 +283,19 @@ async function aiStream(p, req, res) {
   // req 'close' fires as soon as the request body has been read, so it never caught a disconnect.
   res.on('close', () => { if (!res.writableFinished) { try { stream?.abort(); } catch { /* done */ } } });
   try {
-    stream = anthropic.beta.messages.stream({
-      model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),
-      ...fallbackOpts(model),
-      output_config: { effort },
-      system, messages,
+    // a key problem shows before the first text arrives, so switching keys never repeats text already sent
+    let sent = false;
+    const final = await withClaude(async (c) => {
+      if (sent) throw Object.assign(new Error('stream cut'), { status: 500 });
+      stream = c.beta.messages.stream({
+        model, max_tokens: Math.min(64000, Number(max_tokens) || 16000),
+        ...fallbackOpts(model),
+        output_config: { effort },
+        system, messages,
+      });
+      stream.on('text', (delta) => { sent = true; send({ t: delta }); });
+      return stream.finalMessage();
     });
-    stream.on('text', (delta) => send({ t: delta }));
-    const final = await stream.finalMessage();
     if (final.stop_reason === 'refusal') send({ error: 'Claude từ chối yêu cầu này.', refused: true });
     else send({ done: true, stop: final.stop_reason, usage: final.usage });
   } catch (e) {

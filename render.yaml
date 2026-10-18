@@ -15,6 +15,9 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+      # optional second Claude key: used when the first runs out of credit or is revoked
+      - key: ANTHROPIC_API_KEY_2
+        sync: false
       # Free durability: an S3-compatible bucket (Cloudflare R2 free tier) the relay restores from at boot and snapshots to
       # every 10 minutes and on shutdown. Leave unset on a paid instance with a disk.
       - key: BACKUP_S3_ENDPOINT
