@@ -836,3 +836,4 @@ select.in.mk-role { width: auto; min-width: 150px; flex: none; }
 .vs-trim-h::after { content: ''; position: absolute; left: 3px; top: 35%; bottom: 35%; width: 3px; border-left: 1px solid #333; border-right: 1px solid #333; }
 .vs-tl-clip { cursor: grab; touch-action: none; } .vs-tl-clip.drag { cursor: grabbing; opacity: .85; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 3; }
 .vs-phone canvas { touch-action: none; }
+.vs-sfxmark.voice { background: #3b2a6e; } .vs-right select, .vs-pane select { width: 100%; padding: 7px 9px; border: 1px solid var(--vs-line2); border-radius: 9px; background: var(--vs-bg); color: var(--vs-text); } .vs code { font: 11px var(--mono, monospace); color: var(--neon); }

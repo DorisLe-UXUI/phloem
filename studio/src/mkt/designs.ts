@@ -169,7 +169,7 @@ export async function newCarousel(client: Client, size: DesignSize, row: PlanRow
     if (opts.signal?.aborted) throw new Error('Đã huỷ.');
     const s = slides[i];
     const slideRow = { ...row, topic: s.headline, hook: s.body, visual: [s.visual, row.visual].filter(Boolean).join(' · ') };
-    let made = '';
+    let made = ''; let why = '';
     for (let attempt = 0; attempt < 2 && !made; attempt++) {
       try {
         const p = await newDesign(client, size, slideRow, {
@@ -178,9 +178,9 @@ export async function newCarousel(client: Client, size: DesignSize, row: PlanRow
           slide: { i: i + 1, n, role: i === 0 ? 'cover' : i === n - 1 ? 'cta' : s.role, hero: i === 0 ? null : hero, onHero: (id) => { hero = id; } },
         });
         made = p.id;
-      } catch (e) { if (opts.signal?.aborted || /Đã huỷ/.test((e as Error).message)) { if (ids.length) await pin(); throw e; } }
+      } catch (e) { why = (e as Error).message || String(e); if (opts.signal?.aborted || /Đã huỷ/.test(why)) { if (ids.length) await pin(); throw e; } }
     }
-    if (!made) { if (ids.length) { await pin(); await A.refreshProjects(); } throw new Error(`Mới xong ${ids.length}/${n} slide (slide ${i + 1} lỗi). Bấm "Làm tiếp" ở bài này để làm nốt.`); }
+    if (!made) { if (ids.length) { await pin(); await A.refreshProjects(); } throw new Error(`Mới xong ${ids.length}/${n} slide (slide ${i + 1} lỗi: ${why.slice(0, 160)}). Bấm "Làm tiếp" ở bài này để làm nốt.`); }
     ids.push(made);
     await pin();
     await A.refreshProjects();
@@ -200,14 +200,14 @@ First study the attached posts like a designer: illustration or photo style (2D 
 The planned copy can contain planner notes (in parentheses, "same as Sun post", internal labels, another language): never paint those. Write clean final copy in the post's language: a headline of at most 6 words, one support line of at most 12 words, a short CTA, the website or handle when known.
 Write ONE English prompt of 180–280 words:
 1. Style and layout copied from the past posts, named precisely.
-2. The scene for THIS topic: subject, action, expression, setting, composition with clear focal point and breathing room; faces, eyes and hands drawn clean and correct; nothing cut off awkwardly.
+2. The scene must SHOW this post's message literally and specifically, so the picture explains the post even without text: name the concrete things to draw (if the topic mentions features, items, numbers, places, events, products, show exactly those: "4 daily leaderboards" means four distinct ranked boards with avatars, ranks and trophies; a sale means the products with price tags; a game update shows that feature's real screen or objects as in the brand's posts). Then subject, action, expression, setting, composition with one clear focal point and breathing room; faces, eyes and hands clean and correct; nothing cut off awkwardly. Never a generic backdrop.
 3. Every text element verbatim in double quotes with its role, position and relative size; at most 4 text elements in total; strong hierarchy (headline biggest).
 4. Polish: professional finish, crisp edges, balanced colour, high contrast text on calm backgrounds, safe margins.
 End with: "Render every text crisp, spelled exactly as quoted, inside the frame; no other words, letters or watermark anywhere."
 Reply with JSON only: {"prompt":"…","texts":["each quoted text"]}`;
 
 /** A creative director checks a painted post against the brand's feed before it is shown. */
-const PAINT_CRITIC = `You are a strict creative director. The earlier attached pictures are the brand's published posts; the LAST one is a new post painted by an image model. Score it 1–10 for: text spelled exactly as listed with no extra or garbled letters; clean faces, eyes and hands; same style as the brand's posts; clear hierarchy and professional polish (not cluttered, not empty). Any misspelled or extra text caps the score at 5.
+const PAINT_CRITIC = `You are a strict creative director. The earlier attached pictures are the brand's published posts; the LAST one is a new post painted by an image model. Score it 1–10 for: the picture clearly shows THIS post's topic (not a generic scene: a viewer understands the message without reading); text spelled exactly as listed with no extra or garbled letters; clean faces, eyes and hands; same style as the brand's posts; clear hierarchy and professional polish (not cluttered, not empty). Any misspelled or extra text caps the score at 5; a generic picture that does not show the topic caps it at 6.
 Reply with JSON only: {"score":7,"problems":["…"],"fix":"concrete instructions to add to the image prompt so the next attempt fixes these problems"}`;
 
 
@@ -274,7 +274,7 @@ export async function paintFullPost(client: Client, size: DesignSize, row: PlanR
       let score = 7;
       try {
         const shot = await thumbB64(asset, 1024);
-        const out = await askClaude({ system: PAINT_CRITIC, turns: [{ role: 'user', text: `Texts that must appear, spelled exactly: ${texts.map((t) => `"${t}"`).join(', ') || '(see prompt)'}\nPrompt used: ${prompt.slice(0, 1500)}`, images: [...refImgs, ...(shot ? [shot] : [])] }], maxTokens: 800, effort: 'low' });
+        const out = await askClaude({ system: PAINT_CRITIC, turns: [{ role: 'user', text: `Post topic: ${row.topic}. Visual idea: ${sl.visual || row.visual}.\nTexts that must appear, spelled exactly: ${texts.map((t) => `"${t}"`).join(', ') || '(see prompt)'}\nPrompt used: ${prompt.slice(0, 1500)}`, images: [...refImgs, ...(shot ? [shot] : [])] }], maxTokens: 800, effort: 'low' });
         const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]);
         score = Number(j.score) || 7; note = String(j.fix || (j.problems || []).join('; ') || '');
       } catch (e) { if (opts.signal?.aborted) throw e; }
@@ -587,7 +587,7 @@ const SHOT_PLAN = `${ART_DIRECTOR.replace(/\nEnd with:[^\n]*$/, '')}
 You ALSO see the client's own photo library (numbered pictures, attached in order). Before writing the prompt:
 1. REFS: pick up to 3 pictures that show the REAL subjects this image needs — their product, packaging, shop, characters, mascot, game art, people or signature style. They are sent to the image model as references so the result shows the real thing, not an invented one. Pick none when nothing fits; never pick logos or text-heavy graphics.
 2. NEEDS: list what real photos are still missing and only the client can supply because accuracy matters (e.g. their exact product, their storefront, their staff, a specific character), max 3, written in Vietnamese, short. Leave it empty when a generic scene is fine or the refs already cover it.
-3. PROMPT: as above. When refs are used, say how to use them ("the character from reference 1 …", "keep the 3D art style of the references").
+3. PROMPT: as above, and the picture must SHOW this post's message concretely (the features, items, numbers, products or event it talks about), never a generic backdrop. When refs are used, say how to use them ("the character from reference 1 …", "keep the 3D art style of the references").
 End the prompt with: "No text, letters, numbers, logos or watermarks anywhere in the image."
 Reply with JSON only: {"refs":[numbers],"needs":[{"what":"…","why":"…"}],"prompt":"…"}`;
 
@@ -658,11 +658,18 @@ export async function paintShot(client: Client, idea: string, aspect: Aspect, op
 
 // ---------- AI image (Google Imagen / OpenAI through the relay; the keys never reach the browser) ----------
 /** AI picture quality per client: 'pro' = the best Gemini image model (sharp text, faces), 'lite' = cheapest. */
-export type ImageQuality = 'pro' | 'lite';
+export type ImageQuality = 'pro' | 'lite' | 'local';
 const qKey = (clientId: string) => `phloem.mkt.imgq.${clientId}`;
-export function imageQuality(clientId: string): ImageQuality { try { return localStorage.getItem(qKey(clientId)) === 'lite' ? 'lite' : 'pro'; } catch { return 'pro'; } }
+export function imageQuality(clientId: string): ImageQuality { try { const v = localStorage.getItem(qKey(clientId)); return v === 'lite' || v === 'local' ? v : 'pro'; } catch { return 'pro'; } }
 export function setImageQuality(clientId: string, q: ImageQuality) { try { localStorage.setItem(qKey(clientId), q); } catch { /* private mode */ } }
 export async function generateImage(clientId: string, prompt: string, aspect: Aspect = '1:1', refIds: string[] = []): Promise<string> {
+  if (imageQuality(clientId) === 'local') {
+    // free, on this Mac (FLUX): it can't look at reference pictures, so the prompt carries the style alone
+    const { localImage } = await import('../ai/local');
+    const j = await localImage(prompt, aspect);
+    const bytes = Uint8Array.from(atob(j.b64), (ch) => ch.charCodeAt(0));
+    return (await assets.add(new Blob([bytes], { type: j.mime }), `AI máy · ${prompt.slice(0, 40)}.png`, { src: { kind: 'ai' }, client: clientId, project: null })).id;
+  }
   const base = (get().settings.relayUrl || '').replace(/\/$/, '');
   await wakeRelay(base, relayAuth());
   const refs = (await Promise.all(refIds.slice(0, 4).map((id) => thumbB64(id, 1024)))).filter(Boolean).map((t) => ({ b64: t!.base64, mime: t!.mime }));

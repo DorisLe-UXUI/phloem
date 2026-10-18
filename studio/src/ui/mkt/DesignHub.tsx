@@ -84,7 +84,7 @@ export function DesignHub({ client }: { client: Client }) {
   /** AI makes the post's whole video in the background: scene prompts, Google Veo shots, then the edit (text, music, sound). */
   const aiVideo = async (row: Row) => {
     const scenes = 3, seconds = 4 as const;
-    if (!(await ask(`AI tạo video ${scenes * seconds} giây cho bài này? AI xem bài cũ của khách, viết kịch bản viral, vẽ ${scenes} khung hình đúng phong cách thương hiệu rồi Google Veo làm chúng chuyển động; tự dựng chữ, nhạc, hiệu ứng. Khoảng ${autoVideoCost(scenes, seconds, quality === 'pro').toFixed(2)} USD, 4–10 phút, chạy nền.`, 'Tạo video', false))) return;
+    if (!(await ask(`AI tạo video ${scenes * seconds} giây cho bài này? AI xem bài cũ của khách, viết kịch bản viral, vẽ ${scenes} khung hình đúng phong cách thương hiệu rồi Google Veo làm chúng chuyển động; tự dựng chữ, nhạc, hiệu ứng. ${quality === 'local' ? 'Miễn phí (chạy trên máy, khoảng 15–40 phút).' : `Khoảng ${autoVideoCost(scenes, seconds, quality).toFixed(2)} USD, 4–10 phút, chạy nền.`}`, 'Tạo video', false))) return;
     enqueue(`${jobKey(row)}:v`, `Video ${title(row)}`, async (onStage, signal) => {
       const saved = videoOf(client.id, row);
       const doc = await autoVideo(client, row, { scenes, seconds, onStage, signal, base: saved?.data || null });
@@ -122,6 +122,7 @@ export function DesignHub({ client }: { client: Client }) {
           <select value={quality} onChange={(e) => { const q = (e.target as HTMLSelectElement).value as ImageQuality; setImageQuality(client.id, q); setQuality(q); }}>
             <option value="pro">Đẹp nhất (Pro)</option>
             <option value="lite">Tiết kiệm (Lite)</option>
+            <option value="local">Miễn phí trên máy (chậm)</option>
           </select>
         </label>
         <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter(hasDesign).length} đã có ảnh</span>

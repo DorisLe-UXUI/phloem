@@ -7,9 +7,10 @@ import { toast } from '../../store';
 import { cachedItems, newId, putItem } from '../../mkt/data';
 import type { Client, Item, PlanRow } from '../../mkt/types';
 import { FX, TEMPLATES, TEXT_STYLES, addClip, aiEditPlan, applyTemplate, autoVideo, autoVideoCost, audioOf, blankVideo, creditsOf, clipUrl, drawFrame, exportVideo, nextFrame, segAt, veoShot, videoTotal, type VideoDoc, type VSeg } from '../../mkt/video';
-import { MUSIC, MUSIC_TAGS, Mixer, SFX, SFX_TAGS, addMusicFile, creditOf, musicBuffer, preview, searchAudio, sfxBuffer, stopPreview, webBuffer, type VAudio, type WebAudio } from '../../mkt/audio';
+import { MUSIC, MUSIC_TAGS, Mixer, SFX, SFX_TAGS, addMusicFile, saveVoice, voiceBuffer, creditOf, musicBuffer, preview, searchAudio, sfxBuffer, stopPreview, webBuffer, type VAudio, type WebAudio } from '../../mkt/audio';
 import { Btn } from '../components';
 import { imageQuality } from '../../mkt/designs';
+import { localShot, localTts, localVoices, type LocalVoice } from '../../ai/local';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
 
@@ -51,6 +52,7 @@ function Studio({ client, row, openId, onClose }: Props) {
   const [safe, setSafe] = useState(true);
   const [pps, setPps] = useState(70); // timeline pixels per second
   const [veo, setVeo] = useState({ prompt: '', seconds: 6 as 4 | 6 | 8 });
+  const [engine, setEngine] = useState<'veo' | 'local'>(() => (imageQuality(client.id) === 'local' ? 'local' : 'veo'));
   const [ready, setReady] = useState<Record<string, boolean>>({});
   const canvas = useRef<HTMLCanvasElement>(null);
   const els = useRef(new Map<string, HTMLVideoElement>());
@@ -70,7 +72,7 @@ function Studio({ client, row, openId, onClose }: Props) {
     return n;
   });
   useEffect(() => () => { clearTimeout(save.current); stopPreview(); mixer.current?.stop(); void mixer.current?.ctx.close(); }, []);
-  useEffect(() => { mixer.current?.levels(au); }, [au.musicVol, au.clipVol, au.sfxVol]);
+  useEffect(() => { mixer.current?.levels(au); }, [au.musicVol, au.clipVol, au.sfxVol, au.voiceVol]);
   // which clip files are on this computer (they are not synced)
   useEffect(() => { void Promise.all(v.clips.map(async (c) => [c.id, !!(await clipUrl(c.id))] as const)).then((a) => setReady(Object.fromEntries(a))); }, [v.clips.length]);
 
@@ -102,12 +104,13 @@ function Studio({ client, row, openId, onClose }: Props) {
       let { i, local } = segAt(v, t); if (i < 0) { i = 0; local = 0; }
       for (const s of v.segs) { const e = await el(s.clip); if (e) mx.clip(e); }
       if (stop) return;
+      mx.ducking(v.segs.some((x) => x.voice), au);
       void mx.start(au, segAt(v, t).i < 0 ? 0 : t, total);
       for (; i < v.segs.length && !stop; i++, local = 0) {
         const s = v.segs[i]; const e = await el(s.clip); if (!e) continue;
         cur = e; e.currentTime = s.from + local; await new Promise((r) => { e.onseeked = r; setTimeout(r, 400); });
         await e.play().catch(() => null);
-        if (local < 0.05) void mx.sfx(s.sfx, s.sfxWeb);
+        if (local < 0.05) { void mx.sfx(s.sfx, s.sfxWeb); void mx.voice(s.voice?.key); }
         const start = v.segs.slice(0, i).reduce((a, x) => a + (x.to - x.from), 0);
         await new Promise<void>((r) => {
           const tick = () => {
@@ -156,19 +159,41 @@ function Studio({ client, row, openId, onClose }: Props) {
   /** Whole video for the post: Veo scenes + the edit (text, music, sound), ~0.60 USD. */
   const aiWhole = async () => {
     if (!row) return;
-    if (!(await ask(`AI tạo video 12 giây cho bài này? AI viết kịch bản viral theo bài cũ của khách, vẽ 3 khung hình đúng phong cách thương hiệu rồi Google Veo làm chúng chuyển động. Khoảng ${autoVideoCost(3, 4, imageQuality(client.id) === 'pro').toFixed(2)} USD, 4–10 phút.`, 'Tạo video', false))) return;
+    if (!(await ask(`AI tạo video 12 giây cho bài này? AI viết kịch bản viral theo bài cũ của khách, vẽ 3 khung hình đúng phong cách thương hiệu rồi Google Veo làm chúng chuyển động. ${imageQuality(client.id) === 'local' ? 'Miễn phí (chạy trên máy, khoảng 15–40 phút).' : `Khoảng ${autoVideoCost(3, 4, imageQuality(client.id)).toFixed(2)} USD, 4–10 phút.`}`, 'Tạo video', false))) return;
     setPlaying(false); abort.current = new AbortController();
     try { const doc = await autoVideo(client, row, { scenes: 3, seconds: 4, onStage: setBusy, signal: abort.current.signal, base: v }); setV(() => doc); setT(0); setSel(null); toast('AI đã tạo xong video. Bấm Space để xem, chỉnh gì cũng được.', 'ok'); }
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(null); }
   };
+  // ---- voice-over (free, on this Mac) ----
+  const [voices, setVoices] = useState<LocalVoice[] | null>(null);
+  useEffect(() => { if (tab === 'audio' && !voices) void localVoices().then(setVoices); }, [tab]);
+  const lang: 'vi' | 'en' = au.voice?.lang || ((client as { language?: string }).language && /^en/i.test(String((client as { language?: string }).language)) ? 'en' : 'vi');
+  const voiceId = au.voice?.id || (voices || []).find((x) => x.lang === lang)?.id || (lang === 'vi' ? 'say:Linh' : 'say:Samantha');
+  /** Read one shot's line (or every shot's) aloud; a shot is lengthened when the line is longer than it, as far as its clip allows. */
+  const speak = async (only?: string) => {
+    const list = v.segs.filter((x) => x.text.trim() && x.style !== 'none' && (!only || x.id === only));
+    if (!list.length) { toast('Chưa có chữ trên màn hình để đọc.', 'info'); return; }
+    abort.current = new AbortController();
+    try {
+      for (const [k, sg] of list.entries()) {
+        setBusy(`Đang tạo giọng đọc ${k + 1}/${list.length}…`);
+        const b = await localTts(sg.text, lang, voiceId, abort.current.signal);
+        const { key, dur } = await saveVoice(b);
+        const c = clipById.get(sg.clip);
+        setV((d) => ({ ...d, segs: d.segs.map((x) => (x.id === sg.id ? { ...x, voice: { key, dur, text: x.text }, to: Math.max(x.to, Math.min(c?.dur || x.to, x.from + dur + 0.15)) } : x)) }));
+      }
+      toast(`Đã đọc ${list.length} câu. Bấm Space để nghe.`, 'ok');
+    } catch (e) { toast((e as Error).message, 'err'); }
+    finally { setBusy(null); }
+  };
   const genShot = async () => {
     const prompt = veo.prompt.trim() || (row ? `${row.visual || row.topic}. Vertical 9:16 social video shot, cinematic, natural light, for the brand ${client.name}.` : '');
     if (!prompt) { toast('Gõ mô tả cảnh cần tạo.', 'err'); return; }
-    if (!(await ask(`Tạo 1 cảnh ${veo.seconds} giây bằng Google Veo (bản rẻ nhất)? Tốn khoảng ${(veo.seconds * 0.05).toFixed(2)} USD, mất 1–3 phút.`, 'Tạo cảnh', false))) return;
+    if (!(await ask(engine === 'local' ? `Tạo 1 cảnh ${veo.seconds} giây bằng LTX-2 trên máy? Miễn phí, mất khoảng 5–15 phút.` : `Tạo 1 cảnh ${veo.seconds} giây bằng Google Veo (bản rẻ nhất)? Tốn khoảng ${(veo.seconds * 0.05).toFixed(2)} USD, mất 1–3 phút.`, 'Tạo cảnh', false))) return;
     abort.current = new AbortController();
     try {
-      const b = await veoShot(prompt, veo.seconds, setBusy, abort.current.signal);
+      const b = engine === 'local' ? await localShot(prompt, veo.seconds, setBusy, abort.current.signal) : await veoShot(prompt, veo.seconds, setBusy, abort.current.signal);
       setBusy('Đang nạp cảnh vào kho clip…');
       const c = await addClip(b, `AI · ${prompt.slice(0, 40)}`, 'ai');
       setV((d) => ({ ...d, clips: [...d.clips, c] })); setTab('media'); toast('Xong cảnh AI, đã thêm vào kho clip.', 'ok');
@@ -302,6 +327,14 @@ function Studio({ client, row, openId, onClose }: Props) {
                 <label class="vs-slider"><span>Tiếng gốc clip</span><input type="range" min={0} max={1} step={0.01} value={au.clipVol} onInput={(e) => setAu({ clipVol: Number((e.target as HTMLInputElement).value) })} /><b class="mono">{Math.round(au.clipVol * 100)}</b></label>
                 <label class="vs-slider"><span>Hiệu ứng</span><input type="range" min={0} max={1} step={0.01} value={au.sfxVol} onInput={(e) => setAu({ sfxVol: Number((e.target as HTMLInputElement).value) })} /><b class="mono">{Math.round(au.sfxVol * 100)}</b></label>
               </section>
+              <section class="vs-sec"><h5>Giọng đọc AI <span class="dim small">· miễn phí, chạy trên máy</span></h5>
+                <div class="vs-seg3"><button class={lang === 'vi' ? 'on' : ''} onClick={() => setAu({ voice: { id: (voices || []).find((x) => x.lang === 'vi')?.id || 'say:Linh', lang: 'vi' } })}>Tiếng Việt</button><button class={lang === 'en' ? 'on' : ''} onClick={() => setAu({ voice: { id: (voices || []).find((x) => x.lang === 'en')?.id || 'say:Samantha', lang: 'en' } })}>English</button></div>
+                {voices && voices.length > 0 ? <select value={voiceId} onChange={(e) => setAu({ voice: { id: (e.target as HTMLSelectElement).value, lang } })}>{voices.filter((x) => x.lang === lang).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+                  : <p class="vs-warn"><Icon name="info" size={13} />Chưa bật AI trên máy. Mở Terminal trong thư mục phloem-mkt, chạy <code>node tools/local-ai/server.mjs</code>, rồi mở lại tab này.</p>}
+                <button class="vs-cta" disabled={!!busy || !v.segs.length} onClick={() => void speak()}><Icon name="music" size={15} />Đọc toàn bộ chữ trên màn hình</button>
+                <label class="vs-slider"><span>Giọng đọc</span><input type="range" min={0} max={1.5} step={0.01} value={au.voiceVol ?? 1} onInput={(e) => setAu({ voiceVol: Number((e.target as HTMLInputElement).value) })} /><b class="mono">{Math.round((au.voiceVol ?? 1) * 100)}</b></label>
+                <span class="dim small">Nhạc nền tự nhỏ lại khi có giọng đọc. Cảnh nào câu đọc dài hơn sẽ tự kéo dài theo.</span>
+              </section>
               <section class="vs-sec"><h5>Nhạc nền <span class="dim small">· tự tạo, không lo bản quyền</span></h5>
                 <div class="vs-tracks">
                   {MUSIC.map((m) => { const on = au.music?.kind === 'synth' && au.music.id === m.id; return (
@@ -358,7 +391,8 @@ function Studio({ client, row, openId, onClose }: Props) {
                 <textarea rows={5} placeholder={row ? `Để trống = theo ý tưởng ảnh của bài: ${(row.visual || row.topic).slice(0, 90)}` : 'Chủ thể, hành động, góc máy, ánh sáng, không khí…'} value={veo.prompt} onInput={(e) => setVeo({ ...veo, prompt: (e.target as HTMLTextAreaElement).value })} />
               </label>
               <div class="vs-field"><span>Độ dài</span><div class="vs-seg3">{([4, 6, 8] as const).map((n) => <button key={n} class={veo.seconds === n ? 'on' : ''} onClick={() => setVeo({ ...veo, seconds: n })}>{n} giây</button>)}</div></div>
-              <button class="vs-cta" disabled={!!busy} onClick={() => void genShot()}><Icon name="sparkle" size={15} />Tạo cảnh · ~{(veo.seconds * 0.05).toFixed(2)} USD</button>
+              <div class="vs-field"><span>Máy tạo</span><div class="vs-seg3"><button class={engine === 'veo' ? 'on' : ''} onClick={() => setEngine('veo')}>Google Veo</button><button class={engine === 'local' ? 'on' : ''} onClick={() => setEngine('local')}>Trên máy · miễn phí</button></div></div>
+              <button class="vs-cta" disabled={!!busy} onClick={() => void genShot()}><Icon name="sparkle" size={15} />{engine === 'local' ? 'Tạo cảnh · miễn phí' : `Tạo cảnh · ~${(veo.seconds * 0.05).toFixed(2)} USD`}</button>
               <div class="vs-note"><b>Google Veo 3.1 Lite</b> (bản rẻ nhất): 720p dọc, khoảng 0,05 USD/giây, 1–3 phút mỗi cảnh, tối đa 6 cảnh/giờ.</div>
               <div class="vs-note"><b>Miễn phí:</b> tạo cảnh trên máy Mac bằng LTX-2 (chậm, vài phút đến vài chục phút mỗi cảnh) rồi thả file vào tab Footage.</div>
             </>}
@@ -410,6 +444,14 @@ function Studio({ client, row, openId, onClose }: Props) {
               <div class="vs-seg3">{FX.map((x) => <button key={x.id} class={(seg.fx || 'none') === x.id ? 'on' : ''} onClick={() => patchSeg(seg.id, { fx: x.id })}>{x.label}</button>)}</div>
               <label class="vs-slider"><span>Zoom chậm</span><input type="range" min={1} max={1.3} step={0.01} value={seg.zoom} onInput={(e) => patchSeg(seg.id, { zoom: Number((e.target as HTMLInputElement).value) })} /><b class="mono">{Math.round((seg.zoom - 1) * 100)}%</b></label>
             </section>
+            <section class="vs-sec"><h5>Giọng đọc</h5>
+              <div class="row" style={{ gap: 6 }}>
+                <button class="vs-mini" disabled={!!busy || !seg.text.trim()} onClick={() => void speak(seg.id)}><Icon name="music" size={12} />{seg.voice ? 'Đọc lại câu này' : 'Đọc câu này'}</button>
+                {seg.voice && <button class="vs-mini" onClick={() => void preview(voiceBuffer(seg.voice!.key), 15)}><Icon name="play" size={11} />Nghe</button>}
+                {seg.voice && <button class="vs-mini" onClick={() => patchSeg(seg.id, { voice: null })}><Icon name="trash" size={11} />Bỏ</button>}
+              </div>
+              {seg.voice && seg.voice.text !== seg.text && <span class="dim small">Chữ đã đổi so với lúc đọc: bấm "Đọc lại câu này".</span>}
+            </section>
             <section class="vs-sec"><h5>Âm thanh khi vào cảnh</h5>
               <div class="vs-sfx sm">
                 {seg.sfxWeb && <button class="on" title={creditOf(seg.sfxWeb)} onClick={() => void preview(webBuffer(seg.sfxWeb!), 3)}><span>🎧</span>{seg.sfxWeb.title.slice(0, 18)}</button>}
@@ -458,6 +500,7 @@ function Studio({ client, row, openId, onClose }: Props) {
             </div>
             <div class="vs-track mus">
               {au.music && total > 0 ? <div class="vs-tl-mus" style={{ left: '12px', width: `${total * pps - 2}px` }}><Icon name="music" size={11} />{au.music.kind !== 'synth' ? au.music.name : MUSIC.find((m) => m.id === (au.music as { id: string }).id)?.label}<span class="vs-wave" /></div> : <span class="vs-tl-empty">Không nhạc nền · chọn ở tab Âm thanh</span>}
+              {v.segs.map((s) => s.voice ? <span key={`v${s.id}`} class="vs-sfxmark voice" style={{ left: `${12 + startOf(s.id) * pps + 22}px` }} title={`Giọng đọc: ${s.voice.text}`}>🎙</span> : null)}
               {v.segs.map((s) => s.sfxWeb || (s.sfx && s.sfx !== 'none') ? <span key={s.id} class="vs-sfxmark" style={{ left: `${12 + startOf(s.id) * pps}px` }} title={s.sfxWeb ? s.sfxWeb.title : SFX.find((x) => x.id === s.sfx)?.label}>{s.sfxWeb ? '🎧' : SFX.find((x) => x.id === s.sfx)?.emoji}</span> : null)}
             </div>
             <div class="vs-head" style={{ left: `${12 + t * pps}px` }}><i /></div>

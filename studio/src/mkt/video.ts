@@ -6,14 +6,14 @@ import { askClaude, relayAuth, wakeRelay, type AiImage } from '../ai/client';
 import { get } from '../store';
 import { brandBookOf, styleNotesOf } from './kit';
 import { audienceLine, channelOf, type Client, type PlanRow } from './types';
-import { MUSIC, Mixer, SFX, creditOf, musicBuffer, sfxBuffer, webBuffer, defaultAudio, type MusicId, type SfxId, type VAudio, type WebAudio } from './audio';
+import { MUSIC, Mixer, SFX, creditOf, musicBuffer, sfxBuffer, voiceBuffer, webBuffer, defaultAudio, type MusicId, type SfxId, type VAudio, type WebAudio } from './audio';
 
 export interface VClip { id: string; name: string; dur: number; w: number; h: number; thumb: string; src: 'upload' | 'ai' }
 export type VTextStyle = 'hook' | 'box' | 'body' | 'cta' | 'none';
 export type VFx = 'none' | 'punch' | 'flash';
 export const TEXT_STYLES: { id: VTextStyle; label: string }[] = [{ id: 'hook', label: 'Hook nền màu' }, { id: 'box', label: 'TikTok nền trắng' }, { id: 'body', label: 'Chữ viền' }, { id: 'cta', label: 'Nút CTA' }, { id: 'none', label: 'Không chữ' }];
 export const FX: { id: VFx; label: string }[] = [{ id: 'none', label: 'Cắt thẳng' }, { id: 'punch', label: 'Giật zoom' }, { id: 'flash', label: 'Loé sáng' }];
-export interface VSeg { id: string; clip: string; from: number; to: number; text: string; style: VTextStyle; pos: 'top' | 'middle' | 'bottom'; zoom: number; fx?: VFx; sfx?: SfxId; sfxWeb?: WebAudio | null; y?: number /* text centre, 0–1 of the height, when dragged */ }
+export interface VSeg { id: string; clip: string; from: number; to: number; text: string; style: VTextStyle; pos: 'top' | 'middle' | 'bottom'; zoom: number; fx?: VFx; sfx?: SfxId; sfxWeb?: WebAudio | null; y?: number /* text centre, 0–1 of the height, when dragged */; voice?: { key: string; dur: number; text: string } | null }
 export interface VideoDoc {
   title: string; w: number; h: number;
   clips: VClip[]; segs: VSeg[];
@@ -246,8 +246,10 @@ export async function exportVideo(v: VideoDoc, onProgress: (p: number) => void, 
   // everything that takes time happens before recording starts: music rendered, effects loaded, first frames decoded
   onProgress(0); await musicBuffer(audioOf(v).music);
   await Promise.all(v.segs.map((s) => (s.sfxWeb ? webBuffer(s.sfxWeb) : s.sfx && s.sfx !== 'none' ? sfxBuffer(s.sfx) : null)));
+  await Promise.all(v.segs.map((s) => (s.voice ? voiceBuffer(s.voice.key) : null)));
   rec.start(500);
   const total = videoTotal(v);
+  mix.ducking(v.segs.some((s) => s.voice), audioOf(v));
   await mix.start(audioOf(v), 0, total);
   try {
     for (let i = 0; i < v.segs.length; i++) {
@@ -257,7 +259,7 @@ export async function exportVideo(v: VideoDoc, onProgress: (p: number) => void, 
       el.currentTime = s.from; await new Promise((r) => { el.onseeked = r; });
       if (rec.state === 'paused') rec.resume();
       await el.play().catch(() => null);
-      void mix.sfx(s.sfx, s.sfxWeb);
+      void mix.sfx(s.sfx, s.sfxWeb); void mix.voice(s.voice?.key);
       const before = v.segs.slice(0, i).reduce((a, x) => a + (x.to - x.from), 0);
       await new Promise<void>((r) => {
         const tick = () => {
@@ -369,7 +371,7 @@ export async function autoVideo(client: Client, row: PlanRow & { planId: string 
       const id = await D.generateImage(client.id, `${sc.style}. ${shot.keyframe}. Vertical 9:16 frame for a short video, cinematic composition, clean faces and hands, no text, no letters, no logo, no watermark.`, '9:16', refs.slice(0, 3));
       frame = await assetB64(id, 720);
     } catch (e) { if (opts.signal?.aborted) throw e; /* Veo still makes the shot from text */ }
-    const b = await veoShot(`${shot.motion || ''} ${sc.style}. ${frame ? 'Animate the given first frame, keep its characters and art style exactly.' : shot.keyframe} Vertical 9:16, no text on screen, no subtitles.`, opts.seconds, (m) => opts.onStage(`${tag} · ${m}`), opts.signal, frame || undefined);
+    const b = await (D.imageQuality(client.id) === 'local' ? (await import('../ai/local')).localShot : veoShot)(`${shot.motion || ''} ${sc.style}. ${frame ? 'Animate the given first frame, keep its characters and art style exactly.' : shot.keyframe} Vertical 9:16, no text on screen, no subtitles.`, opts.seconds, (m) => opts.onStage(`${tag} · ${m}`), opts.signal, frame || undefined);
     const c = await addClip(b, `AI · cảnh ${i + 1}`, 'ai'); clips.push(c);
     const beats = (shot.beats || []).slice(0, 3); const n = Math.max(1, beats.length); const h = c.dur / n;
     for (let k = 0; k < n; k++) {
@@ -383,4 +385,4 @@ export async function autoVideo(client: Client, row: PlanRow & { planId: string 
   return { ...base, title: sc.title || base.title, clips: [...base.clips, ...clips], segs, progressBar: sc.progressBar !== false, audio: { ...a, music: a.music?.kind === 'file' ? a.music : { kind: 'synth', id: music } } };
 }
 /** Rough cost of autoVideo in USD: Veo seconds plus one painted first frame per shot. */
-export const autoVideoCost = (scenes: number, seconds: number, pro: boolean) => scenes * (seconds * 0.05 + (pro ? 0.14 : 0.04));
+export const autoVideoCost = (scenes: number, seconds: number, q: 'pro' | 'lite' | 'local') => (q === 'local' ? 0 : scenes * (seconds * 0.05 + (q === 'pro' ? 0.14 : 0.04)));

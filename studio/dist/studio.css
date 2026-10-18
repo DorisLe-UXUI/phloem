@@ -4978,6 +4978,22 @@ select.in.mk-role {
 .vs-phone canvas {
   touch-action: none;
 }
+.vs-sfxmark.voice {
+  background: #3b2a6e;
+}
+.vs-right select,
+.vs-pane select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--vs-line2);
+  border-radius: 9px;
+  background: var(--vs-bg);
+  color: var(--vs-text);
+}
+.vs code {
+  font: 11px var(--mono, monospace);
+  color: var(--neon);
+}
 
 /* studio/styles.css */
 :root {

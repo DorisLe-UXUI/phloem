@@ -20,7 +20,7 @@ export const MUSIC: { id: MusicId; label: string; mood: string; bpm: number }[] 
 ];
 /** A track from the free library (Openverse: Jamendo, Freesound, Wikimedia; CC0, public domain or CC BY, all usable commercially). */
 export interface WebAudio { id: string; title: string; url: string; creator: string; license: string; source: string; landing: string; dur: number }
-export interface VAudio { music: { kind: 'synth'; id: MusicId } | { kind: 'file'; id: string; name: string } | { kind: 'web'; id: string; name: string; track: WebAudio } | null; musicVol: number; clipVol: number; sfxVol: number }
+export interface VAudio { music: { kind: 'synth'; id: MusicId } | { kind: 'file'; id: string; name: string } | { kind: 'web'; id: string; name: string; track: WebAudio } | null; musicVol: number; clipVol: number; sfxVol: number; voiceVol?: number; voice?: { id: string; lang: 'vi' | 'en' } }
 export const MUSIC_TAGS = ['vui tươi', 'chill', 'lofi', 'epic', 'hip hop', 'EDM', 'piano', 'acoustic', 'corporate', 'jazz', 'funk', 'cinematic', 'ambient', 'summer', 'happy', 'phonk'];
 export const SFX_TAGS = ['whoosh', 'swoosh', 'pop', 'click', 'transition', 'notification', 'cash register', 'camera shutter', 'applause', 'laugh', 'boom', 'glitch', 'ding', 'typing', 'swipe', 'magic', 'coffee', 'door', 'crowd'];
 const VI: Record<string, string> = { 'vui tươi': 'upbeat happy', chill: 'chill', lofi: 'lofi', epic: 'epic', piano: 'piano', acoustic: 'acoustic guitar', corporate: 'corporate', cinematic: 'cinematic' };
@@ -161,6 +161,20 @@ export function musicBuffer(m: VAudio['music']): Promise<AudioBuffer | null> {
   })().catch(() => null));
   return bufs.get(k)!;
 }
+/** A voice-over line kept in this browser (IndexedDB 'vvoice:<id>'), decoded once. */
+export function voiceBuffer(key: string): Promise<AudioBuffer | null> {
+  const k = `voice:${key}`;
+  if (!bufs.has(k)) bufs.set(k, (async () => { const b = await (await import('../storage/idb')).db.getBlob(`vvoice:${key}`); return b ? new AudioContext().decodeAudioData(await b.arrayBuffer()) : null; })().catch(() => { bufs.delete(k); return null; }));
+  return bufs.get(k)!;
+}
+export async function saveVoice(blob: Blob): Promise<{ key: string; dur: number }> {
+  const key = `v_${Math.random().toString(36).slice(2, 10)}`;
+  const buf = await new AudioContext().decodeAudioData(await blob.arrayBuffer());
+  await (await import('../storage/idb')).db.putBlob(`vvoice:${key}`, blob);
+  bufs.set(`voice:${key}`, Promise.resolve(buf));
+  return { key, dur: buf.duration };
+}
+
 /** Keep the user's own music file in this browser (like the clips). */
 export async function addMusicFile(f: File): Promise<{ kind: 'file'; id: string; name: string }> {
   const id = `m_${Math.random().toString(36).slice(2, 10)}`;
@@ -185,13 +199,16 @@ export function stopPreview() { auditionSrc?.stop(); auditionSrc = null; }
 /** The timeline's sound: music from an offset (looped, faded out at the end), each shot's sound effect, the clips' own audio. */
 export class Mixer {
   private music: AudioBufferSourceNode | null = null;
-  private mg: GainNode; private sg: GainNode; private cg: GainNode;
+  private mg: GainNode; private sg: GainNode; private cg: GainNode; private vg: GainNode; private duck = 1;
   private linked = new WeakSet<HTMLMediaElement>();
   constructor(public ctx: AudioContext, out: AudioNode) {
-    this.mg = ctx.createGain(); this.sg = ctx.createGain(); this.cg = ctx.createGain();
-    for (const g of [this.mg, this.sg, this.cg]) g.connect(out);
+    this.mg = ctx.createGain(); this.sg = ctx.createGain(); this.cg = ctx.createGain(); this.vg = ctx.createGain();
+    for (const g of [this.mg, this.sg, this.cg, this.vg]) g.connect(out);
   }
-  levels(a: VAudio) { this.mg.gain.value = a.musicVol; this.sg.gain.value = a.sfxVol; this.cg.gain.value = a.clipVol; }
+  levels(a: VAudio) { this.mg.gain.value = a.musicVol * this.duck; this.sg.gain.value = a.sfxVol; this.cg.gain.value = a.clipVol; this.vg.gain.value = a.voiceVol ?? 1; }
+  /** Music sits lower under a voice-over. */
+  ducking(on: boolean, a: VAudio) { this.duck = on ? 0.4 : 1; this.levels(a); }
+  async voice(key: string | undefined) { if (!key) return; const b = await voiceBuffer(key); if (!b) return; const s = this.ctx.createBufferSource(); s.buffer = b; s.connect(this.vg); s.start(); }
   clip(el: HTMLMediaElement) { if (this.linked.has(el)) return; this.linked.add(el); this.ctx.createMediaElementSource(el).connect(this.cg); }
   async start(a: VAudio, at: number, total: number) {
     this.stop(); this.levels(a);
