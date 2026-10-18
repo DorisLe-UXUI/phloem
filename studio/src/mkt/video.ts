@@ -297,3 +297,47 @@ export async function veoShot(prompt: string, seconds: 4 | 6 | 8, onStage: (m: s
     if (Date.now() - t0 > 6 * 60_000) throw new Error('Google dựng quá lâu (hơn 6 phút). Thử lại sau.');
   }
 }
+
+// ---------- AI makes the whole video for a post: scene prompts, Veo shots, an edit with text, music and sound ----------
+const SHOT = 'Vertical 9:16 short-form social video shot, cinematic, natural light, smooth camera motion, shallow depth of field, no text, no captions, no logos on screen.';
+/** Scene prompts for a post: Claude writes them when it can; otherwise they are built from the post itself. */
+async function scenePrompts(client: Client, row: PlanRow, n: number, onStage: (m: string) => void): Promise<string[]> {
+  onStage('AI đang viết kịch bản cảnh…');
+  try {
+    const out = await askClaude({ system: `You write prompts for Google Veo (text-to-video). Each prompt describes ONE ${'continuous'} shot: subject, action, setting, camera move, light, mood. English, 40–70 words, no on-screen text, nothing copyrighted. Shot 1 is the scroll-stopping hook, the last shot supports the call to action. Reply with JSON only: {"shots":["…"]}`, turns: [{ role: 'user', text: `Brand: ${client.name}${client.industry ? ` (${client.industry})` : ''}. ${audienceLine(client)}\nPost: ${row.topic}. Hook: ${row.hook}. Visual idea: ${row.visual}. Caption: ${(row.caption || '').slice(0, 400)}. CTA: ${row.cta}.\nWrite ${n} shots.` }], maxTokens: 1500, effort: 'low' });
+    const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]) as { shots?: string[] };
+    const s = (j.shots || []).map(String).filter(Boolean).slice(0, n);
+    if (s.length === n) return s.map((x) => `${x} ${SHOT}`);
+  } catch { /* Claude unavailable (e.g. out of credit): build them from the post */ }
+  const idea = (row.visual || row.topic || client.name).slice(0, 300);
+  return [
+    `${idea}. Opening hook shot, striking composition, quick push-in. ${SHOT}`,
+    `Close-up details related to: ${row.topic}. Hands and textures, gentle slow motion. ${SHOT}`,
+    `People enjoying ${row.topic}${client.industry ? ` (${client.industry})` : ''}, warm happy mood, wide shot ending on a calm frame with empty space. ${SHOT}`,
+  ].slice(0, n);
+}
+/** Short on-screen lines from the post: hook, a few body beats from the caption, the CTA. */
+function lines(row: PlanRow, n: number): string[] {
+  const words = (t: string, k: number) => t.split(/\s+/).filter(Boolean).slice(0, k).join(' ');
+  const body = (row.caption || '').replace(/#[^\s]+/g, '').split(/(?<=[.!?…])\s+|\n+/).map((x) => x.trim()).filter((x) => x.length > 3).map((x) => words(x, 7));
+  const out = [words(row.hook || row.topic, 8)];
+  for (let i = 0; out.length < n - 1; i++) out.push(body[i] || '');
+  out.push(words(row.cta || 'Theo dõi để xem thêm', 6));
+  return out;
+}
+export async function autoVideo(client: Client, row: PlanRow & { planId: string }, opts: { scenes: number; seconds: 4 | 6 | 8; template?: string; onStage: (m: string) => void; signal?: AbortSignal; base?: VideoDoc | null }): Promise<VideoDoc> {
+  const prompts = await scenePrompts(client, row, opts.scenes, opts.onStage);
+  const clips: VClip[] = [];
+  for (const [i, p] of prompts.entries()) {
+    if (opts.signal?.aborted) throw new Error('Đã huỷ.');
+    const b = await veoShot(p, opts.seconds, (m) => opts.onStage(`Cảnh ${i + 1}/${prompts.length} · ${m}`), opts.signal);
+    clips.push(await addClip(b, `AI · cảnh ${i + 1}`, 'ai'));
+  }
+  opts.onStage('Đang dựng video…');
+  const segs: VSeg[] = [];
+  const per = 2; // each shot cut in two beats
+  const text = lines(row, clips.length * per);
+  clips.forEach((c, i) => { const h = c.dur / per; for (let k = 0; k < per; k++) segs.push({ id: uid('sg'), clip: c.id, from: k * h, to: Math.min(c.dur, (k + 1) * h), text: text[i * per + k] || '', style: 'body', pos: 'middle', zoom: 1, fx: 'none', sfx: 'none' }); });
+  const base = opts.base || blankVideo(client, row);
+  return applyTemplate({ ...base, clips: [...base.clips, ...clips], segs }, opts.template || base.template || 'viral');
+}

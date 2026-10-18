@@ -37,13 +37,13 @@ async function start(j: Job & { run: Run }) {
   for (let attempt = 0; ; attempt++) {
     try {
       await j.run(onStage, j.abort.signal);
-      j.state = 'done'; j.stage = 'Xong'; toast(`Xong ảnh: ${j.title}`, 'ok');
+      j.state = 'done'; j.stage = 'Xong'; toast(`Xong: ${j.title}`, 'ok');
       setTimeout(() => { if (jobs.get(j.key) === j && j.state === 'done') { jobs.delete(j.key); emit(); } }, 12_000);
       break;
     } catch (e) {
       const msg = (e as Error).message || String(e);
       if (j.abort.signal.aborted || /Đã huỷ/.test(msg)) { jobs.delete(j.key); break; }
-      if (attempt < 3 && /quá nhiều|429|rate|overloaded|529/i.test(msg)) { onStage(`Bị giới hạn tốc độ, thử lại sau 60 giây… (lần ${attempt + 2})`); await new Promise((r) => setTimeout(r, 60_000)); continue; }
+      if (attempt < 3 && /quá nhiều|quá tải|429|rate|overloaded|529/i.test(msg)) { onStage(`Bị giới hạn tốc độ, thử lại sau 60 giây… (lần ${attempt + 2})`); await new Promise((r) => setTimeout(r, 60_000)); continue; }
       j.state = 'error'; j.error = msg; j.stage = msg; toast(`Lỗi "${j.title}": ${msg.slice(0, 120)}`, 'err');
       break;
     }

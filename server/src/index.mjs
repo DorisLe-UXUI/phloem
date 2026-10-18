@@ -359,7 +359,7 @@ async function aiVideoStart(p, res) {
   const instance = { prompt };
   if (p?.image?.b64) instance.image = { inlineData: { mimeType: /^image\/(png|jpeg|webp)$/.test(p.image.mime) ? p.image.mime : 'image/jpeg', data: String(p.image.b64).replace(/^data:[^,]+,/, '') } };
   try {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/${model}:predictLongRunning`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify({ instances: [instance], parameters: { aspectRatio: aspect, durationSeconds: String(seconds), resolution: '720p' } }), signal: AbortSignal.timeout(60_000) });
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/${model}:predictLongRunning`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify({ instances: [instance], parameters: { aspectRatio: aspect, durationSeconds: Number(seconds), resolution: '720p' } }), signal: AbortSignal.timeout(60_000) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { if (r.status === 404) veoModel = undefined; return json(res, r.status === 429 ? 429 : 502, { error: `Google (${model.replace('models/', '')}): ${String(j?.error?.message || `HTTP ${r.status}`).slice(0, 300)}` }); }
     return json(res, 200, { op: j.name, model: model.replace('models/', ''), seconds });

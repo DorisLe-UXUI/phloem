@@ -3,7 +3,7 @@ import { ImportData } from './ImportData';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
-import { cachedItems } from '../../mkt/data';
+import { cachedItems, newId, putItem } from '../../mkt/data';
 import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
@@ -16,7 +16,7 @@ import { ask } from '../confirm';
 import { Empty, PageHead, StatusChip, fmtDate } from './bits';
 import { ClientLibrary } from './ClientLibrary';
 import { VideoStudio, isVideoRow, videoOf } from './VideoStudio';
-import type { VideoDoc } from '../../mkt/video';
+import { autoVideo, videoTotal, type VideoDoc } from '../../mkt/video';
 
 type Row = PlanRow & { planId: string };
 
@@ -71,6 +71,17 @@ export function DesignHub({ client }: { client: Client }) {
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(null); }
   };
+  /** AI makes the post's whole video in the background: scene prompts, Google Veo shots, then the edit (text, music, sound). */
+  const aiVideo = async (row: Row) => {
+    const scenes = 3, seconds = 4 as const;
+    if (!(await ask(`AI tạo video ${scenes * seconds} giây cho bài này? Google Veo (bản rẻ nhất) tạo ${scenes} cảnh, rồi tự dựng chữ hook, CTA, nhạc và hiệu ứng âm thanh. Tốn khoảng ${(scenes * seconds * 0.05).toFixed(2)} USD, mất 3–8 phút, chạy nền.`, 'Tạo video', false))) return;
+    enqueue(`${jobKey(row)}:v`, `Video ${title(row)}`, async (onStage, signal) => {
+      const saved = videoOf(client.id, row);
+      const doc = await autoVideo(client, row, { scenes, seconds, onStage, signal, base: saved?.data || null });
+      await putItem(client.id, 'video', saved?.id || newId('vid'), { ...doc, thumb: doc.clips[0]?.thumb || '' });
+    });
+  };
+  const jobFor = (r: Row) => J.jobOf(`${jobKey(r)}:v`) || J.jobOf(jobKey(r));
   /** The whole post painted as one finished picture with its text, in the style of the client's past posts. */
   const full = async (row: Row) => {
     if (!pastPosts(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
@@ -118,14 +129,16 @@ export function DesignHub({ client }: { client: Client }) {
                       <td class="mono"><div class="cv">{r.time}</div></td>
                       <td><div class="cv"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><br /><span class="dim small">{FORMATS.find((f) => f.id === r.format)?.label}</span></div></td>
                       <td class="c-img">
-                        {(() => { const j = J.jobOf(jobKey(r)); return j ? <div class={`mk-job ${j.state}`}>{j.state === 'running' || j.state === 'queued' ? <div class="mk-spin" /> : <Icon name={j.state === 'done' ? 'check' : 'warn'} size={14} />}<span title={j.stage}>{j.stage}</span>{(j.state === 'running' || j.state === 'queued') && <button onClick={() => cancelJob(j.key)} title="Huỷ việc này">Huỷ</button>}</div> : null; })()}
+                        {(() => { const j = jobFor(r); return j ? <div class={`mk-job ${j.state}`}>{j.state === 'running' || j.state === 'queued' ? <div class="mk-spin" /> : <Icon name={j.state === 'done' ? 'check' : 'warn'} size={14} />}<span title={j.stage}>{j.stage}</span>{(j.state === 'running' || j.state === 'queued') && <button onClick={() => cancelJob(j.key)} title="Huỷ việc này">Huỷ</button>}</div> : null; })()}
                         <button class={`mk-thumb ${des ? '' : 'empty'}`} onClick={() => (des ? void A.openProject(des.id) : write && void make(sz(r), r, true))} title={des ? 'Bấm để chỉnh sửa ảnh' : 'Chưa có ảnh · bấm để AI thiết kế'} aria-label={des ? `Chỉnh sửa ảnh bài ${r.topic}` : `AI thiết kế ảnh cho ${r.topic}`}>
                           {des?.thumb ? <img src={des.thumb} alt="" loading="lazy" /> : <span><Icon name="sparkle" size={14} /><em>{r.format === 'carousel' ? 'Carousel · chưa có' : 'Chưa có ảnh'}</em></span>}
                           {(slidesOf(r).length > 1 || (r.slidePlan?.length || 0) > 1) && <i class="mk-slide-n" title={r.slidePlan && slidesOf(r).length < r.slidePlan.length ? `Mới có ${slidesOf(r).length}/${r.slidePlan.length} slide` : `${slidesOf(r).length} slide`}>{r.slidePlan && slidesOf(r).length < r.slidePlan.length ? `${slidesOf(r).length}/${r.slidePlan.length} slide` : `1/${slidesOf(r).length}`}</i>}
                           {des?.size && <i class="mk-size-n" title={des.size.label}>{des.size.w}×{des.size.h}</i>}
                         </button>
+                        {isVideoRow(r) && (() => { const vd = videoOf(client.id, r); return vd && vd.data.segs.length ? <button class="mk-vchip" onClick={() => setVideo(r)} title="Mở video của bài">{vd.data.thumb ? <img src={vd.data.thumb} alt="" /> : null}<span><Icon name="play" size={10} />Video · {videoTotal(vd.data).toFixed(0)}s</span></button> : null; })()}
                         {slidesOf(r).length > 1 && <div class="mk-slides">{slidesOf(r).slice(1).map((d, k) => <button key={d.id} title={`Slide ${k + 2}`} onClick={() => void A.openProject(d.id)}>{d.thumb ? <img src={d.thumb} alt={`Slide ${k + 2}`} loading="lazy" /> : k + 2}</button>)}</div>}
                         {write && <div class="mk-imgacts">
+                          {isVideoRow(r) && <button class="ai" onClick={() => void aiVideo(r)} title="AI tạo cả video cho bài: Google Veo tạo cảnh, tự dựng chữ, nhạc, hiệu ứng (~0,60 USD)"><Icon name="sparkle" size={12} />{videoOf(client.id, r) ? 'AI tạo lại video' : 'AI tạo video'}</button>}
                           {isVideoRow(r) && <button class="ai" onClick={() => setVideo(r)} title="Dựng video Reel/TikTok từ footage thật (và cảnh AI) theo công thức video triệu view"><Icon name="play" size={12} />{videoOf(client.id, r) ? 'Mở video' : 'Dựng video'}</button>}
                           {des
                             ? <button class="ai" onClick={async () => { if (await ask('AI thiết kế lại ảnh của bài này? Ảnh cũ vẫn giữ trong danh sách thiết kế.', 'Gen lại', false)) void make(sz(r), r, true); }} title="AI vẽ và dựng lại ảnh cho bài này"><Icon name="sparkle" size={12} />AI gen lại</button>
@@ -162,13 +175,14 @@ export function DesignHub({ client }: { client: Client }) {
               return (
                 <article key={r.planId + r.id} class="mk-post">
                   <header class="row"><span class="mk-chcell"><i style={{ background: c.color }} />{c.label}</span><span class="dim small">{r.time} · {FORMATS.find((f) => f.id === r.format)?.label}</span><span class="grow" /><StatusChip s={r.status} /></header>
-                  {(() => { const j = J.jobOf(jobKey(r)); return j ? <div class={`mk-job ${j.state}`}>{j.state === 'running' || j.state === 'queued' ? <div class="mk-spin" /> : <Icon name={j.state === 'done' ? 'check' : 'warn'} size={14} />}<span title={j.stage}>{j.stage}</span>{(j.state === 'running' || j.state === 'queued') && <button onClick={() => cancelJob(j.key)}>Huỷ</button>}</div> : null; })()}
+                  {(() => { const j = jobFor(r); return j ? <div class={`mk-job ${j.state}`}>{j.state === 'running' || j.state === 'queued' ? <div class="mk-spin" /> : <Icon name={j.state === 'done' ? 'check' : 'warn'} size={14} />}<span title={j.stage}>{j.stage}</span>{(j.state === 'running' || j.state === 'queued') && <button onClick={() => cancelJob(j.key)}>Huỷ</button>}</div> : null; })()}
                   <div class={`pv ${des ? '' : 'empty'}`} style={{ aspectRatio: `${z.w} / ${z.h}` }} onClick={() => (des ? void A.openProject(des.id) : write && void make(sz(r), r, true))} role="button" tabIndex={0} title={des ? 'Bấm để chỉnh sửa' : 'Bấm để AI thiết kế bài này'}>
                     {des?.thumb ? <img src={des.thumb} alt={`Ảnh bài ${r.topic}`} loading="lazy" /> : <div class="ph"><Icon name="image" size={22} /><span>{r.visual ? r.visual.slice(0, 90) : 'Chưa có ảnh'}</span></div>}
                   </div>
                   <b class="mk-clamp">{r.topic}</b>
                   {(r.hook || r.caption) && <p class="small muted mk-clamp">{r.hook || r.caption}</p>}
                   {write && <div class="row wrap">
+                    {isVideoRow(r) && <Btn xs icon="sparkle" onClick={() => void aiVideo(r)}>AI tạo video</Btn>}
                     {isVideoRow(r) && <Btn xs icon="play" onClick={() => setVideo(r)}>{videoOf(client.id, r) ? 'Mở video' : 'Dựng video'}</Btn>}
                     {des ? <>
                       <Btn xs icon="text" onClick={() => void A.openProject(des.id)}>Chỉnh sửa</Btn>

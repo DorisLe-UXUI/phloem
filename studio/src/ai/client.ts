@@ -72,7 +72,7 @@ export async function wakeRelay(url: string, headers: Record<string, string> = {
   return false;
 }
 
-export async function askClaude(req: AiRequest): Promise<string> {
+async function askClaude0(req: AiRequest): Promise<string> {
   const s = get().settings;
   const model = s.aiModel || 'claude-opus-5-5';
   const maxTokens = req.maxTokens ?? 16000;
@@ -126,7 +126,7 @@ export async function askClaude(req: AiRequest): Promise<string> {
 /** Ask Claude and watch the answer arrive: `onText` gets the WHOLE text so far on every chunk. Resolves the final text.
  *  Streams through the user's key (SDK), the relay (`/ai/stream`, SSE) or claude.ai `sample`; an older relay without the
  *  stream route falls back to one plain `/ai` call. `signal` aborts. */
-export async function streamClaude(req: AiRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<string> {
+async function streamClaude0(req: AiRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<string> {
   const s = get().settings;
   const model = s.aiModel || 'claude-opus-5-5';
   const maxTokens = req.maxTokens ?? 16000;
@@ -256,3 +256,15 @@ async function relayStream(relayUrl: string, model: string, maxTokens: number, r
   if (!done) throw new Error(acc ? 'Relay ngắt kết nối giữa chừng (stream chưa xong).' : 'Relay ngắt kết nối giữa chừng. Thử lại.');
   return acc;
 }
+
+/** Claude's raw billing / account errors, said plainly (they used to show as "Claude API lỗi 400: {json…}"). */
+export function friendlyAiError(msg: string): string {
+  if (/credit balance is too low|billing|purchase credits/i.test(msg)) return 'Tài khoản Claude API đã hết tiền (credit). Nạp thêm tại console.anthropic.com → Settings → Billing rồi bấm lại. Việc tạo ảnh/video bằng Google không bị ảnh hưởng.';
+  if (/invalid x-api-key|authentication_error|invalid api key/i.test(msg)) return 'API key Claude không hợp lệ hoặc đã bị thu hồi. Kiểm tra ANTHROPIC_API_KEY trên relay (hoặc Cài đặt → AI).';
+  if (/overloaded|\b529\b/i.test(msg)) return 'Claude đang quá tải. Thử lại sau 1 phút.';
+  if (/rate_limit|\b429\b/.test(msg)) return 'Bị giới hạn tốc độ Claude (429). Thử lại sau 1 phút.';
+  return msg;
+}
+const friendly = (e: unknown) => { const m = (e as Error)?.message || String(e); const f = friendlyAiError(m); return f === m ? e : new Error(f); };
+export async function askClaude(req: AiRequest): Promise<string> { try { return await askClaude0(req); } catch (e) { throw friendly(e); } }
+export async function streamClaude(req: AiRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<string> { try { return await streamClaude0(req, onText, signal); } catch (e) { throw friendly(e); } }

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast } from '../../store';
 import { cachedItems, newId, putItem } from '../../mkt/data';
 import type { Client, Item, PlanRow } from '../../mkt/types';
-import { FX, TEMPLATES, TEXT_STYLES, addClip, aiEditPlan, applyTemplate, audioOf, blankVideo, creditsOf, clipUrl, drawFrame, exportVideo, nextFrame, segAt, veoShot, videoTotal, type VideoDoc, type VSeg } from '../../mkt/video';
+import { FX, TEMPLATES, TEXT_STYLES, addClip, aiEditPlan, applyTemplate, autoVideo, audioOf, blankVideo, creditsOf, clipUrl, drawFrame, exportVideo, nextFrame, segAt, veoShot, videoTotal, type VideoDoc, type VSeg } from '../../mkt/video';
 import { MUSIC, MUSIC_TAGS, Mixer, SFX, SFX_TAGS, addMusicFile, creditOf, musicBuffer, preview, searchAudio, sfxBuffer, stopPreview, webBuffer, type VAudio, type WebAudio } from '../../mkt/audio';
 import { Btn } from '../components';
 import { Icon } from '../icons';
@@ -152,6 +152,15 @@ function Studio({ client, row, openId, onClose }: Props) {
     catch (e) { toast((e as Error).message, 'err'); }
     finally { setBusy(null); }
   };
+  /** Whole video for the post: Veo scenes + the edit (text, music, sound), ~0.60 USD. */
+  const aiWhole = async () => {
+    if (!row) return;
+    if (!(await ask('AI tạo video 12 giây cho bài này? Google Veo tạo 3 cảnh 4 giây rồi tự dựng chữ, nhạc, hiệu ứng. Tốn khoảng 0,60 USD, mất 3–8 phút.', 'Tạo video', false))) return;
+    setPlaying(false); abort.current = new AbortController();
+    try { const doc = await autoVideo(client, row, { scenes: 3, seconds: 4, onStage: setBusy, signal: abort.current.signal, base: v }); setV(() => doc); setT(0); setSel(null); toast('AI đã tạo xong video. Bấm Space để xem, chỉnh gì cũng được.', 'ok'); }
+    catch (e) { toast((e as Error).message, 'err'); }
+    finally { setBusy(null); }
+  };
   const genShot = async () => {
     const prompt = veo.prompt.trim() || (row ? `${row.visual || row.topic}. Vertical 9:16 social video shot, cinematic, natural light, for the brand ${client.name}.` : '');
     if (!prompt) { toast('Gõ mô tả cảnh cần tạo.', 'err'); return; }
@@ -219,6 +228,7 @@ function Studio({ client, row, openId, onClose }: Props) {
                 <span>MP4, MOV, WebM · nhiều file một lần · chỉ lưu trên máy này</span>
                 <input type="file" accept="video/*" multiple hidden onChange={(e) => { const f = Array.from((e.target as HTMLInputElement).files || []); (e.target as HTMLInputElement).value = ''; void addFiles(f); }} />
               </label>
+              {row && <button class="vs-cta ghost" disabled={!!busy} onClick={() => void aiWhole()}><Icon name="sparkle" size={15} />{v.clips.length ? 'AI tạo thêm cảnh và dựng lại' : 'Chưa có footage? AI tạo cả video'}</button>}
               {missing > 0 && <p class="vs-warn"><Icon name="warn" size={13} />{missing} clip nằm trên máy khác. Thả lại các file đó để dựng tiếp.</p>}
               <div class="vs-clips">
                 {v.clips.map((c) => (
