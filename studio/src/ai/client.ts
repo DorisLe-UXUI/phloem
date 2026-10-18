@@ -36,10 +36,12 @@ function messagesOf(req: AiRequest): Anthropic.MessageParam[] {
 export function relayAuth(): Record<string, string> { const ses = getSession(); const s = get().settings; return { ...(ses?.mode === 'relay' ? { Authorization: `Bearer ${ses.token}` } : {}), ...(s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {}) }; }
 export function relayUsable(): boolean { const s = get().settings; return !!s.relayUrl.trim() && (getSession()?.mode === 'relay' || !!s.relayToken); }
 
+/** Set when the key saved in this browser ran out of credit or was refused: calls then go through the relay (its own keys). */
+let browserKeyDead = '';
 export async function aiTransport(): Promise<AiTransport> {
   const s = get().settings;
   if (s.anthropicKey.trim() === 'mock') return 'key';
-  if (s.anthropicKey.trim()) return 'key';
+  if (s.anthropicKey.trim() && browserKeyDead !== s.anthropicKey.trim()) return 'key';
   if (relayUsable()) {
     try {
       const r = await fetch(s.relayUrl.replace(/\/$/, '') + '/', { headers: s.relayToken ? { 'X-Phloem-Token': s.relayToken } : {} });
@@ -265,6 +267,19 @@ export function friendlyAiError(msg: string): string {
   if (/rate_limit|\b429\b/.test(msg)) return 'Bị giới hạn tốc độ Claude (429). Thử lại sau 1 phút.';
   return msg;
 }
+const keyDead = (m: string) => /credit balance is too low|billing|purchase credits|invalid x-api-key|authentication_error|API key Anthropic không hợp lệ/i.test(m);
+/** The browser's own key failed for account reasons: retry once through the relay when it has Claude. */
+async function viaRelayIfKeyDead<T>(run: () => Promise<T>): Promise<T> {
+  try { return await run(); }
+  catch (e) {
+    const s = get().settings; const k = s.anthropicKey.trim();
+    if (!k || k === 'mock' || browserKeyDead === k || !keyDead((e as Error)?.message || '')) throw e;
+    browserKeyDead = k;
+    if ((await aiTransport()) !== 'relay') { browserKeyDead = ''; throw e; }
+    console.warn('[ai] key in Cài đặt → AI failed (credit / auth); using the relay instead');
+    return run();
+  }
+}
 const friendly = (e: unknown) => { const m = (e as Error)?.message || String(e); const f = friendlyAiError(m); return f === m ? e : new Error(f); };
-export async function askClaude(req: AiRequest): Promise<string> { try { return await askClaude0(req); } catch (e) { throw friendly(e); } }
-export async function streamClaude(req: AiRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<string> { try { return await streamClaude0(req, onText, signal); } catch (e) { throw friendly(e); } }
+export async function askClaude(req: AiRequest): Promise<string> { try { return await viaRelayIfKeyDead(() => askClaude0(req)); } catch (e) { throw friendly(e); } }
+export async function streamClaude(req: AiRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<string> { try { return await viaRelayIfKeyDead(() => streamClaude0(req, onText, signal)); } catch (e) { throw friendly(e); } }

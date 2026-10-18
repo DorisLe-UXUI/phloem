@@ -189,6 +189,13 @@ export async function newCarousel(client: Client, size: DesignSize, row: PlanRow
 }
 
 /** The client's published posts in the library (imported from Drive / Figma / web), spread over time, for style references. */
+/** Pictures that show the brand's look: its published posts, else its own uploaded pictures (game art, products, characters,
+ *  shop), never AI pictures or logos-only graphics. */
+export function styleRefs(clientId: string, n = 3): string[] {
+  const posts = pastPosts(clientId, n); if (posts.length) return posts;
+  const own = clientImages(clientId).filter((a) => a.src?.kind !== 'ai' && Math.min(a.w || 0, a.h || 0) >= 300).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  return own.slice(0, n).map((a) => a.id);
+}
 export function pastPosts(clientId: string, n = 3): string[] {
   const list = clientImages(clientId).filter((a) => a.src?.kind === 'reference' && Math.min(a.w, a.h) >= 300).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
   if (list.length <= n) return list.map((a) => a.id);
@@ -215,7 +222,7 @@ Reply with JSON only: {"score":7,"problems":["…"],"fix":"concrete instructions
  *  A carousel gets one painted picture per planned slide. Returns the design ids. */
 export async function paintFullPost(client: Client, size: DesignSize, row: PlanRow & { planId: string }, opts: { onStage?: (m: string) => void; signal?: AbortSignal; open?: boolean } = {}): Promise<string[]> {
   if (!(await imageProvider())) throw new Error('Relay chưa có key tạo ảnh (GEMINI_API_KEY hoặc CF_AI_TOKEN).');
-  const refs = pastPosts(client.id, 3);
+  const refs = styleRefs(client.id, 3);
   const logo = designBrand(client).logoAssetId;
   const refImgs = (await Promise.all(refs.map((id) => thumbB64(id, 768)))).filter(Boolean) as AiImage[];
   const book = brandBookOf(client.id);
@@ -244,7 +251,7 @@ export async function paintFullPost(client: Client, size: DesignSize, row: PlanR
       slides.length > 1 ? `CAROUSEL slide ${i + 1} of ${slides.length} (${sl.role}); show a small "${i + 1}/${slides.length}" marker; keep one look across slides.` : '',
       `Headline: "${sl.headline}". Support line: "${sl.body || (row.caption || '').split(/\n/)[0].slice(0, 90)}". CTA: "${row.cta}". Website/handle: "${site}".`,
       `Visual idea: ${sl.visual || row.visual}`,
-      refImgs.length ? `The ${refImgs.length} attached pictures are the brand's published posts (style references).` : 'No past posts yet: design a striking post in the brand colours.',
+      refImgs.length ? (pastPosts(client.id, 1).length ? `The ${refImgs.length} attached pictures are the brand's published posts (style references).` : `The ${refImgs.length} attached pictures are the brand's own pictures (its game art / products / characters): the post must use that art style and those characters.`) : 'No reference pictures yet: design a striking post in the brand colours.',
     ].filter(Boolean).join('\n');
     let prompt = ''; let texts: string[] = []; let claude = true;
     try {
@@ -254,13 +261,14 @@ export async function paintFullPost(client: Client, size: DesignSize, row: PlanR
     } catch (e) { if (opts.signal?.aborted) throw e; claude = false; }
     if (prompt.length < 80) {
       const clean = (t: string) => t.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
-      const head = clean(sl.headline).split(' ').slice(0, 7).join(' ');
+      const head = clean(row.format === 'carousel' ? sl.headline : row.hook || sl.headline).split(' ').slice(0, 7).join(' ');
+      const cta = clean(row.cta || '').split(' ').slice(0, 6).join(' ');
       prompt = [`A finished, professionally designed ${channelOf(row.channel).label} post for ${client.name}${client.industry ? `, ${client.industry}` : ''}, painted in EXACTLY the same art style, characters, palette, typography and layout as the attached reference posts (they are the brand's own feed).`,
         `Scene: ${clean(sl.visual || row.visual || row.topic)}. One clear focal point, clean expressive faces and correct hands, generous breathing room.`,
         book ? `Brand colours ${book.palette.map((c) => c.hex).join(', ')}.` : '',
-        `Text, and only this text: the headline "${head}" large at the top; a CTA pill "${clean(row.cta).split(' ').slice(0, 6).join(' ')}" near the bottom${site ? `; small "${site}" at the very bottom` : ''}.`,
+        `Text, and only this text: the headline "${head}" large at the top${cta ? `; a button-shaped pill reading "${cta}" near the bottom` : ''}${site ? `; small "${site}" at the very bottom` : ''}. Never write the words "CTA", "headline" or any label.`,
         'Render every text crisp, spelled exactly as quoted, inside the frame; no other words, letters or watermark anywhere.'].filter(Boolean).join(' ');
-      texts = [head, row.cta, site].filter(Boolean);
+      texts = [head, cta, site].filter(Boolean);
     }
     const refList = [...refs, ...(logo && assets.get(logo) ? [logo] : [])].slice(0, 4);
     // paint, let the creative director check it against the feed, repaint with its notes (at most 2 more times); keep the best

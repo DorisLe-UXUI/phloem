@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems, newId, putItem } from '../../mkt/data';
-import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, imageQuality, setImageQuality, type AskPhotos, type ImageQuality, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, styleRefs, preferredSize, preferredSizeKey, refitImported, sizeForRow, imageQuality, setImageQuality, type AskPhotos, type ImageQuality, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
@@ -94,7 +94,7 @@ export function DesignHub({ client }: { client: Client }) {
   const jobFor = (r: Row) => J.jobOf(`${jobKey(r)}:v`) || J.jobOf(jobKey(r));
   /** The whole post painted as one finished picture with its text, in the style of the client's past posts. */
   const full = async (row: Row) => {
-    if (!pastPosts(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
+    if (!styleRefs(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
     enqueue(jobKey(row), title(row), (onStage, signal) => paintFullPost(client, sz(row), row, { onStage, signal }));
   };
   /** AI designs every post of the next 7 days that has no picture yet, one after another, without opening the editor. */

@@ -356,7 +356,7 @@ async function assetB64(id: string, maxW = 720): Promise<{ b64: string; mime: st
 
 export async function autoVideo(client: Client, row: PlanRow & { planId: string }, opts: { scenes: number; seconds: 4 | 6 | 8; template?: string; onStage: (m: string) => void; signal?: AbortSignal; base?: VideoDoc | null }): Promise<VideoDoc> {
   const D = await import('./designs');
-  const refs = D.pastPosts(client.id, 4);
+  const refs = D.styleRefs(client.id, 4);
   const refImgs = (await Promise.all(refs.map((id) => assetB64(id, 640)))).filter(Boolean).map((x, i): AiImage => ({ name: `post-${i + 1}.jpg`, mime: 'image/jpeg', base64: x!.b64 }));
   const sc = await videoScript(client, row, opts.scenes, refImgs, opts.onStage);
   const clips: VClip[] = []; const segs: VSeg[] = [];
