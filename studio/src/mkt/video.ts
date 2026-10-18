@@ -321,7 +321,11 @@ function lines(row: PlanRow, n: number): string[] {
   const words = (t: string, k: number) => t.split(/\s+/).filter(Boolean).slice(0, k).join(' ');
   const body = (row.caption || '').replace(/#[^\s]+/g, '').split(/(?<=[.!?…])\s+|\n+/).map((x) => x.trim()).filter((x) => x.length > 3).map((x) => words(x, 7));
   const out = [words(row.hook || row.topic, 8)];
-  for (let i = 0; out.length < n - 1; i++) out.push(body[i] || '');
+  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const seen = norm(row.hook || row.topic);
+  // captions often open with the hook itself: skip lines the hook already says
+  const fresh = body.filter((x) => { const k = norm(x); return k && !seen.includes(k) && !k.includes(seen); });
+  for (let i = 0; out.length < n - 1; i++) out.push(fresh[i] || '');
   out.push(words(row.cta || 'Theo dõi để xem thêm', 6));
   return out;
 }
