@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node build.mjs --shared && node --test test/*.test.mjs",
     "relay": "node server/src/index.mjs",
-    "preview": "node dev/serve.mjs"
+    "preview": "node dev/serve.mjs",
+    "ai-may": "node tools/local-ai/server.mjs"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.100.0",
