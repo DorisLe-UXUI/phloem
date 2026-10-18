@@ -1,7 +1,7 @@
 // Image providers: Nano Banana 2 Lite is the only Google model picked, FLUX sizes per aspect, Cloudflare account lookup.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cfAccountId, fluxSize, pickLiteImageModel, sniffMime, nextUtcMidnight } from '../server/src/imagegen.mjs';
+import { cfAccountId, fluxSize, pickLiteImageModel, pickProImageModel, sniffMime, nextUtcMidnight } from '../server/src/imagegen.mjs';
 
 const m = (name, methods = ['generateContent']) => ({ name: `models/${name}`, supportedGenerationMethods: methods });
 
@@ -33,4 +33,10 @@ test('mime sniffing and the daily reset', () => {
   assert.equal(sniffMime('iVBORw0K'), 'image/png');
   assert.equal(sniffMime('UklGRh4A'), 'image/webp');
   assert.equal(new Date(nextUtcMidnight(Date.UTC(2026, 9, 15, 23, 59))).toISOString(), '2026-10-16T00:00:00.000Z');
+});
+
+test('pickProImageModel prefers the newest stable Gemini Pro Image model', () => {
+  const m = (name, methods = ['generateContent']) => ({ name: `models/${name}`, supportedGenerationMethods: methods });
+  assert.equal(pickProImageModel([m('gemini-3.1-flash-lite-image'), m('gemini-3-pro-image-preview'), m('gemini-3.5-pro-image')]).name, 'models/gemini-3.5-pro-image');
+  assert.equal(pickProImageModel([m('gemini-3.1-flash-lite-image'), m('gemini-3-pro-preview')]), null);
 });

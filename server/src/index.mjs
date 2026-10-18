@@ -12,7 +12,7 @@ import { createAuth } from './auth.mjs';
 import { backupConfig, restoreBackup, startBackups } from './backup.mjs';
 import { createAssetStore, createBlobStore, createProjectStore } from './blobs.mjs';
 import { siteProfile, fetchImage, safeGet } from './site.mjs';
-import { cfAccountId, fluxSize, pickLiteImageModel, sniffMime, nextUtcMidnight } from './imagegen.mjs';
+import { cfAccountId, fluxSize, pickLiteImageModel, pickProImageModel, sniffMime, nextUtcMidnight } from './imagegen.mjs';
 import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
 import { listDrive } from './drive.mjs';
 import { createMail } from './mail.mjs';
@@ -144,6 +144,7 @@ const server = createServer(async (req, res) => {
         imageAi: IMAGE_AI || null,
         pixabay: !!PIXABAY_API_KEY,
         video: !!GEMINI_API_KEY,
+        imageModelPro: googlePro ? googlePro.name.replace('models/', '') : null,
         imageModel: [CF_ACCOUNT ? `${CF_IMAGE_MODEL.split('/').pop()}${cfResting > Date.now() ? ' (hết lượt free hôm nay)' : ''}` : '', IMAGE_PROVIDER === 'google' ? (googleModel ? googleModel.name.replace('models/', '') : googleModel === null ? 'none' : 'auto') : IMAGE_PROVIDER === 'openai' ? (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1') : ''].filter(Boolean).join(' → ') || null,
         auth: true,
         db: true,
@@ -313,6 +314,7 @@ const ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
 /** The image model this Google key may use, found once via ListModels: IMAGEN_MODEL when set, else Nano Banana 2 Lite
  *  (Gemini Flash-Lite Image) only: the costlier Imagen / Flash Image models are never picked on their own. Cached; cleared on a 404. */
 let googleModel; // undefined = not looked up yet, null = none
+let googlePro = null; // the Pro image model, when the key has one
 async function googleImageModel() {
   if (googleModel !== undefined) return googleModel;
   if (process.env.IMAGEN_MODEL) return (googleModel = { name: `models/${process.env.IMAGEN_MODEL.replace(/^models\//, '')}`, method: /imagen/i.test(process.env.IMAGEN_MODEL) ? 'predict' : 'generateContent' });
@@ -327,6 +329,7 @@ async function googleImageModel() {
       if (!j.nextPageToken) break; page = j.nextPageToken;
     }
   } catch (e) { console.log('[image] ListModels error:', e?.message || e); return null; } // network: try again next time
+  const pro = pickProImageModel(all); googlePro = pro ? { name: pro.name, method: 'generateContent' } : null;
   const lite = pickLiteImageModel(all);
   googleModel = lite ? { name: lite.name, method: 'generateContent' } : null;
   console.log(`[image] google model: ${googleModel ? googleModel.name : 'none (no Flash-Lite Image model on this key)'} (${all.length} models listed; image models: ${all.filter((m) => /image/i.test(m.name)).map((m) => m.name.replace('models/', '')).join(', ') || 'none'})`);
@@ -380,8 +383,14 @@ async function aiVideoStart(p, res) {
   const instance = { prompt };
   if (p?.image?.b64) instance.image = { inlineData: { mimeType: /^image\/(png|jpeg|webp)$/.test(p.image.mime) ? p.image.mime : 'image/jpeg', data: String(p.image.b64).replace(/^data:[^,]+,/, '') } };
   try {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/${model}:predictLongRunning`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify({ instances: [instance], parameters: { aspectRatio: aspect, durationSeconds: Number(seconds), resolution: '720p' } }), signal: AbortSignal.timeout(60_000) });
-    const j = await r.json().catch(() => ({}));
+    const start = (inst) => fetch(`https://generativelanguage.googleapis.com/v1beta/${model}:predictLongRunning`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify({ instances: [inst], parameters: { aspectRatio: aspect, durationSeconds: Number(seconds), resolution: '720p' } }), signal: AbortSignal.timeout(60_000) });
+    let r = await start(instance);
+    let j = await r.json().catch(() => ({}));
+    // the first frame (image-to-video): the API takes inlineData or bytesBase64Encoded depending on version, so try the other
+    if (!r.ok && r.status === 400 && instance.image) {
+      r = await start({ ...instance, image: { bytesBase64Encoded: instance.image.inlineData.data, mimeType: instance.image.inlineData.mimeType } });
+      j = await r.json().catch(() => ({}));
+    }
     if (!r.ok) { if (r.status === 404) veoModel = undefined; return json(res, r.status === 429 ? 429 : 502, { error: `Google (${model.replace('models/', '')}): ${String(j?.error?.message || `HTTP ${r.status}`).slice(0, 300)}` }); }
     return json(res, 200, { op: j.name, model: model.replace('models/', ''), seconds });
   } catch (e) { return json(res, 502, { error: `Không tạo được video: ${e?.message || e}` }); }
@@ -417,9 +426,10 @@ async function aiImage(p, res) {
   const refs = (Array.isArray(p?.refs) ? p.refs : []).slice(0, 4)
     .map((r) => ({ b64: String(r?.b64 || '').replace(/^data:[^,]+,/, ''), mime: /^image\/(png|jpeg|webp)$/.test(r?.mime) ? r.mime : 'image/jpeg' }))
     .filter((r) => r.b64.length > 100 && r.b64.length < 4_000_000);
+  const pro = p?.quality === 'pro'; // "Đẹp nhất": the Pro image model when the key has it
   if (!IMAGE_AI) return json(res, 503, { error: 'Relay chưa có key tạo ảnh. Thêm CF_AI_TOKEN (Cloudflare, miễn phí theo ngày) hoặc GEMINI_API_KEY trong Render → Environment.', code: 'no_image_key' });
   let cfError = '';
-  if (CF_ACCOUNT && cfResting <= Date.now()) {
+  if (CF_ACCOUNT && cfResting <= Date.now() && !(pro && IMAGE_PROVIDER === 'google')) {
     const out = await cloudflareImage(prompt, aspect, refs).catch((e) => ({ error: String(e?.message || e) }));
     if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_IMAGE_MODEL.split('/').pop() });
     cfError = out.error;
@@ -427,13 +437,19 @@ async function aiImage(p, res) {
   }
   try {
     if (IMAGE_PROVIDER === 'google') {
-      const pick = await googleImageModel();
+      const lite = await googleImageModel();
+      const pick = (pro && googlePro) || lite;
       if (!pick) return json(res, 502, { error: `${cfError ? `Cloudflare: ${cfError}. ` : ''}Key Google này chưa có Nano Banana 2 Lite (gemini-3.1-flash-lite-image). Bật model này cho project của key trong Google AI Studio, hoặc đặt IMAGEN_MODEL trong Render.` });
       const base = `https://generativelanguage.googleapis.com/v1beta/${pick.name}`;
       const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY };
       const r = pick.method === 'predict'
         ? await fetch(`${base}:predict`, { method: 'POST', headers, body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: 1, aspectRatio: aspect } }), signal: AbortSignal.timeout(110_000) })
-        : await fetch(`${base}:generateContent`, { method: 'POST', headers, body: JSON.stringify({ contents: [{ role: 'user', parts: [...refs.map((r) => ({ inlineData: { mimeType: r.mime, data: r.b64 } })), { text: `${refs.length ? `The ${refs.length} attached picture(s) are the brand's REAL references: keep their subjects, characters, products and art style faithful.\n\n` : ''}${prompt}\n\nAspect ratio ${aspect}. Output one image only.` }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: aspect } } }), signal: AbortSignal.timeout(110_000) });
+        : await (async () => {
+          const ask = (imageConfig) => fetch(`${base}:generateContent`, { method: 'POST', headers, body: JSON.stringify({ contents: [{ role: 'user', parts: [...refs.map((r) => ({ inlineData: { mimeType: r.mime, data: r.b64 } })), { text: `${refs.length ? `The ${refs.length} attached picture(s) are the brand's REAL references: keep their subjects, characters, products and art style faithful.\n\n` : ''}${prompt}\n\nAspect ratio ${aspect}. Output one image only.` }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig } }), signal: AbortSignal.timeout(150_000) });
+          if (pick !== googlePro) return ask({ aspectRatio: aspect });
+          const r2 = await ask({ aspectRatio: aspect, imageSize: '2K' }); // the Pro model can paint at 2K
+          return r2.status === 400 ? ask({ aspectRatio: aspect }) : r2;
+        })();
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         if (r.status === 404) googleModel = undefined;

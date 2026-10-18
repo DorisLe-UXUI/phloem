@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast } from '../../store';
 import { cachedItems, newId, putItem } from '../../mkt/data';
 import type { Client, Item, PlanRow } from '../../mkt/types';
-import { FX, TEMPLATES, TEXT_STYLES, addClip, aiEditPlan, applyTemplate, autoVideo, audioOf, blankVideo, creditsOf, clipUrl, drawFrame, exportVideo, nextFrame, segAt, veoShot, videoTotal, type VideoDoc, type VSeg } from '../../mkt/video';
+import { FX, TEMPLATES, TEXT_STYLES, addClip, aiEditPlan, applyTemplate, autoVideo, autoVideoCost, audioOf, blankVideo, creditsOf, clipUrl, drawFrame, exportVideo, nextFrame, segAt, veoShot, videoTotal, type VideoDoc, type VSeg } from '../../mkt/video';
 import { MUSIC, MUSIC_TAGS, Mixer, SFX, SFX_TAGS, addMusicFile, creditOf, musicBuffer, preview, searchAudio, sfxBuffer, stopPreview, webBuffer, type VAudio, type WebAudio } from '../../mkt/audio';
 import { Btn } from '../components';
+import { imageQuality } from '../../mkt/designs';
 import { Icon } from '../icons';
 import { ask } from '../confirm';
 
@@ -155,7 +156,7 @@ function Studio({ client, row, openId, onClose }: Props) {
   /** Whole video for the post: Veo scenes + the edit (text, music, sound), ~0.60 USD. */
   const aiWhole = async () => {
     if (!row) return;
-    if (!(await ask('AI tạo video 12 giây cho bài này? Google Veo tạo 3 cảnh 4 giây rồi tự dựng chữ, nhạc, hiệu ứng. Tốn khoảng 0,60 USD, mất 3–8 phút.', 'Tạo video', false))) return;
+    if (!(await ask(`AI tạo video 12 giây cho bài này? AI viết kịch bản viral theo bài cũ của khách, vẽ 3 khung hình đúng phong cách thương hiệu rồi Google Veo làm chúng chuyển động. Khoảng ${autoVideoCost(3, 4, imageQuality(client.id) === 'pro').toFixed(2)} USD, 4–10 phút.`, 'Tạo video', false))) return;
     setPlaying(false); abort.current = new AbortController();
     try { const doc = await autoVideo(client, row, { scenes: 3, seconds: 4, onStage: setBusy, signal: abort.current.signal, base: v }); setV(() => doc); setT(0); setSel(null); toast('AI đã tạo xong video. Bấm Space để xem, chỉnh gì cũng được.', 'ok'); }
     catch (e) { toast((e as Error).message, 'err'); }
@@ -187,6 +188,43 @@ function Studio({ client, row, openId, onClose }: Props) {
     finally { setBusy(null); }
   };
   const patchSeg = (sid: string, p: Partial<VSeg>) => setV((d) => ({ ...d, segs: d.segs.map((s) => (s.id === sid ? { ...s, ...p } : s)) }));
+  // ---- direct editing: drag a shot to reorder, drag its edges to trim, drag the text on the preview ----
+  const [drag, setDrag] = useState<{ id: string; kind: 'move' | 'l' | 'r' } | null>(null);
+  const segDown = (e: PointerEvent, s: VSeg, kind: 'move' | 'l' | 'r') => {
+    if (e.button !== 0) return;
+    e.preventDefault(); setPlaying(false); setSel(s.id);
+    const x0 = e.clientX, from0 = s.from, to0 = s.to, dur = clipById.get(s.clip)?.dur || to0; let moved = false;
+    const tl = (e.currentTarget as HTMLElement).closest('.vs-tl-in') as HTMLElement;
+    const mv = (ev: PointerEvent) => {
+      const dx = ev.clientX - x0; if (!moved && Math.abs(dx) < 4) return; moved = true; setDrag({ id: s.id, kind });
+      const dt = dx / pps;
+      if (kind === 'l') patchSeg(s.id, { from: Math.max(0, Math.min(to0 - 0.3, from0 + dt)) });
+      else if (kind === 'r') patchSeg(s.id, { to: Math.min(dur, Math.max(from0 + 0.3, to0 + dt)) });
+      else {
+        const at = (ev.clientX - tl.getBoundingClientRect().left - 12) / pps; // timeline time under the pointer
+        setV((d) => {
+          const a = d.segs.filter((x) => x.id !== s.id); let acc = 0, idx = a.length;
+          for (let i = 0; i < a.length; i++) { const len = a[i].to - a[i].from; if (at < acc + len / 2) { idx = i; break; } acc += len; }
+          const cur = d.segs.findIndex((x) => x.id === s.id); if (cur === idx) return d;
+          a.splice(idx, 0, d.segs[cur]); return { ...d, segs: a };
+        });
+      }
+    };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); setDrag(null); if (!moved) setT(startOf(s.id) + 0.01); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+  /** On the preview: drag the shot's text up or down; a plain click plays / pauses. */
+  const canvasDown = (e: PointerEvent) => {
+    const cv = e.currentTarget as HTMLCanvasElement; const r = cv.getBoundingClientRect();
+    const { seg: s } = segAt(v, t); const y0 = e.clientY; let moved = false;
+    const mv = (ev: PointerEvent) => {
+      if (!s || !s.text.trim() || s.style === 'none') return;
+      if (!moved && Math.abs(ev.clientY - y0) < 4) return; moved = true; setPlaying(false); setSel(s.id);
+      patchSeg(s.id, { y: Math.max(0.08, Math.min(0.92, (ev.clientY - r.top) / r.height)) });
+    };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); if (!moved && v.segs.length) setPlaying((p) => !p); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
   const moveSeg = (sid: string, k: number) => setV((d) => { const a = [...d.segs]; const i = a.findIndex((s) => s.id === sid); const j = i + k; if (j < 0 || j >= a.length) return d; [a[i], a[j]] = [a[j], a[i]]; return { ...d, segs: a }; });
   const appendClip = (cid: string) => { const c = clipById.get(cid); if (!c) return; const s: VSeg = { id: newId('sg'), clip: c.id, from: 0, to: Math.min(c.dur, 2.5), text: '', style: 'body', pos: 'middle', zoom: 1, fx: 'none' }; setV((d) => ({ ...d, segs: [...d.segs, s] })); setSel(s.id); };
   const split = () => {
@@ -329,7 +367,7 @@ function Studio({ client, row, openId, onClose }: Props) {
 
         <main class="vs-stage">
           <div class="vs-phone">
-            <canvas ref={canvas} width={v.w} height={v.h} onClick={() => v.segs.length && setPlaying(!playing)} />
+            <canvas ref={canvas} width={v.w} height={v.h} onPointerDown={canvasDown} onDblClick={() => { const { seg: s } = segAt(v, t); if (s) { setSel(s.id); setTimeout(() => (document.querySelector('.vs-right textarea') as HTMLTextAreaElement | null)?.focus(), 50); } }} title="Bấm: phát / dừng · kéo chữ để dời · bấm đúp để sửa chữ" />
             {safe && <div class="vs-safe" aria-hidden="true"><i class="r" /><i class="b" /><span>Vùng nút TikTok / Reels</span></div>}
             {!playing && v.segs.length > 0 && <button class="vs-bigplay" onClick={() => setPlaying(true)} aria-label="Phát"><Icon name="play" size={26} /></button>}
             {!v.segs.length && <div class="vs-empty"><Icon name="play" size={30} /><b>Chưa có cảnh nào</b><span>Thả footage, rồi bấm "AI dựng theo công thức viral"</span></div>}
@@ -355,7 +393,7 @@ function Studio({ client, row, openId, onClose }: Props) {
             <section class="vs-sec"><h5>Chữ trên màn hình</h5>
               <textarea rows={2} value={seg.text} placeholder="Câu ngắn, tối đa 7 chữ" onInput={(e) => patchSeg(seg.id, { text: (e.target as HTMLTextAreaElement).value })} />
               <div class="vs-styles">{TEXT_STYLES.map((x) => <button key={x.id} class={`st-${x.id} ${seg.style === x.id ? 'on' : ''}`} style={{ ['--a' as string]: v.colors.accent, ['--p' as string]: v.colors.primary }} onClick={() => patchSeg(seg.id, { style: x.id })} title={x.label}><span>Aa</span><em>{x.label}</em></button>)}</div>
-              <div class="vs-seg3">{(['top', 'middle', 'bottom'] as const).map((p) => <button key={p} class={seg.pos === p ? 'on' : ''} onClick={() => patchSeg(seg.id, { pos: p })}>{p === 'top' ? 'Trên' : p === 'middle' ? 'Giữa' : 'Dưới'}</button>)}</div>
+              <div class="vs-seg3">{(['top', 'middle', 'bottom'] as const).map((p) => <button key={p} class={seg.pos === p ? 'on' : ''} onClick={() => patchSeg(seg.id, { pos: p, y: undefined })}>{p === 'top' ? 'Trên' : p === 'middle' ? 'Giữa' : 'Dưới'}</button>)}</div>
             </section>
             <section class="vs-sec"><h5>Đoạn cắt từ clip</h5>
               <div class="vs-trim">
@@ -411,7 +449,8 @@ function Studio({ client, row, openId, onClose }: Props) {
             </div>
             <div class="vs-track vid">
               {v.segs.map((s) => { const c = clipById.get(s.clip); const w = (s.to - s.from) * pps; return (
-                <button key={s.id} class={`vs-tl-clip ${sel === s.id ? 'on' : ''}`} style={{ left: `${12 + startOf(s.id) * pps}px`, width: `${w - 2}px`, backgroundImage: c?.thumb ? `url(${c.thumb})` : undefined }} onClick={() => { setSel(s.id); setPlaying(false); setT(startOf(s.id) + 0.01); }} title={`${(s.to - s.from).toFixed(1)} s · ${c?.name || ''}`}>
+                <button key={s.id} class={`vs-tl-clip ${sel === s.id ? 'on' : ''} ${drag?.id === s.id ? 'drag' : ''}`} style={{ left: `${12 + startOf(s.id) * pps}px`, width: `${w - 2}px`, backgroundImage: c?.thumb ? `url(${c.thumb})` : undefined }} onPointerDown={(e) => segDown(e, s, 'move')} title={`${(s.to - s.from).toFixed(1)} s · ${c?.name || ''} · kéo để đổi thứ tự, kéo mép để cắt`}>
+                  <i class="vs-trim-h l" onPointerDown={(e) => { e.stopPropagation(); segDown(e, s, 'l'); }} /><i class="vs-trim-h r" onPointerDown={(e) => { e.stopPropagation(); segDown(e, s, 'r'); }} />
                   <span>{(s.to - s.from).toFixed(1)}s</span>{s.fx && s.fx !== 'none' && <i>{s.fx === 'punch' ? '⚡' : '✦'}</i>}
                 </button>
               ); })}

@@ -195,13 +195,21 @@ export function pastPosts(clientId: string, n = 3): string[] {
   return Array.from({ length: n }, (_, i) => list[Math.floor((i * list.length) / n)].id);
 }
 
-const FULL_POST = `You art-direct a COMPLETE social media post that an image model (Gemini image) paints in one go, ALL TEXT INCLUDED. You get the brand, the post copy and the brand's real published posts (attached pictures).
-Write ONE English prompt of 150–260 words:
-1. Layout and style copied from the attached past posts: where the logo, headline, picture, support line and CTA pill sit; their illustration or photo style, palette, type treatment (weight, colour, outline, highlight), decorative motifs. The new post must look like the next post of that feed.
-2. The scene for THIS post's topic, in that same style.
-3. Every text element verbatim in double quotes with its role and rough size: brand wordmark, headline (at most 8 words), one support line (at most 14 words), CTA pill text, website or handle when known. Text in the post's language, spelled exactly as given.
-End with: "Render every text crisp, spelled exactly as quoted, high contrast, inside the frame; no other text, no watermark."
-Reply with JSON only: {"prompt":"…"}`;
+const FULL_POST = `You are the art director of a top social agency. An image model (Gemini image) will paint a COMPLETE social post in one go, ALL TEXT INCLUDED. You get the brand, the planned copy and the brand's real published posts (attached pictures).
+First study the attached posts like a designer: illustration or photo style (2D cartoon, 3D render, photo, flat vector…), how characters look (keep the SAME recurring characters, outfits, proportions), palette, lighting, type treatment (font feel, weight, outline, shadow, highlight), layout grid (logo position, headline zone, picture zone, CTA pill), decorative motifs, borders, density. The new post must look like the next post of that feed: a follower should not tell it apart.
+The planned copy can contain planner notes (in parentheses, "same as Sun post", internal labels, another language): never paint those. Write clean final copy in the post's language: a headline of at most 6 words, one support line of at most 12 words, a short CTA, the website or handle when known.
+Write ONE English prompt of 180–280 words:
+1. Style and layout copied from the past posts, named precisely.
+2. The scene for THIS topic: subject, action, expression, setting, composition with clear focal point and breathing room; faces, eyes and hands drawn clean and correct; nothing cut off awkwardly.
+3. Every text element verbatim in double quotes with its role, position and relative size; at most 4 text elements in total; strong hierarchy (headline biggest).
+4. Polish: professional finish, crisp edges, balanced colour, high contrast text on calm backgrounds, safe margins.
+End with: "Render every text crisp, spelled exactly as quoted, inside the frame; no other words, letters or watermark anywhere."
+Reply with JSON only: {"prompt":"…","texts":["each quoted text"]}`;
+
+/** A creative director checks a painted post against the brand's feed before it is shown. */
+const PAINT_CRITIC = `You are a strict creative director. The earlier attached pictures are the brand's published posts; the LAST one is a new post painted by an image model. Score it 1–10 for: text spelled exactly as listed with no extra or garbled letters; clean faces, eyes and hands; same style as the brand's posts; clear hierarchy and professional polish (not cluttered, not empty). Any misspelled or extra text caps the score at 5.
+Reply with JSON only: {"score":7,"problems":["…"],"fix":"concrete instructions to add to the image prompt so the next attempt fixes these problems"}`;
+
 
 /** Paint the whole post as one finished picture with all its text, in the style of the client's past posts, and pin it to the post.
  *  A carousel gets one painted picture per planned slide. Returns the design ids. */
@@ -238,14 +246,42 @@ export async function paintFullPost(client: Client, size: DesignSize, row: PlanR
       `Visual idea: ${sl.visual || row.visual}`,
       refImgs.length ? `The ${refImgs.length} attached pictures are the brand's published posts (style references).` : 'No past posts yet: design a striking post in the brand colours.',
     ].filter(Boolean).join('\n');
-    let prompt = '';
+    let prompt = ''; let texts: string[] = []; let claude = true;
     try {
-      const out = await askClaude({ system: FULL_POST, turns: [{ role: 'user', text: brief, images: refImgs }], maxTokens: 2000, effort: 'low' });
-      prompt = String(JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]).prompt || '').trim();
-    } catch (e) { if (opts.signal?.aborted) throw e; }
-    if (prompt.length < 80) prompt = `A finished ${channelOf(row.channel).label} post for ${client.name} in the exact style of the reference posts. Headline "${sl.headline}". CTA pill "${row.cta}". ${site ? `Website "${site}". ` : ''}Render every text crisp and spelled exactly; no other text.`;
-    opts.onStage?.(`${tag}AI đang vẽ cả bài, có chữ (20–60 giây)…`);
-    const asset = await generateImage(client.id, prompt, aspect, [...refs, ...(logo && assets.get(logo) ? [logo] : [])].slice(0, 4));
+      const out = await askClaude({ system: FULL_POST, turns: [{ role: 'user', text: brief, images: refImgs }], maxTokens: 2500, effort: 'medium' });
+      const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]);
+      prompt = String(j.prompt || '').trim(); texts = Array.isArray(j.texts) ? j.texts.map(String) : [];
+    } catch (e) { if (opts.signal?.aborted) throw e; claude = false; }
+    if (prompt.length < 80) {
+      const clean = (t: string) => t.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+      const head = clean(sl.headline).split(' ').slice(0, 7).join(' ');
+      prompt = [`A finished, professionally designed ${channelOf(row.channel).label} post for ${client.name}${client.industry ? `, ${client.industry}` : ''}, painted in EXACTLY the same art style, characters, palette, typography and layout as the attached reference posts (they are the brand's own feed).`,
+        `Scene: ${clean(sl.visual || row.visual || row.topic)}. One clear focal point, clean expressive faces and correct hands, generous breathing room.`,
+        book ? `Brand colours ${book.palette.map((c) => c.hex).join(', ')}.` : '',
+        `Text, and only this text: the headline "${head}" large at the top; a CTA pill "${clean(row.cta).split(' ').slice(0, 6).join(' ')}" near the bottom${site ? `; small "${site}" at the very bottom` : ''}.`,
+        'Render every text crisp, spelled exactly as quoted, inside the frame; no other words, letters or watermark anywhere.'].filter(Boolean).join(' ');
+      texts = [head, row.cta, site].filter(Boolean);
+    }
+    const refList = [...refs, ...(logo && assets.get(logo) ? [logo] : [])].slice(0, 4);
+    // paint, let the creative director check it against the feed, repaint with its notes (at most 2 more times); keep the best
+    let best: { asset: string; score: number } | null = null; let note = '';
+    for (let attempt = 0; attempt < (claude ? 3 : 1); attempt++) {
+      if (opts.signal?.aborted) throw new Error('Đã huỷ.');
+      opts.onStage?.(`${tag}${attempt ? `Vẽ lại lần ${attempt + 1} theo góp ý của giám đốc sáng tạo` : 'AI đang vẽ cả bài, có chữ'} (20–60 giây)…`);
+      const asset = await generateImage(client.id, note ? `${prompt}\n\nCORRECTIONS FROM REVIEW (must fix): ${note}` : prompt, aspect, refList);
+      if (!claude) { best = { asset, score: 0 }; break; }
+      opts.onStage?.(`${tag}Giám đốc sáng tạo đang chấm ảnh…`);
+      let score = 7;
+      try {
+        const shot = await thumbB64(asset, 1024);
+        const out = await askClaude({ system: PAINT_CRITIC, turns: [{ role: 'user', text: `Texts that must appear, spelled exactly: ${texts.map((t) => `"${t}"`).join(', ') || '(see prompt)'}\nPrompt used: ${prompt.slice(0, 1500)}`, images: [...refImgs, ...(shot ? [shot] : [])] }], maxTokens: 800, effort: 'low' });
+        const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]);
+        score = Number(j.score) || 7; note = String(j.fix || (j.problems || []).join('; ') || '');
+      } catch (e) { if (opts.signal?.aborted) throw e; }
+      if (!best || score > best.score) { if (best) void assets.remove(best.asset); best = { asset, score }; } else void assets.remove(asset);
+      if (score >= 8 || !note) break;
+    }
+    const asset = best!.asset;
     const p = await designFromImage(client, row, asset, false, { attach: false, refresh: false, size: 'image' });
     ids.push(p.id);
   }
@@ -621,11 +657,16 @@ export async function paintShot(client: Client, idea: string, aspect: Aspect, op
 }
 
 // ---------- AI image (Google Imagen / OpenAI through the relay; the keys never reach the browser) ----------
+/** AI picture quality per client: 'pro' = the best Gemini image model (sharp text, faces), 'lite' = cheapest. */
+export type ImageQuality = 'pro' | 'lite';
+const qKey = (clientId: string) => `phloem.mkt.imgq.${clientId}`;
+export function imageQuality(clientId: string): ImageQuality { try { return localStorage.getItem(qKey(clientId)) === 'lite' ? 'lite' : 'pro'; } catch { return 'pro'; } }
+export function setImageQuality(clientId: string, q: ImageQuality) { try { localStorage.setItem(qKey(clientId), q); } catch { /* private mode */ } }
 export async function generateImage(clientId: string, prompt: string, aspect: Aspect = '1:1', refIds: string[] = []): Promise<string> {
   const base = (get().settings.relayUrl || '').replace(/\/$/, '');
   await wakeRelay(base, relayAuth());
   const refs = (await Promise.all(refIds.slice(0, 4).map((id) => thumbB64(id, 1024)))).filter(Boolean).map((t) => ({ b64: t!.base64, mime: t!.mime }));
-  const r = await fetch(`${base}/ai/image`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, body: JSON.stringify({ prompt, aspect, refs }), signal: AbortSignal.timeout(120_000) });
+  const r = await fetch(`${base}/ai/image`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, body: JSON.stringify({ prompt, aspect, refs, quality: imageQuality(clientId) }), signal: AbortSignal.timeout(170_000) });
   const j = await r.json().catch(() => ({}));
   if (r.status === 403 && j.code === 'ai_locked') { set({ modal: 'aicode' }); throw new Error(j.error || 'AI cần mã truy cập.'); }
   if (!r.ok) throw new Error(j.error || `Tạo ảnh lỗi (HTTP ${r.status}).`);

@@ -830,3 +830,9 @@ select.in.mk-role { width: auto; min-width: 150px; flex: none; }
 .mk-vchip img { width: 22px; height: 36px; object-fit: cover; border-radius: 4px; }
 .mk-vchip span { display: flex; align-items: center; gap: 4px; }
 .vs-cta.ghost { background: transparent; color: var(--neon) !important; border: 1px solid color-mix(in srgb, var(--neon) 45%, transparent); box-shadow: none; }
+.vs-trim-h { position: absolute; top: 0; bottom: 0; width: 9px; z-index: 2; cursor: ew-resize; background: rgba(255,255,255,.0); }
+.vs-trim-h.l { left: 0; border-radius: 6px 0 0 6px; } .vs-trim-h.r { right: 0; border-radius: 0 6px 6px 0; }
+.vs-tl-clip:hover .vs-trim-h, .vs-tl-clip.on .vs-trim-h { background: rgba(255,255,255,.85); }
+.vs-trim-h::after { content: ''; position: absolute; left: 3px; top: 35%; bottom: 35%; width: 3px; border-left: 1px solid #333; border-right: 1px solid #333; }
+.vs-tl-clip { cursor: grab; touch-action: none; } .vs-tl-clip.drag { cursor: grabbing; opacity: .85; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 3; }
+.vs-phone canvas { touch-action: none; }

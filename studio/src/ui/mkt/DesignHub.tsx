@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems, newId, putItem } from '../../mkt/data';
-import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, type AskPhotos, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, imageQuality, setImageQuality, type AskPhotos, type ImageQuality, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
@@ -16,7 +16,7 @@ import { ask } from '../confirm';
 import { Empty, PageHead, StatusChip, fmtDate } from './bits';
 import { ClientLibrary } from './ClientLibrary';
 import { VideoStudio, isVideoRow, videoOf } from './VideoStudio';
-import { autoVideo, videoTotal, type VideoDoc } from '../../mkt/video';
+import { autoVideo, autoVideoCost, videoTotal, type VideoDoc } from '../../mkt/video';
 
 type Row = PlanRow & { planId: string };
 
@@ -27,6 +27,7 @@ export function DesignHub({ client }: { client: Client }) {
   const [picker, setPicker] = useState<Row | null | 'new'>(null);
   const [own, setOwn] = useState<Row | null>(null);
   const [importing, setImporting] = useState(false);
+  const [quality, setQuality] = useState<ImageQuality>(() => imageQuality(client.id));
   const [video, setVideo] = useState<Row | 'new' | { id: string } | null>(null);
   const looseVideos = ((cachedItems(client.id) || []).filter((i) => i.kind === 'video' && !(i.data as VideoDoc).rowRef) as Item<VideoDoc>[]);
   const [busy, setBusy] = useState<{ label: string; done?: number; total?: number } | null>(null);
@@ -83,7 +84,7 @@ export function DesignHub({ client }: { client: Client }) {
   /** AI makes the post's whole video in the background: scene prompts, Google Veo shots, then the edit (text, music, sound). */
   const aiVideo = async (row: Row) => {
     const scenes = 3, seconds = 4 as const;
-    if (!(await ask(`AI tạo video ${scenes * seconds} giây cho bài này? Google Veo (bản rẻ nhất) tạo ${scenes} cảnh, rồi tự dựng chữ hook, CTA, nhạc và hiệu ứng âm thanh. Tốn khoảng ${(scenes * seconds * 0.05).toFixed(2)} USD, mất 3–8 phút, chạy nền.`, 'Tạo video', false))) return;
+    if (!(await ask(`AI tạo video ${scenes * seconds} giây cho bài này? AI xem bài cũ của khách, viết kịch bản viral, vẽ ${scenes} khung hình đúng phong cách thương hiệu rồi Google Veo làm chúng chuyển động; tự dựng chữ, nhạc, hiệu ứng. Khoảng ${autoVideoCost(scenes, seconds, quality === 'pro').toFixed(2)} USD, 4–10 phút, chạy nền.`, 'Tạo video', false))) return;
     enqueue(`${jobKey(row)}:v`, `Video ${title(row)}`, async (onStage, signal) => {
       const saved = videoOf(client.id, row);
       const doc = await autoVideo(client, row, { scenes, seconds, onStage, signal, base: saved?.data || null });
@@ -115,6 +116,12 @@ export function DesignHub({ client }: { client: Client }) {
           <select value={sizeId} onChange={(e) => setSizeId((e.target as HTMLSelectElement).value)}>
             <option value="auto">Tự theo kênh & định dạng</option>
             {SIZES.map((z) => <option key={z.id} value={z.id}>{z.label} · {z.w}×{z.h}</option>)}
+          </select>
+        </label>
+        <label class="mk-sizesel" title="Đẹp nhất: model vẽ xịn nhất của Google (chữ sắc, mặt nhân vật đẹp), đắt hơn vài lần. Tiết kiệm: model rẻ nhất."><Icon name="sparkle" size={13} /><span>Chất lượng ảnh AI</span>
+          <select value={quality} onChange={(e) => { const q = (e.target as HTMLSelectElement).value as ImageQuality; setImageQuality(client.id, q); setQuality(q); }}>
+            <option value="pro">Đẹp nhất (Pro)</option>
+            <option value="lite">Tiết kiệm (Lite)</option>
           </select>
         </label>
         <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter(hasDesign).length} đã có ảnh</span>

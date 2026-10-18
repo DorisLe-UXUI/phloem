@@ -13,7 +13,7 @@ export type VTextStyle = 'hook' | 'box' | 'body' | 'cta' | 'none';
 export type VFx = 'none' | 'punch' | 'flash';
 export const TEXT_STYLES: { id: VTextStyle; label: string }[] = [{ id: 'hook', label: 'Hook nền màu' }, { id: 'box', label: 'TikTok nền trắng' }, { id: 'body', label: 'Chữ viền' }, { id: 'cta', label: 'Nút CTA' }, { id: 'none', label: 'Không chữ' }];
 export const FX: { id: VFx; label: string }[] = [{ id: 'none', label: 'Cắt thẳng' }, { id: 'punch', label: 'Giật zoom' }, { id: 'flash', label: 'Loé sáng' }];
-export interface VSeg { id: string; clip: string; from: number; to: number; text: string; style: VTextStyle; pos: 'top' | 'middle' | 'bottom'; zoom: number; fx?: VFx; sfx?: SfxId; sfxWeb?: WebAudio | null }
+export interface VSeg { id: string; clip: string; from: number; to: number; text: string; style: VTextStyle; pos: 'top' | 'middle' | 'bottom'; zoom: number; fx?: VFx; sfx?: SfxId; sfxWeb?: WebAudio | null; y?: number /* text centre, 0–1 of the height, when dragged */ }
 export interface VideoDoc {
   title: string; w: number; h: number;
   clips: VClip[]; segs: VSeg[];
@@ -192,7 +192,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, v: VideoDoc, seg: VSeg 
   for (const w of words) { const t = cur ? `${cur} ${w}` : w; if (ctx.measureText(t).width > W * 0.84 && cur) { lines.push(cur); cur = w; } else cur = t; }
   if (cur) lines.push(cur);
   const lh = size * 1.15, total = lines.length * lh;
-  const cy = seg.pos === 'top' ? H * 0.2 : seg.pos === 'bottom' ? H * 0.74 : H * 0.5;
+  const cy = seg.y != null ? H * seg.y : seg.pos === 'top' ? H * 0.2 : seg.pos === 'bottom' ? H * 0.74 : H * 0.5;
   ctx.translate(W / 2, cy); ctx.scale(0.85 + 0.15 * pop, 0.85 + 0.15 * pop); ctx.globalAlpha = pop;
   lines.forEach((ln, i) => {
     const y = -total / 2 + lh * (i + 0.5);
@@ -273,10 +273,10 @@ export async function exportVideo(v: VideoDoc, onProgress: (p: number) => void, 
 }
 
 // ---------- AI shots: Google Veo through the relay (cheapest model, ~0.05 USD a second at 720p) ----------
-export async function veoShot(prompt: string, seconds: 4 | 6 | 8, onStage: (m: string) => void, signal?: AbortSignal): Promise<Blob> {
+export async function veoShot(prompt: string, seconds: 4 | 6 | 8, onStage: (m: string) => void, signal?: AbortSignal, image?: { b64: string; mime: string }): Promise<Blob> {
   const base = (get().settings.relayUrl || '').replace(/\/$/, '');
   await wakeRelay(base, relayAuth());
-  const r = await fetch(`${base}/ai/video`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, body: JSON.stringify({ prompt, aspect: '9:16', seconds }), signal });
+  const r = await fetch(`${base}/ai/video`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, body: JSON.stringify({ prompt, aspect: '9:16', seconds, ...(image ? { image } : {}) }), signal });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `Tạo video lỗi (HTTP ${r.status}).`);
   const t0 = Date.now();
@@ -298,50 +298,89 @@ export async function veoShot(prompt: string, seconds: 4 | 6 | 8, onStage: (m: s
   }
 }
 
-// ---------- AI makes the whole video for a post: scene prompts, Veo shots, an edit with text, music and sound ----------
-const SHOT = 'Vertical 9:16 short-form social video shot, cinematic, natural light, smooth camera motion, shallow depth of field, no text, no captions, no logos on screen.';
-/** Scene prompts for a post: Claude writes them when it can; otherwise they are built from the post itself. */
-async function scenePrompts(client: Client, row: PlanRow, n: number, onStage: (m: string) => void): Promise<string[]> {
-  onStage('AI đang viết kịch bản cảnh…');
+// ---------- AI makes the whole video for a post ----------
+// 1. Claude watches the brand's feed and writes a viral script: shots, on-screen lines, music, sound effects, cut effects.
+// 2. Each shot's first frame is painted by the image model WITH the brand's past posts as references, so characters and art
+//    style are the brand's own (a cartoon kids brand stays cartoon), then Veo animates that frame (image-to-video).
+// 3. The edit is assembled from the script.
+const SCRIPT = `You are the head of short-form video at an agency whose Reels/TikToks pass a million views. You get the brand, its real published posts (attached pictures), and one planned post. Write the video for that post.
+Study the attached posts first: art style (2D cartoon, 3D animation, photo, flat…), recurring characters (look, age, outfits), palette, mood. Every shot must be in THAT style with THOSE characters, never generic stock people. A kids or family brand stays wholesome.
+The planned copy may contain planner notes (in parentheses, "same as Sun post", internal labels): ignore them and write clean final copy.
+Viral structure: shot 1 is a scroll-stopping hook (surprise, question, bold visual) with its line on screen in the first second; then fast beats, one idea per beat, each beat 1.2–2 s; a pattern interrupt every shot; the last beat is a clear CTA. On-screen lines max 6 words, in the post's language, punchy, no hashtags.
+Reply with JSON only:
+{"title":"…","style":"one sentence naming the exact visual style, characters and palette to keep in every shot",
+ "music":"upbeat|trap|funk|lofi|chill|cinematic","progressBar":true,
+ "shots":[{"keyframe":"English description of the FIRST FRAME as a still image: characters, action, setting, composition, light; vertical 9:16; no text in the picture",
+           "motion":"English, one or two sentences for the video model: what moves, camera move, energy",
+           "beats":[{"text":"…","style":"hook|box|body|cta","fx":"none|punch|flash","sfx":"none|whoosh|swoosh|swipe|pop|click|ding|notify|cash|camera|boom|drop|riser|glitch"}]}]}
+Use exactly the number of shots asked for, 2 beats per shot.`;
+
+interface Script { title?: string; style?: string; music?: string; progressBar?: boolean; shots?: { keyframe?: string; motion?: string; beats?: { text?: string; style?: string; fx?: string; sfx?: string }[] }[] }
+const cleanLine = (t: string, k = 7) => t.replace(/\([^)]*\)/g, '').replace(/#[^\s]+/g, '').replace(/\s+/g, ' ').trim().split(' ').slice(0, k).join(' ');
+
+/** Script from Claude, or (Claude unavailable) one built from the post, still drawn in the brand's style via the references. */
+async function videoScript(client: Client, row: PlanRow, n: number, refImgs: AiImage[], onStage: (m: string) => void): Promise<Script> {
+  onStage(`AI đang xem ${refImgs.length} bài cũ và viết kịch bản viral…`);
+  const book = brandBookOf(client.id);
   try {
-    const out = await askClaude({ system: `You write prompts for Google Veo (text-to-video). Each prompt describes ONE ${'continuous'} shot: subject, action, setting, camera move, light, mood. English, 40–70 words, no on-screen text, nothing copyrighted. Shot 1 is the scroll-stopping hook, the last shot supports the call to action. Reply with JSON only: {"shots":["…"]}`, turns: [{ role: 'user', text: `Brand: ${client.name}${client.industry ? ` (${client.industry})` : ''}. ${audienceLine(client)}\nPost: ${row.topic}. Hook: ${row.hook}. Visual idea: ${row.visual}. Caption: ${(row.caption || '').slice(0, 400)}. CTA: ${row.cta}.\nWrite ${n} shots.` }], maxTokens: 1500, effort: 'low' });
-    const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]) as { shots?: string[] };
-    const s = (j.shots || []).map(String).filter(Boolean).slice(0, n);
-    if (s.length === n) return s.map((x) => `${x} ${SHOT}`);
-  } catch { /* Claude unavailable (e.g. out of credit): build them from the post */ }
-  const idea = (row.visual || row.topic || client.name).slice(0, 300);
-  return [
-    `${idea}. Opening hook shot, striking composition, quick push-in. ${SHOT}`,
-    `Close-up details related to: ${row.topic}. Hands and textures, gentle slow motion. ${SHOT}`,
-    `People enjoying ${row.topic}${client.industry ? ` (${client.industry})` : ''}, warm happy mood, wide shot ending on a calm frame with empty space. ${SHOT}`,
-  ].slice(0, n);
+    const out = await askClaude({ system: SCRIPT, turns: [{ role: 'user', images: refImgs, text: [
+      `Brand: ${client.name}${client.industry ? ` (${client.industry})` : ''}. ${audienceLine(client)}`,
+      book ? `Voice: ${book.voice.traits.join(', ')}. Palette: ${book.palette.map((c) => c.hex).join(', ')}.` : '',
+      styleNotesOf(client.id) ? `House style: ${styleNotesOf(client.id)}` : '',
+      `Post (${channelOf(row.channel).label} ${row.format}): topic "${row.topic}". Hook: ${row.hook}. Visual idea: ${row.visual}. Caption: ${(row.caption || '').slice(0, 600)}. CTA: ${row.cta}.`,
+      refImgs.length ? `The ${refImgs.length} attached pictures are the brand's published posts.` : 'No past posts: pick a striking style that fits the brand.',
+      `Write ${n} shots.`,
+    ].filter(Boolean).join('\n') }], maxTokens: 4000, effort: 'medium' });
+    const j = JSON.parse((/\{[\s\S]*\}/.exec(out) || ['{}'])[0]) as Script;
+    if ((j.shots || []).length >= Math.min(2, n)) return { ...j, shots: j.shots!.slice(0, n) };
+  } catch { /* fall through */ }
+  const idea = cleanLine(row.visual || row.topic, 40);
+  const cta = cleanLine(row.cta || 'Theo dõi để xem thêm', 6);
+  return { title: row.topic, style: `the exact art style, characters and palette of the attached reference posts of ${client.name}`, music: 'upbeat', progressBar: true, shots: [
+    { keyframe: `${idea}, opening hook frame, striking close composition`, motion: 'Quick push-in, characters react with big expressions.', beats: [{ text: cleanLine(row.hook || row.topic, 6), style: 'hook', fx: 'punch', sfx: 'boom' }, { text: '', style: 'body', sfx: 'whoosh' }] },
+    { keyframe: `${idea}, the key moment, characters in action`, motion: 'Smooth tracking shot following the action.', beats: [{ text: cleanLine(row.topic, 6), style: 'box', sfx: 'whoosh' }, { text: '', style: 'body' }] },
+    { keyframe: `${idea}, happy ending moment with calm space at the bottom`, motion: 'Slow pull-back, gentle warm motion.', beats: [{ text: '', style: 'body', sfx: 'swipe' }, { text: cta, style: 'cta', sfx: 'ding' }] },
+  ].slice(0, n) };
 }
-/** Short on-screen lines from the post: hook, a few body beats from the caption, the CTA. */
-function lines(row: PlanRow, n: number): string[] {
-  const words = (t: string, k: number) => t.split(/\s+/).filter(Boolean).slice(0, k).join(' ');
-  const body = (row.caption || '').replace(/#[^\s]+/g, '').split(/(?<=[.!?…])\s+|\n+/).map((x) => x.trim()).filter((x) => x.length > 3).map((x) => words(x, 7));
-  const out = [words(row.hook || row.topic, 8)];
-  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  const seen = norm(row.hook || row.topic);
-  // captions often open with the hook itself: skip lines the hook already says
-  const fresh = body.filter((x) => { const k = norm(x); return k && !seen.includes(k) && !k.includes(seen); });
-  for (let i = 0; out.length < n - 1; i++) out.push(fresh[i] || '');
-  out.push(words(row.cta || 'Theo dõi để xem thêm', 6));
-  return out;
+
+async function assetB64(id: string, maxW = 720): Promise<{ b64: string; mime: string } | null> {
+  const { assets } = await import('../storage/assets');
+  const b = await assets.blob(id); if (!b) return null;
+  const bm = await createImageBitmap(b); const k = Math.min(1, maxW / bm.width);
+  const c = document.createElement('canvas'); c.width = Math.round(bm.width * k); c.height = Math.round(bm.height * k);
+  c.getContext('2d')!.drawImage(bm, 0, 0, c.width, c.height);
+  return { b64: c.toDataURL('image/jpeg', 0.9).split(',')[1], mime: 'image/jpeg' };
 }
+
 export async function autoVideo(client: Client, row: PlanRow & { planId: string }, opts: { scenes: number; seconds: 4 | 6 | 8; template?: string; onStage: (m: string) => void; signal?: AbortSignal; base?: VideoDoc | null }): Promise<VideoDoc> {
-  const prompts = await scenePrompts(client, row, opts.scenes, opts.onStage);
-  const clips: VClip[] = [];
-  for (const [i, p] of prompts.entries()) {
+  const D = await import('./designs');
+  const refs = D.pastPosts(client.id, 4);
+  const refImgs = (await Promise.all(refs.map((id) => assetB64(id, 640)))).filter(Boolean).map((x, i): AiImage => ({ name: `post-${i + 1}.jpg`, mime: 'image/jpeg', base64: x!.b64 }));
+  const sc = await videoScript(client, row, opts.scenes, refImgs, opts.onStage);
+  const clips: VClip[] = []; const segs: VSeg[] = [];
+  const styles = TEXT_STYLES.map((x) => x.id) as string[], fxs = FX.map((x) => x.id) as string[], sfxs = SFX.map((x) => x.id) as string[];
+  for (const [i, shot] of (sc.shots || []).entries()) {
     if (opts.signal?.aborted) throw new Error('Đã huỷ.');
-    const b = await veoShot(p, opts.seconds, (m) => opts.onStage(`Cảnh ${i + 1}/${prompts.length} · ${m}`), opts.signal);
-    clips.push(await addClip(b, `AI · cảnh ${i + 1}`, 'ai'));
+    const tag = `Cảnh ${i + 1}/${sc.shots!.length}`;
+    // the first frame in the brand's own style, then Veo animates it
+    opts.onStage(`${tag} · vẽ khung hình đúng phong cách thương hiệu…`);
+    let frame: { b64: string; mime: string } | null = null;
+    try {
+      const id = await D.generateImage(client.id, `${sc.style}. ${shot.keyframe}. Vertical 9:16 frame for a short video, cinematic composition, clean faces and hands, no text, no letters, no logo, no watermark.`, '9:16', refs.slice(0, 3));
+      frame = await assetB64(id, 720);
+    } catch (e) { if (opts.signal?.aborted) throw e; /* Veo still makes the shot from text */ }
+    const b = await veoShot(`${shot.motion || ''} ${sc.style}. ${frame ? 'Animate the given first frame, keep its characters and art style exactly.' : shot.keyframe} Vertical 9:16, no text on screen, no subtitles.`, opts.seconds, (m) => opts.onStage(`${tag} · ${m}`), opts.signal, frame || undefined);
+    const c = await addClip(b, `AI · cảnh ${i + 1}`, 'ai'); clips.push(c);
+    const beats = (shot.beats || []).slice(0, 3); const n = Math.max(1, beats.length); const h = c.dur / n;
+    for (let k = 0; k < n; k++) {
+      const bt = beats[k] || {};
+      segs.push({ id: uid('sg'), clip: c.id, from: k * h, to: Math.min(c.dur, (k + 1) * h), text: cleanLine(String(bt.text || ''), 8), style: styles.includes(String(bt.style)) ? (bt.style as VTextStyle) : 'body', pos: bt.style === 'cta' ? 'bottom' : bt.style === 'box' ? 'top' : 'middle', zoom: 1.08, fx: fxs.includes(String(bt.fx)) ? (bt.fx as VFx) : 'none', sfx: sfxs.includes(String(bt.sfx)) ? (bt.sfx as SfxId) : 'none' });
+    }
   }
-  opts.onStage('Đang dựng video…');
-  const segs: VSeg[] = [];
-  const per = 2; // each shot cut in two beats
-  const text = lines(row, clips.length * per);
-  clips.forEach((c, i) => { const h = c.dur / per; for (let k = 0; k < per; k++) segs.push({ id: uid('sg'), clip: c.id, from: k * h, to: Math.min(c.dur, (k + 1) * h), text: text[i * per + k] || '', style: 'body', pos: 'middle', zoom: 1, fx: 'none', sfx: 'none' }); });
   const base = opts.base || blankVideo(client, row);
-  return applyTemplate({ ...base, clips: [...base.clips, ...clips], segs }, opts.template || base.template || 'viral');
+  const music = MUSIC.find((m) => m.id === sc.music)?.id || 'upbeat';
+  const a = audioOf(base);
+  return { ...base, title: sc.title || base.title, clips: [...base.clips, ...clips], segs, progressBar: sc.progressBar !== false, audio: { ...a, music: a.music?.kind === 'file' ? a.music : { kind: 'synth', id: music } } };
 }
+/** Rough cost of autoVideo in USD: Veo seconds plus one painted first frame per shot. */
+export const autoVideoCost = (scenes: number, seconds: number, pro: boolean) => scenes * (seconds * 0.05 + (pro ? 0.14 : 0.04));

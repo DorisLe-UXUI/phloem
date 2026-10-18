@@ -21,6 +21,15 @@ export function pickLiteImageModel(models) {
     .sort((a, b) => ver(b.name) - ver(a.name) || (/preview/.test(a.name) ? 1 : 0) - (/preview/.test(b.name) ? 1 : 0))[0] || null;
 }
 
+/** The best Gemini image model ("Nano Banana Pro", gemini-*-pro-image): sharper text and faces, several times the price of Lite.
+ *  Used only when a request asks for quality 'pro'. Newest version first, stable before preview. */
+export function pickProImageModel(models) {
+  const ver = (n) => Number((/(\d+(?:\.\d+)?)/.exec(n) || [0, 0])[1]);
+  return (models || [])
+    .filter((m) => /gemini.*pro.*image/i.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent'))
+    .sort((a, b) => ver(b.name) - ver(a.name) || (/preview/.test(a.name) ? 1 : 0) - (/preview/.test(b.name) ? 1 : 0))[0] || null;
+}
+
 /** MIME type of base64 image bytes from their first characters. */
 export const sniffMime = (b64) => (String(b64).startsWith('/9j/') ? 'image/jpeg' : String(b64).startsWith('UklGR') ? 'image/webp' : 'image/png');
 
