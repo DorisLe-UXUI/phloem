@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { toast, useStore } from '../../store';
 import * as A from '../../pipeline/actions';
 import { cachedItems, newId, putItem } from '../../mkt/data';
-import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, type DesignSize } from '../../mkt/designs';
+import { SIZES, addClientImages, clientImages, designFromImage, designPost, downloadPost, paintFullPost, pastPosts, preferredSize, preferredSizeKey, refitImported, sizeForRow, type AskPhotos, type DesignSize } from '../../mkt/designs';
 import { assets } from '../../storage/assets';
 import { canWrite, channelOf, FORMATS, type Client, type Item, type Plan, type PlanRow } from '../../mkt/types';
 import { go } from '../../mkt/router';
@@ -58,9 +58,18 @@ export function DesignHub({ client }: { client: Client }) {
   const jobKey = (r: Row) => `${r.planId}:${r.id}`;
   const title = (r: Row) => `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} · ${r.topic}`.slice(0, 70);
   /** AI work on a post runs in the background, in that post's own cell; the user keeps working (several at once). */
+  /** AI design; when Claude can't run (no credit) the post is painted whole by Google instead of failing. */
+  const designOrPaint = async (size: DesignSize, row: Row, o: { onStage: (m: string) => void; signal: AbortSignal; resume?: boolean; askPhotos?: AskPhotos }) => {
+    try { return await designPost(client, size, row, { ai: true, open: false, ...o }); }
+    catch (e) {
+      if (o.signal.aborted || !/hết tiền \(credit\)|không hợp lệ hoặc đã bị thu hồi/.test((e as Error).message)) throw e;
+      o.onStage('Claude chưa dùng được (hết credit) · chuyển sang AI vẽ cả bài bằng Google…');
+      return paintFullPost(client, size, row, { onStage: o.onStage, signal: o.signal });
+    }
+  };
   const queueAi = (size: DesignSize, row: Row) => {
     const ask1 = activeCount() === 0; // only a lone job may stop to ask for missing photos
-    enqueue(jobKey(row), title(row), (onStage, signal) => designPost(client, size, row, { ai: true, open: false, onStage, signal, askPhotos: ask1 ? (plan) => askPhotos(client, plan) : undefined }));
+    enqueue(jobKey(row), title(row), (onStage, signal) => designOrPaint(size, row, { onStage, signal, askPhotos: ask1 ? (plan) => askPhotos(client, plan) : undefined }));
   };
   const make = async (size: DesignSize, row: Row | null, ai: boolean) => {
     setPicker(null);
@@ -91,7 +100,7 @@ export function DesignHub({ client }: { client: Client }) {
   const batch = async () => {
     if (!week.length) return;
     if (!(await ask(`AI thiết kế ${week.length} bài trong 7 ngày tới? Ảnh tạo ngay trong từng bài, 3 bài cùng lúc, xong bài nào báo bài đó. Bạn cứ làm việc khác.`, 'Bắt đầu', false))) return;
-    for (const r of week) enqueue(jobKey(r), title(r), (onStage, signal) => designPost(client, sz(r), r, { ai: true, open: false, onStage, signal }));
+    for (const r of week) enqueue(jobKey(r), title(r), (onStage, signal) => designOrPaint(sz(r), r, { onStage, signal }));
   };
 
   return (
