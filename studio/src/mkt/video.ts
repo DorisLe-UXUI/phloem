@@ -338,9 +338,11 @@ async function videoScript(client: Client, row: PlanRow, n: number, refImgs: AiI
   } catch { /* fall through */ }
   const idea = cleanLine(row.visual || row.topic, 40);
   const cta = cleanLine(row.cta || 'Theo dõi để xem thêm', 6);
+  const hook = cleanLine(row.hook || row.topic, 6);
+  const second = (row.caption || '').split(/(?<=[.!?…])\s+|\n+/).map((x) => cleanLine(x, 6)).find((x) => x.length > 3 && x.toLowerCase() !== hook.toLowerCase()) || '';
   return { title: row.topic, style: `the exact art style, characters and palette of the attached reference posts of ${client.name}`, music: 'upbeat', progressBar: true, shots: [
-    { keyframe: `${idea}, opening hook frame, striking close composition`, motion: 'Quick push-in, characters react with big expressions.', beats: [{ text: cleanLine(row.hook || row.topic, 6), style: 'hook', fx: 'punch', sfx: 'boom' }, { text: '', style: 'body', sfx: 'whoosh' }] },
-    { keyframe: `${idea}, the key moment, characters in action`, motion: 'Smooth tracking shot following the action.', beats: [{ text: cleanLine(row.topic, 6), style: 'box', sfx: 'whoosh' }, { text: '', style: 'body' }] },
+    { keyframe: `${idea}, opening hook frame, striking close composition`, motion: 'Quick push-in, characters react with big expressions.', beats: [{ text: hook, style: 'hook', fx: 'punch', sfx: 'boom' }, { text: '', style: 'body', sfx: 'whoosh' }] },
+    { keyframe: `${idea}, the key moment, characters in action`, motion: 'Smooth tracking shot following the action.', beats: [{ text: second, style: 'box', sfx: 'whoosh' }, { text: '', style: 'body' }] },
     { keyframe: `${idea}, happy ending moment with calm space at the bottom`, motion: 'Slow pull-back, gentle warm motion.', beats: [{ text: '', style: 'body', sfx: 'swipe' }, { text: cta, style: 'cta', sfx: 'ding' }] },
   ].slice(0, n) };
 }
