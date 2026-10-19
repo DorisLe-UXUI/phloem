@@ -89,7 +89,16 @@ const server = createServer(async (req, res) => {
       if (!has('image')) return json(503, { error: `Chưa cài tạo ảnh trên máy (${CMD.image}).` });
       const p = await body(); const prompt = String(p.prompt || '').slice(0, 2000); if (!prompt) return json(400, { error: 'Thiếu mô tả ảnh.' });
       const [w, h] = SIZES[p.aspect] || SIZES['1:1'];
-      const b64 = await queued(async () => { const d = tmp(); try { const out = join(d, 'out.png'); await run(CMD.image, [prompt, String(w), String(h), out], 20 * 60_000); return readFileSync(out).toString('base64'); } finally { rmSync(d, { recursive: true, force: true }); } });
+      const b64 = await queued(async () => {
+        const d = tmp();
+        try {
+          const out = join(d, 'out.png');
+          // reference pictures (the brand's posts, characters, products) go after the output path; a script that can't use them ignores them
+          const refs = (Array.isArray(p.refs) ? p.refs : []).slice(0, 4).map((r, i) => { const f = join(d, `ref${i + 1}.${/png/.test(r?.mime) ? 'png' : 'jpg'}`); writeFileSync(f, Buffer.from(String(r?.b64 || '').replace(/^data:[^,]+,/, ''), 'base64')); return f; });
+          await run(CMD.image, [prompt, String(w), String(h), out, ...refs], 20 * 60_000);
+          return readFileSync(out).toString('base64');
+        } finally { rmSync(d, { recursive: true, force: true }); }
+      });
       return json(200, { b64, mime: 'image/png', provider: 'local' });
     }
 

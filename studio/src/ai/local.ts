@@ -23,9 +23,9 @@ async function need(k: keyof LocalHealth, what: string) {
 }
 async function fail(r: Response) { const j = await r.json().catch(() => ({})); return new Error(j.error || `AI trên máy lỗi (HTTP ${r.status}).`); }
 
-export async function localImage(prompt: string, aspect: string, signal?: AbortSignal): Promise<{ b64: string; mime: string }> {
+export async function localImage(prompt: string, aspect: string, signal?: AbortSignal, refs: { b64: string; mime: string }[] = []): Promise<{ b64: string; mime: string }> {
   await need('image', 'tạo ảnh');
-  const r = await fetch(`${LOCAL_AI}/image`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, aspect }), signal });
+  const r = await fetch(`${LOCAL_AI}/image`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, aspect, refs }), signal });
   if (!r.ok) throw await fail(r);
   return r.json();
 }

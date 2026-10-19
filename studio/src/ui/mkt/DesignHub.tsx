@@ -96,6 +96,9 @@ export function DesignHub({ client }: { client: Client }) {
   /** The whole post painted as one finished picture with its text, in the style of the client's past posts. */
   const full = async (row: Row) => {
     if (!styleRefs(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
+    // free local models write text badly (Vietnamese marks above all): there the picture is painted without text and the copy
+    // is laid out as real, editable text layers in the brand fonts (AI thiết kế); Google paints the text itself
+    if (imageQuality(client.id) === 'local') { enqueue(jobKey(row), title(row), (onStage, signal) => designPost(client, sz(row), row, { ai: true, open: false, onStage, signal })); return; }
     enqueue(jobKey(row), title(row), (onStage, signal) => paintFullPost(client, sz(row), row, { onStage, signal }));
   };
   /** AI designs every post of the next 7 days that has no picture yet, one after another, without opening the editor. */

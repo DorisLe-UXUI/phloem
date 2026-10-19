@@ -677,9 +677,10 @@ export function imageQuality(clientId: string): ImageQuality {
 export function setImageQuality(clientId: string, q: ImageQuality) { try { localStorage.setItem(qKey(clientId), q); localStorage.setItem('phloem.mkt.imgq', q); } catch { /* private mode */ } }
 export async function generateImage(clientId: string, prompt: string, aspect: Aspect = '1:1', refIds: string[] = []): Promise<string> {
   if (imageQuality(clientId) === 'local') {
-    // free, on this Mac (FLUX): it can't look at reference pictures, so the prompt carries the style alone
+    // free, on this Mac: the reference pictures go along for a model that can use them; the prompt carries the style too
     const { localImage } = await import('../ai/local');
-    const j = await localImage(prompt, aspect);
+    const lrefs = (await Promise.all(refIds.slice(0, 3).map((id) => thumbB64(id, 1024)))).filter(Boolean).map((t) => ({ b64: t!.base64, mime: t!.mime }));
+    const j = await localImage(prompt, aspect, undefined, lrefs);
     const bytes = Uint8Array.from(atob(j.b64), (ch) => ch.charCodeAt(0));
     return (await assets.add(new Blob([bytes], { type: j.mime }), `AI máy · ${prompt.slice(0, 40)}.png`, { src: { kind: 'ai' }, client: clientId, project: null })).id;
   }
