@@ -123,4 +123,11 @@ const server = createServer(async (req, res) => {
     return json(404, { error: 'not found' });
   } catch (e) { return json(500, { error: String(e?.message || e) }); }
 });
+server.on('error', async (e) => {
+  if (e?.code !== 'EADDRINUSE') throw e;
+  // already running (another Terminal tab, or started earlier): say so instead of a stack trace
+  const ok = await fetch(`http://localhost:${PORT}/health`).then((r) => r.json()).then((j) => j?.service === 'phloem-local-ai').catch(() => false);
+  console.log(ok ? `AI trên máy ĐANG CHẠY sẵn ở http://localhost:${PORT}, không cần bật thêm. Mở Phloem là dùng được.` : `Cổng ${PORT} đang bị chương trình khác dùng. Chạy với cổng khác: PORT=8791 npm run ai-may`);
+  process.exit(ok ? 0 : 1);
+});
 server.listen(PORT, '127.0.0.1', () => console.log(`Phloem local AI on http://localhost:${PORT}  image=${has('image')} voice=${has('tts') ? 'model' : hasSay ? 'macOS say' : 'none'} video=${has('video')}`));
