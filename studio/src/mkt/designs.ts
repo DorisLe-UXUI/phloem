@@ -275,7 +275,7 @@ export async function paintFullPost(client: Client, size: DesignSize, row: PlanR
     let best: { asset: string; score: number } | null = null; let note = '';
     for (let attempt = 0; attempt < (claude ? 3 : 1); attempt++) {
       if (opts.signal?.aborted) throw new Error('Đã huỷ.');
-      opts.onStage?.(`${tag}${attempt ? `Vẽ lại lần ${attempt + 1} theo góp ý của giám đốc sáng tạo` : 'AI đang vẽ cả bài, có chữ'} (20–60 giây)…`);
+      opts.onStage?.(`${tag}${attempt ? `Vẽ lại lần ${attempt + 1} theo góp ý của giám đốc sáng tạo` : 'AI đang vẽ cả bài, có chữ'} (${imageQuality(client.id) === 'local' ? 'trên máy, 2–4 phút' : '20–60 giây'})…`);
       const asset = await generateImage(client.id, note ? `${prompt}\n\nCORRECTIONS FROM REVIEW (must fix): ${note}` : prompt, aspect, refList);
       if (!claude) { best = { asset, score: 0 }; break; }
       opts.onStage?.(`${tag}Giám đốc sáng tạo đang chấm ảnh…`);
@@ -660,7 +660,8 @@ export async function paintShot(client: Client, idea: string, aspect: Aspect, op
     if (got.added.length) { opts.onStage?.('Art director đang xem ảnh bạn vừa thêm…'); plan = await planShot(client, idea, aspect, { ...opts, use: [...got.added, ...got.refs] }); }
     else plan = { ...plan, refs: got.refs };
   }
-  opts.onStage?.(plan.refs.length ? `AI đang vẽ theo ${plan.refs.length} ảnh thật của khách (10–40 giây)…` : 'AI đang vẽ ảnh (10–40 giây)…');
+  const took = imageQuality(client.id) === 'local' ? 'trên máy, 2–4 phút; nhiều ảnh thì xếp hàng' : '10–40 giây';
+  opts.onStage?.(plan.refs.length ? `AI đang vẽ theo ${plan.refs.length} ảnh thật của khách (${took})…` : `AI đang vẽ ảnh (${took})…`);
   return generateImage(client.id, plan.prompt, aspect, plan.refs);
 }
 
