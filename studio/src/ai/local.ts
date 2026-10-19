@@ -67,13 +67,12 @@ export const isLocalCopy = () => typeof location !== 'undefined' && location.ori
 export async function openOnThisMac(): Promise<boolean> {
   const { getSession, readStudioRelay } = await import('../auth/core');
   const ses = getSession(); const base = readStudioRelay().relayUrl;
-  const w = window.open('about:blank', '_blank'); // opened now, inside the click, so the pop-up blocker allows it
   let code = '';
   if (ses?.mode === 'relay' && base) {
     try { const r = await fetch(`${base}/auth/handoff`, { method: 'POST', headers: { Authorization: `Bearer ${ses.token}` } }); if (r.ok) code = (await r.json()).code || ''; } catch { /* sign in there instead */ }
   }
   const url = `${LOCAL_AI}/mkt/#${code ? `handoff=${code}&go=${encodeURIComponent(location.hash.slice(1))}` : location.hash.slice(1)}`;
-  if (w) w.location.href = url; else location.href = url;
+  location.href = url; // same tab: new windows are blocked or ignored by some browsers
   return true;
 }
 /** On the local copy: trade a hand-off code from the URL for a session. Resolves true when signed in by it. */
