@@ -165,7 +165,7 @@ test('relay: a client and an image created seconds before the container dies are
   const s3 = await mockS3();
   const PORT = 20000 + Math.floor(Math.random() * 2000);
   const BASE = `http://127.0.0.1:${PORT}`;
-  const env = { ...process.env, PORT: String(PORT), AUTH_SECRET: 'test-secret-0123456789', ANTHROPIC_API_KEY: '', RELAY_TOKEN: '', BACKUP_S3_ENDPOINT: s3.cfg.endpoint, BACKUP_S3_BUCKET: 'bucket', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', BACKUP_DEBOUNCE_SEC: '1' };
+  const env = { ...process.env, PORT: String(PORT), AUTH_SECRET: 'test-secret-0123456789', ANTHROPIC_API_KEY: '', RELAY_TOKEN: '', BACKUP_S3_ENDPOINT: s3.cfg.endpoint, BACKUP_S3_BUCKET: 'bucket', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', BACKUP_DEBOUNCE_SEC: '1', BACKUP_HANDOVER_SEC: '2' };
   const boot = async (dir) => {
     const p = spawn(process.execPath, ['server/src/index.mjs'], { env: { ...env, DATA_DIR: dir + '/' }, stdio: 'ignore' });
     await until(async () => { try { return (await fetch(BASE + '/')).ok; } catch { return false; } });
@@ -214,7 +214,7 @@ test('relay: boot on a big legacy database (~120 MB of in-row images) stays well
   assert.ok(s3.objects.get('phloem/phloem.db').length > N * SIZE);
   const PORT = 22000 + Math.floor(Math.random() * 2000);
   const BASE = `http://127.0.0.1:${PORT}`;
-  const env = { ...process.env, PORT: String(PORT), AUTH_SECRET: 'test-secret-0123456789', ANTHROPIC_API_KEY: '', RELAY_TOKEN: '', BACKUP_S3_ENDPOINT: s3.cfg.endpoint, BACKUP_S3_BUCKET: 'bucket', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', BACKUP_DEBOUNCE_SEC: '1' };
+  const env = { ...process.env, PORT: String(PORT), AUTH_SECRET: 'test-secret-0123456789', ANTHROPIC_API_KEY: '', RELAY_TOKEN: '', BACKUP_S3_ENDPOINT: s3.cfg.endpoint, BACKUP_S3_BUCKET: 'bucket', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', BACKUP_DEBOUNCE_SEC: '1', BACKUP_HANDOVER_SEC: '2' };
   const health = async () => { try { return (await (await fetch(BASE + '/')).json()).backup; } catch { return null; } };
   let peak = 0, relay = null;
   const rss = () => { if (!relay?.pid) return; try { const kb = Number(execFileSync('ps', ['-o', 'rss=', '-p', String(relay.pid)]).toString().trim()); if (kb > peak) peak = kb; } catch { /* exited */ } };
@@ -367,7 +367,7 @@ test('relay: an old snapshot with in-row thumbnails loads, thumbnails move out, 
   s3.objects.set('phloem/phloem.db.gz', gzipSync(readFileSync(join(legacy, 'phloem.db'))));
   const PORT = 24000 + Math.floor(Math.random() * 2000);
   const BASE = `http://127.0.0.1:${PORT}`;
-  const env = { ...process.env, PORT: String(PORT), AUTH_SECRET: 'test-secret-0123456789', ANTHROPIC_API_KEY: '', RELAY_TOKEN: '', BACKUP_S3_ENDPOINT: s3.cfg.endpoint, BACKUP_S3_BUCKET: 'bucket', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', BACKUP_DEBOUNCE_SEC: '1' };
+  const env = { ...process.env, PORT: String(PORT), AUTH_SECRET: 'test-secret-0123456789', ANTHROPIC_API_KEY: '', RELAY_TOKEN: '', BACKUP_S3_ENDPOINT: s3.cfg.endpoint, BACKUP_S3_BUCKET: 'bucket', BACKUP_S3_KEY: 'k', BACKUP_S3_SECRET: 's', BACKUP_DEBOUNCE_SEC: '1', BACKUP_HANDOVER_SEC: '2' };
   const health = async () => { try { return (await (await fetch(BASE + '/')).json()).backup; } catch { return null; } };
   let relay = null;
   const boot = async (dir) => { relay = spawn(process.execPath, ['server/src/index.mjs'], { env: { ...env, DATA_DIR: dir + '/' }, stdio: 'ignore' }); await until(health, 20000); };
@@ -419,6 +419,8 @@ test('deploy overlap: the new container merges the old one\'s last snapshot and 
     // …while the old one still records: a click, a second open, and it sends the queued email; then SIGTERM uploads
     a.raw.exec("INSERT INTO ev VALUES ('c1','click','2'); INSERT INTO ev VALUES ('c1','open','3'); UPDATE q SET status = 'sent'");
     b.raw.exec("INSERT INTO ev VALUES ('c1','open','4')"); // the new one already took a hit too
+    await stB.now('first run'); // must not overwrite the bucket while the old container can still upload
+    assert.equal(s3.meta.get('phloem/phloem.db.gz')['x-amz-meta-phloem-instance'], 'old');
     await stA.now('SIGTERM', true);
     await until(() => settled);
     const rows = b.raw.prepare('SELECT kind, at FROM ev ORDER BY at').all().map((r) => `${r.kind}${r.at}`);

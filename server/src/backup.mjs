@@ -109,8 +109,10 @@ export function startBackups(cfg, db, dataDir, log = console.log, opts = {}) {
   let lastHash = '';
   const changes = () => { try { return Number(db.prepare('SELECT total_changes() AS n').get().n); } catch { return 0; } };
   let seen = changes(), timer = null;
+  let handover = false; // a deploy's old container may still upload: ours would overwrite its last word, so wait
   const snapshot = async (reason, force = false) => {
     if (state.paused) return;
+    if (handover && !force && !/^SIG/.test(String(reason))) { state.dirty = true; return; }
     if (!force && !state.dirty && (lastHash || inBucket)) return; // unchanged since the last upload (or the restore)
     if (state.uploading) { await state.uploading; if (!state.dirty) return; if (state.uploading) return state.uploading; } // a write landed during that upload: go again
     state.uploading = (async () => {
@@ -164,7 +166,9 @@ export function startBackups(cfg, db, dataDir, log = console.log, opts = {}) {
   // the senders (state.settled) until then so both containers never work the same queue.
   if (opts.restored === 'restored' && !state.paused && !/^SIG/.test(restoredFrom.reason)) {
     const watchMs = Number(opts.lateWatchMs ?? 240_000), every = Number(opts.latePollMs ?? 10_000);
-    state.settled = new Promise((done) => {
+    handover = true;
+    state.settled = new Promise((done0) => {
+      const done = () => { handover = false; if (state.dirty) void snapshot('after handover'); done0(); };
       const t0 = Date.now(); let seenTag = restoredFrom.etag;
       const tick = async () => {
         try {
