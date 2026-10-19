@@ -695,6 +695,9 @@ function throttled(key, max, windowMs) {
   b.n++; return b.n > max;
 }
 const ipOf = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+// One-time codes that let Phloem served on the user's own Mac (http://localhost:8790, the local AI bridge) sign in as the
+// user already signed in on the public site, without a password or Google (whose sign-in doesn't allow localhost).
+const handoffs = new Map(); // code → { userId, exp }
 async function authRoute(action, req, res) {
   try {
     const agent = String(req.headers['user-agent'] || '');
@@ -708,6 +711,20 @@ async function authRoute(action, req, res) {
       return json(res, user ? 200 : 401, user ? { user } : { error: 'Phiên đăng nhập hết hạn.', code: 'expired' });
     }
     if (action === 'logout' && req.method === 'POST') { AUTH.logout(bearer(req)); return json(res, 200, { ok: true }); }
+    if (action === 'handoff' && req.method === 'POST') {
+      const u = AUTH.meRow(bearer(req)); if (!u) return json(res, 401, { error: 'Cần đăng nhập.', code: 'expired' });
+      const t = Date.now(); for (const [k, v] of handoffs) if (v.exp < t) handoffs.delete(k);
+      const code = randomBytes(24).toString('hex'); handoffs.set(code, { userId: u.id, exp: t + 120_000 });
+      return json(res, 200, { code, expiresIn: 120 });
+    }
+    if (action === 'handoff-redeem' && req.method === 'POST') {
+      if (throttled(`handoff:${ipOf(req)}`, 20, 10 * 60_000)) return json(res, 429, { error: 'Thử quá nhiều lần.', code: 'server' });
+      const { code } = await body(req); const h = handoffs.get(String(code || ''));
+      handoffs.delete(String(code || '')); // single use
+      if (!h || h.exp < Date.now()) return json(res, 400, { error: 'Mã chuyển đăng nhập đã hết hạn. Bấm lại "Mở Phloem trên máy".', code: 'expired' });
+      const out = AUTH.sessionFor(h.userId, `handoff ${agent}`.slice(0, 200));
+      return out ? json(res, 200, out) : json(res, 400, { error: 'Không thấy tài khoản.', code: 'expired' });
+    }
     if (action === 'google' && req.method === 'POST') {
       if (!GOOGLE_CLIENT_ID) return json(res, 503, { error: 'Relay chưa cấu hình GOOGLE_CLIENT_ID.' });
       const { credential } = await body(req);

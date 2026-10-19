@@ -126,7 +126,7 @@ export function DesignHub({ client }: { client: Client }) {
             <option value="local">Miễn phí trên máy (chậm)</option>
           </select>
         </label>
-        {quality === 'local' && !isLocalCopy() && <Btn sm icon="external" onClick={() => { if (!openOnThisMac()) toast('Trình duyệt chặn cửa sổ mới: cho phép pop-up rồi bấm lại.', 'err'); }} title="Trang web công khai có thể bị trình duyệt chặn gọi AI trên máy. Bản mở từ máy (localhost:8790) luôn dùng được; phiên đăng nhập được chuyển sang, không cần đăng nhập lại.">Mở Phloem trên máy</Btn>}
+        {quality === 'local' && !isLocalCopy() && <Btn sm icon="external" onClick={() => void openOnThisMac()} title="Trang web công khai có thể bị trình duyệt chặn gọi AI trên máy. Bản mở từ máy (localhost:8790) luôn dùng được; phiên đăng nhập được chuyển sang, không cần đăng nhập lại.">Mở Phloem trên máy</Btn>}
         <span class="dim small">{shown.length} bài từ hôm nay · {shown.filter(hasDesign).length} đã có ảnh</span>
         {J.activeCount > 0 && <span class="chip on mk-jobs-chip"><span class="mk-spin" /> Đang tạo {J.activeCount} ảnh trong nền <button onClick={() => cancelAll()} title="Huỷ tất cả">Huỷ hết</button></span>}
       </div>

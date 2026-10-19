@@ -122,6 +122,8 @@ export function createAuth({ dataDir, secret = '', adminEmails = [], adminNeedsG
     meRow(token) { const id = verifyToken(token, secret); if (!id || db.sessions.check(token) !== id) return null; return db.users.byId(id) || null; },
     isAdmin,
     pub,
+    /** A new session for a user already signed in elsewhere (one-time hand-off to Phloem served on the user's own Mac). */
+    sessionFor(userId, agent) { const u = db.users.byId(userId); return u ? session(u, agent || 'handoff') : null; },
     logout(token) { db.sessions.remove(token); },
     logoutAll(userId) { db.sessions.removeAll(userId); },
     count() { return db.users.count(); },

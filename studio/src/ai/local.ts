@@ -59,37 +59,36 @@ export async function localShot(prompt: string, seconds: number, onStage: (m: st
 }
 
 // ---- opening Phloem from the bridge (http://localhost:8790/mkt/) without signing in again ----
-// The public page opens the local copy and hands it the session by postMessage (never in the URL), only to that origin;
-// the local copy accepts it only from the published Phloem site.
-const PUBLIC_SITES = ['https://dorisle-uxui.github.io'];
+// The public page asks the relay for a one-time code (2 minutes, single use) and opens the local copy with it in the URL
+// fragment (never sent to any server); the local copy trades it with the relay for its own session. Google sign-in can't
+// run on localhost, and no password is typed.
 const SESSION_KEY = 'phloem.session';
 export const isLocalCopy = () => typeof location !== 'undefined' && location.origin === LOCAL_AI;
-export function openOnThisMac() {
-  const w = window.open(`${LOCAL_AI}/mkt/${location.hash}`, '_blank');
-  if (!w) return false;
-  const h = (e: MessageEvent) => {
-    if (e.origin !== LOCAL_AI || e.source !== w || e.data?.type !== 'phloem-ready') return;
-    let session: unknown = null; try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { /* none */ }
-    w.postMessage({ type: 'phloem-session', session }, LOCAL_AI);
-    window.removeEventListener('message', h);
-  };
-  window.addEventListener('message', h);
-  setTimeout(() => window.removeEventListener('message', h), 60_000);
+export async function openOnThisMac(): Promise<boolean> {
+  const { getSession, readStudioRelay } = await import('../auth/core');
+  const ses = getSession(); const base = readStudioRelay().relayUrl;
+  const w = window.open('about:blank', '_blank'); // opened now, inside the click, so the pop-up blocker allows it
+  let code = '';
+  if (ses?.mode === 'relay' && base) {
+    try { const r = await fetch(`${base}/auth/handoff`, { method: 'POST', headers: { Authorization: `Bearer ${ses.token}` } }); if (r.ok) code = (await r.json()).code || ''; } catch { /* sign in there instead */ }
+  }
+  const url = `${LOCAL_AI}/mkt/#${code ? `handoff=${code}&go=${encodeURIComponent(location.hash.slice(1))}` : location.hash.slice(1)}`;
+  if (w) w.location.href = url; else location.href = url;
   return true;
 }
-/** On the local copy, opened from the public site: take its session. Resolves true when one arrived. */
-export function receiveSession(): Promise<boolean> {
-  if (!isLocalCopy() || !window.opener) return Promise.resolve(false);
-  try { if (localStorage.getItem(SESSION_KEY)) return Promise.resolve(false); } catch { return Promise.resolve(false); }
-  return new Promise((ok) => {
-    const h = (e: MessageEvent) => {
-      if (!PUBLIC_SITES.includes(e.origin) || e.data?.type !== 'phloem-session') return;
-      window.removeEventListener('message', h);
-      if (e.data.session) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(e.data.session)); } catch { /* private mode */ } }
-      ok(!!e.data.session);
-    };
-    window.addEventListener('message', h);
-    try { window.opener.postMessage({ type: 'phloem-ready' }, '*'); } catch { /* opener gone */ }
-    setTimeout(() => { window.removeEventListener('message', h); ok(false); }, 5000);
-  });
+/** On the local copy: trade a hand-off code from the URL for a session. Resolves true when signed in by it. */
+export async function receiveSession(): Promise<boolean> {
+  if (!isLocalCopy()) return false;
+  const m = /^#handoff=([0-9a-f]+)(?:&go=(.*))?$/.exec(location.hash);
+  if (!m) return false;
+  history.replaceState(null, '', `${location.pathname}#${decodeURIComponent(m[2] || '')}`); // the code leaves the address bar at once
+  const { readStudioRelay } = await import('../auth/core');
+  const base = readStudioRelay().relayUrl; if (!base) return false;
+  try {
+    const r = await fetch(`${base}/auth/handoff-redeem`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: m[1] }) });
+    if (!r.ok) return false;
+    const j = await r.json();
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...j, mode: 'relay', relayUrl: base }));
+    return true;
+  } catch { return false; }
 }
