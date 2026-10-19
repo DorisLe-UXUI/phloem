@@ -12,10 +12,13 @@ export async function localHealth(force = false): Promise<LocalHealth | null> {
   try { const r = await fetch(`${LOCAL_AI}/health`, { signal: AbortSignal.timeout(2500) }); if (r.ok) h = await r.json(); } catch { /* not running */ }
   cache = { at: Date.now(), h }; return h;
 }
-const NOT_RUNNING = 'Chưa bật AI trên máy. Mở Terminal trong thư mục phloem-mkt và chạy: node tools/local-ai/server.mjs';
+/** On a public https page the browser may refuse to talk to localhost even when the bridge runs: say both fixes. */
+const NOT_RUNNING = () => (typeof location !== 'undefined' && location.protocol === 'https:'
+  ? 'Không kết nối được AI trên máy. 1) Bật nó: mở Terminal trong thư mục phloem-mkt, chạy npm run ai-may. 2) Nếu đã bật: Chrome có hỏi "truy cập thiết bị trong mạng" thì bấm Cho phép, hoặc mở Phloem tại http://localhost:8790/mkt/ (luôn dùng được AI trên máy).'
+  : 'Chưa bật AI trên máy. Mở Terminal trong thư mục phloem-mkt và chạy: npm run ai-may');
 async function need(k: keyof LocalHealth, what: string) {
   const h = await localHealth(true);
-  if (!h) throw new Error(NOT_RUNNING);
+  if (!h) throw new Error(NOT_RUNNING());
   if (!h[k]) throw new Error(`AI trên máy chưa cài phần ${what}.`);
 }
 async function fail(r: Response) { const j = await r.json().catch(() => ({})); return new Error(j.error || `AI trên máy lỗi (HTTP ${r.status}).`); }

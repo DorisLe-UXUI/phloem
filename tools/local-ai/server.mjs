@@ -13,7 +13,8 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, extname, join, normalize, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 const PORT = Number(process.env.PORT || 8790);
@@ -25,6 +26,18 @@ const CMD = {
 };
 const ORIGINS = [/^https:\/\/dorisle-uxui\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, ...(process.env.LOCAL_AI_ORIGINS || '').split(',').filter(Boolean).map((o) => new RegExp(`^${o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))];
 const has = (k) => existsSync(CMD[k]);
+// The Phloem app itself is served here too (http://localhost:8790/mkt/): browsers may block a public https page from
+// calling localhost, but a page served from localhost can always use the local AI.
+const SITE = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.txt': 'text/plain' };
+function serveSite(path, res) {
+  let rel = decodeURIComponent(path).replace(/^\/phloem(?=\/)/, ''); // the GitHub Pages prefix
+  if (rel.endsWith('/')) rel += 'index.html';
+  const file = normalize(join(SITE, rel));
+  if (!file.startsWith(SITE + '/') || /\/(\.|node_modules\/|server\/|tools\/)/.test(file.slice(SITE.length)) || !existsSync(file)) return false;
+  res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+  res.end(readFileSync(file)); return true;
+}
 const hasSay = process.platform === 'darwin';
 
 const SIZES = { '1:1': [1024, 1024], '3:4': [896, 1152], '4:3': [1152, 896], '9:16': [768, 1344], '16:9': [1344, 768] };
@@ -120,6 +133,11 @@ const server = createServer(async (req, res) => {
       setTimeout(() => { rmSync(job.dir, { recursive: true, force: true }); videoJobs.delete(vm[1]); }, 10 * 60_000);
       return;
     }
+    if (req.method === 'GET') {
+      if (url.pathname === '/') { res.writeHead(302, { Location: '/mkt/' }); return res.end(); }
+      if (!/\.[a-z0-9]+$/i.test(url.pathname) && !url.pathname.endsWith('/')) { res.writeHead(302, { Location: `${url.pathname}/` }); return res.end(); }
+      if (serveSite(url.pathname, res)) return;
+    }
     return json(404, { error: 'not found' });
   } catch (e) { return json(500, { error: String(e?.message || e) }); }
 });
@@ -130,4 +148,4 @@ server.on('error', async (e) => {
   console.log(ok ? `AI trên máy ĐANG CHẠY sẵn ở http://localhost:${PORT}, không cần bật thêm. Mở Phloem là dùng được.` : `Cổng ${PORT} đang bị chương trình khác dùng. Chạy với cổng khác: PORT=8791 npm run ai-may`);
   process.exit(ok ? 0 : 1);
 });
-server.listen(PORT, '127.0.0.1', () => console.log(`Phloem local AI on http://localhost:${PORT}  image=${has('image')} voice=${has('tts') ? 'model' : hasSay ? 'macOS say' : 'none'} video=${has('video')}`));
+server.listen(PORT, '127.0.0.1', () => console.log(`Phloem local AI on http://localhost:${PORT}  image=${has('image')} voice=${has('tts') ? 'model' : hasSay ? 'macOS say' : 'none'} video=${has('video')}\nMở Phloem dùng AI trên máy: http://localhost:${PORT}/mkt/`));

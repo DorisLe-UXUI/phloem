@@ -315,7 +315,7 @@ const ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
  *  (Gemini Flash-Lite Image) only: the costlier Imagen / Flash Image models are never picked on their own. Cached; cleared on a 404. */
 let googleModel; // undefined = not looked up yet, null = none
 let googlePro = null; // the Pro image model, when the key has one
-const GOOGLE_BILLING = 'Tài khoản Google AI (Gemini) đã hết tiền trả trước. Nạp thêm tại ai.studio/projects → Billing, hoặc chọn "Miễn phí trên máy" ở Chất lượng ảnh AI.';
+const GOOGLE_BILLING = 'Tài khoản Google AI (Gemini) đã hết tiền trả trước. Nạp thêm tại ai.studio/projects → Billing, hoặc dùng AI miễn phí trên máy: chạy npm run ai-may rồi mở Phloem tại http://localhost:8790/mkt/.';
 async function googleImageModel() {
   if (googleModel !== undefined) return googleModel;
   if (process.env.IMAGEN_MODEL) return (googleModel = { name: `models/${process.env.IMAGEN_MODEL.replace(/^models\//, '')}`, method: /imagen/i.test(process.env.IMAGEN_MODEL) ? 'predict' : 'generateContent' });
