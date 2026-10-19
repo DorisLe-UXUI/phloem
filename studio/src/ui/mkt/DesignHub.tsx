@@ -96,9 +96,9 @@ export function DesignHub({ client }: { client: Client }) {
   /** The whole post painted as one finished picture with its text, in the style of the client's past posts. */
   const full = async (row: Row) => {
     if (!styleRefs(client.id).length && !(await ask('Kho chưa có bài cũ nào của khách (nhập từ Drive/Figma ở "Nhập từ link"). AI vẫn vẽ cả bài theo màu thương hiệu, nhưng sẽ không giống y bài cũ. Tiếp tục?', 'Vẫn vẽ', false))) return;
-    // free local models write text badly (Vietnamese marks above all): there the picture is painted without text and the copy
-    // is laid out as real, editable text layers in the brand fonts (AI thiết kế); Google paints the text itself
-    if (imageQuality(client.id) === 'local') { enqueue(jobKey(row), title(row), (onStage, signal) => designPost(client, sz(row), row, { ai: true, open: false, onStage, signal })); return; }
+    // free models (Cloudflare, local) write text badly, Vietnamese marks above all: there the picture is painted without text and
+    // the copy is laid out as real, editable text layers in the brand fonts (AI thiết kế); Google Pro paints the text itself
+    if (imageQuality(client.id) !== 'pro') { enqueue(jobKey(row), title(row), (onStage, signal) => designPost(client, sz(row), row, { ai: true, open: false, onStage, signal })); return; }
     enqueue(jobKey(row), title(row), (onStage, signal) => paintFullPost(client, sz(row), row, { onStage, signal }));
   };
   /** AI designs every post of the next 7 days that has no picture yet, one after another, without opening the editor. */
@@ -122,10 +122,10 @@ export function DesignHub({ client }: { client: Client }) {
             {SIZES.map((z) => <option key={z.id} value={z.id}>{z.label} · {z.w}×{z.h}</option>)}
           </select>
         </label>
-        <label class="mk-sizesel" title="Đẹp nhất: model vẽ xịn nhất của Google (chữ sắc, mặt nhân vật đẹp), đắt hơn vài lần. Tiết kiệm: model rẻ nhất."><Icon name="sparkle" size={13} /><span>Chất lượng ảnh AI</span>
+        <label class="mk-sizesel" title="Đẹp nhất: model vẽ xịn nhất của Google, trả phí (hết tiền thì tự dùng Cloudflare). Miễn phí trên web: Cloudflare FLUX.2, khoảng 15 giây một ảnh, có hạn mức mỗi ngày, ai dùng bản web cũng được. Miễn phí trên máy: chạy trên máy Mac này, chậm, không giới hạn."><Icon name="sparkle" size={13} /><span>Chất lượng ảnh AI</span>
           <select value={quality} onChange={(e) => { const q = (e.target as HTMLSelectElement).value as ImageQuality; setImageQuality(client.id, q); setQuality(q); }}>
-            <option value="pro">Đẹp nhất (Pro)</option>
-            <option value="lite">Tiết kiệm (Lite)</option>
+            <option value="pro">Đẹp nhất · Google (trả phí)</option>
+            <option value="lite">Miễn phí trên web · Cloudflare</option>
             <option value="local">Miễn phí trên máy (chậm)</option>
           </select>
         </label>
