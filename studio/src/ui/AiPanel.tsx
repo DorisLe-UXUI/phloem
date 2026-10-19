@@ -17,6 +17,17 @@ const QUICK = [
   { label: 'CTA mạnh hơn', q: 'Đề xuất lời kêu gọi hành động mạnh hơn cho các nút trong email và đưa thành action set_text cho từng nút.' },
 ];
 
+/** One-tap requests for "Chỉnh bằng lời" (the AI redraws the email, in the client's style). */
+const EDITS = [
+  { label: 'Đẹp & wow hơn', q: 'Làm email này đẹp và wow hơn hẳn: hero ấn tượng hơn, phân cấp chữ rõ, chiều sâu và nhịp các phần tốt hơn. Giữ nội dung.' },
+  { label: 'Theo xu hướng mới', q: 'Làm email trông mới và hợp xu hướng 2026 (chọn 1–2 hướng hợp thương hiệu trong TREND RADAR), vẫn đúng thương hiệu.' },
+  { label: 'Đúng chất khách hàng', q: 'Chỉnh cho đúng phong cách thương hiệu của khách: màu, font, giọng văn, logo, chân mail, kiểu ảnh; bỏ chi tiết lạc tông.' },
+  { label: 'Sang trọng hơn', q: 'Chuyển sang cảm giác sang trọng tối giản: nhiều khoảng thở, chữ lớn tinh tế, ít màu, ảnh nổi bật.' },
+  { label: 'Hero nổi bật hơn', q: 'Chỉ làm lại phần hero (màn đầu) cho thật nổi bật: chữ lớn hơn, có lớp chồng, nền màu mạnh hoặc ảnh tràn; các phần khác giữ.' },
+  { label: 'Gọn, CTA lên đầu', q: 'Rút gọn email còn 3–5 phần, một thông điệp, nút CTA chính nằm trong màn đầu (600px đầu) và nhắc lại ở cuối.' },
+  { label: 'Ít ảnh, chữ thật', q: 'Giảm phụ thuộc ảnh: chữ quan trọng phải là chữ thật (không nằm trong ảnh), bỏ bớt ảnh/3D trang trí, để khi hộp thư tắt ảnh vẫn đọc được trọn thông điệp.' },
+];
+
 const chatStore: { msgs: ChatMsg[] } = { msgs: [] };
 export const CLAUDE_AI_URL = 'https://claude.ai/artifact/9SNPduXknZra6ckgXh3WCG';
 
@@ -39,8 +50,23 @@ export function AiPanel() {
     finally { setBusy(false); }
   };
 
+  const [ask, setAsk] = useState('');
+  const editing = !!s.busy;
+  const clientName = s.project?.clientId ? s.clients.find((c) => c.id === s.project!.clientId)?.name : '';
+  const doEdit = async (q: string) => { if (!q.trim() || editing) return; const ok = await A.aiEdit(q); if (ok) setAsk(''); };
   return (
     <div class="props" style={{ height: '100%' }}>
+      {s.project && (
+        <div class="card glow">
+          <div class="row"><Icon name="wand" style={{ color: 'var(--neon)' }} /><b class="grow">Chỉnh bằng lời</b>{clientName && <span class="chip on" title="AI giữ màu, font, giọng văn của khách này">{clientName}</span>}</div>
+          <div class="small muted">Nói AI muốn đổi gì, AI vẽ lại email{clientName ? ` theo phong cách ${clientName}` : ''}. ⌘Z để quay lại.</div>
+          <div class="row wrap" style={{ gap: 4 }}>{EDITS.map((e) => <Btn key={e.label} xs disabled={editing || transport === null} onClick={() => void doEdit(e.q)} title={e.q}>{e.label}</Btn>)}</div>
+          <textarea class="in" rows={2} value={ask} placeholder="VD: đổi tông Tết đỏ vàng, thêm khối đánh giá khách, nút to hơn…" disabled={transport === null}
+            onInput={(e) => setAsk((e.target as HTMLTextAreaElement).value)}
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void doEdit(ask); } }} />
+          <Btn kind="primary" block icon="wand" disabled={editing || !ask.trim() || transport === null} onClick={() => void doEdit(ask)}>{editing ? 'AI đang chỉnh…' : 'AI chỉnh theo yêu cầu'}</Btn>
+        </div>
+      )}
       <div class="card glow">
         <div class="row"><Icon name="sparkle" style={{ color: 'var(--neon)' }} /><b class="grow">Dựng bằng AI</b></div>
         <div class="small muted">Đưa ảnh + nội dung thô, AI xếp thành 3 phương án bằng block Phloem. Bạn chọn một rồi chỉnh tiếp.</div>

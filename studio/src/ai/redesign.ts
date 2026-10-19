@@ -89,7 +89,7 @@ function render(d: Doc, b: Brand): AiImage | null {
 type Entry = { keep: number } | { kind: BlockKind; content: BlockContent };
 
 /** Ask the creative director for a new plan and build it. Throws when the AI is unreachable or returns nothing usable. */
-export async function redesignDoc(d: Doc, brand: Brand, fields: EmailFields, score: number, suggestions: Suggestion[], onStage?: (s: string) => void): Promise<Redesign> {
+export async function redesignDoc(d: Doc, brand: Brand, fields: EmailFields, score: number, suggestions: Suggestion[], onStage?: (s: string) => void, extra = ''): Promise<Redesign> {
   if (d.width !== 600) throw new Error('AI chỉ làm lại bản desktop 600px.');
   const blocks = docBlocks(d);
   const lang = langOf(d);
@@ -129,7 +129,8 @@ ${BLOCK_DOC}`;
     problems ? `Máy chấm thấy:\n${problems}` : 'Máy chấm: không có cảnh báo.',
     imageLines.length ? `Ảnh có sẵn (${imageLines.length}):\n${imageLines.join('\n')}` : 'Ảnh: không có — image: null.',
     'Ảnh cuối cùng kèm theo là bản email hiện tại (thu nhỏ 50%).',
-  ].join('\n\n');
+    extra, // client house style and/or the user's own request
+  ].filter(Boolean).join('\n\n');
   onStage?.('Creative director AI đang xem lại và dựng lại…');
   const text = await askClaude({ system, turns: [{ role: 'user', text: user, images: [...images, ...(shot ? [shot] : [])] }], maxTokens: 16000, effort: 'high' });
   const j = extractJson<{ problems?: string[]; blocks?: unknown[]; fields?: Partial<EmailFields>; vibe?: string; note?: string }>(text);

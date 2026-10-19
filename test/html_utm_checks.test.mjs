@@ -153,3 +153,22 @@ test('html: style runs on one line (bold lead-in + normal text) share one line d
   assert.equal((cell.match(/<div style="margin:0;/g) || []).length, 2, 'two lines, not three stacked blocks');
   assert.match(cell, /<span style="[^"]*font-weight:700;[^"]*">Đã mở cửa<\/span> <span style="[^"]*font-weight:400;[^"]*">— chơi ngay<\/span>/);
 });
+
+test('checks: cold-list basics — postal address, unsubscribe, picture share, how soon the ask comes', () => {
+  const heavy = node({ id: 'root', type: 'FRAME', w: 600, h: 2000, children: [
+    node({ id: 'hero', y: 0, w: 600, h: 1200, hasImage: true, alt: 'Hero' }),
+    node({ id: 'cta', name: 'Button', y: 1300, w: 600, h: 100, link: 'https://shop.test', children: [node({ isText: true, text: 'Book a call', x: 200, y: 1330, w: 200, h: 40 })] }),
+    node({ id: 'pic2', y: 1400, w: 600, h: 600, hasImage: true, alt: 'More' }),
+  ] });
+  const codes = runChecks({ root: heavy, plan: planSlices(heavy) }).map((c) => c.code);
+  for (const c of ['address-missing', 'unsub-missing', 'image-heavy', 'cta-late']) assert.ok(codes.includes(c), c);
+  const ok = node({ id: 'root', type: 'FRAME', w: 600, h: 700, fill: '#ffffff', children: [
+    node({ id: 'cta', name: 'Button', y: 200, w: 600, h: 100, link: 'https://shop.test', children: [node({ isText: true, text: 'Book a call', x: 200, y: 230, w: 200, h: 40 })] }),
+    node({ isText: true, text: 'Sentry Advisory · 1201 Main Street, Suite 400, Dallas, TX 75202', y: 600, w: 600, h: 20 }),
+    node({ isText: true, text: 'Unsubscribe', y: 640, w: 600, h: 20, link: '*|UNSUB|*' }),
+  ] });
+  const codes2 = runChecks({ root: ok, plan: planSlices(ok) }).map((c) => c.code);
+  for (const c of ['address-missing', 'unsub-missing', 'image-heavy', 'cta-late']) assert.ok(!codes2.includes(c), c);
+  const vn = node({ id: 'root', type: 'FRAME', w: 600, h: 300, children: [node({ isText: true, text: 'Spa Lá · 12 Trần Hưng Đạo, Phường Bến Nghé, Quận 1 · Huỷ đăng ký', y: 0, w: 600, h: 20 })] });
+  assert.ok(!runChecks({ root: vn, plan: planSlices(vn) }).some((c) => c.code === 'address-missing' || c.code === 'unsub-missing'));
+});

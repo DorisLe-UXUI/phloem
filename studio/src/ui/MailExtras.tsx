@@ -8,7 +8,7 @@ import { audLists, previewRules, segments as audSegments, type AudList, type Seg
 import { HOSTED_PREF, loadQueue, parseRecipients, startServerQueue } from '../pipeline/mailSend';
 import {
   addSuppressions, campaignStats, deleteSender, forgetCampaign, hiddenCampaigns, listSenders, listSuppressions, mailHealth, mailHealthCached, mailSignedIn, myCampaigns,
-  removeSuppression, saveSender, serverCampaigns, serverSendControl, testSender, unhideCampaigns, type CampaignRef, type CampaignStats, type ProviderInfo, type Sender,
+  backfillRecipients, registerCampaign, rememberCampaign, removeSuppression, saveSender, serverCampaigns, serverSendControl, testSender, unhideCampaigns, type CampaignRef, type CampaignStats, type ProviderInfo, type Sender,
 } from '../pipeline/mailServer';
 import { Btn, Field, Num, Seg, Select, TextArea, TextInput, Toggle, Progress } from './components';
 import { Icon } from './icons';
@@ -187,15 +187,24 @@ const STATUS: Record<string, string> = { scheduled: 'đã lên lịch', sending:
 export function CampaignStatsList({ projectId }: { projectId: string }) {
   const [, force] = useState(0);
   const [remote, setRemote] = useState<CampaignRef[]>([]);
+  const [legacy, setLegacy] = useState<CampaignRef[]>([]);
   const [peek, setPeek] = useState(false);
-  useEffect(() => { if (mailSignedIn()) void serverCampaigns(projectId).then((r) => setRemote(r.campaigns.map(({ project: _p, ...c }) => ({ ...c, projectId })))).catch(() => {}); }, [projectId]);
+  const [peekOld, setPeekOld] = useState(false);
+  const load = () => serverCampaigns().then((r) => {
+    setRemote(r.campaigns.filter((c) => c.project === projectId).map(({ project: _p, ...c }) => ({ ...c, projectId })));
+    // sent before campaigns remembered their email: offer them here so nothing is ever out of reach
+    const known = new Set(myCampaigns().map((c) => c.id));
+    setLegacy(r.campaigns.filter((c) => !c.project && !known.has(c.id)).map(({ project: _p, ...c }) => ({ ...c, projectId })));
+  }).catch(() => {});
+  useEffect(() => { if (mailSignedIn()) void load(); }, [projectId]);
+  const adopt = async (c: CampaignRef) => { try { await registerCampaign(c.id, { subject: c.subject, from: '', fromName: '', links: undefined as unknown as string[], project: projectId }); rememberCampaign(c); unhideCampaigns([c.id]); await load(); force((x) => x + 1); } catch (e) { toast((e as Error).message, 'err'); } };
   if (!mailSignedIn()) return null;
   const byId = new Map<string, CampaignRef>();
   for (const c of [...myCampaigns(projectId), ...remote]) if (!byId.has(c.id)) byId.set(c.id, c);
   const q = loadQueue(projectId);
   if (q?.tracked && !byId.has(q.id)) byId.set(q.id, { id: q.id, projectId, subject: q.subject, via: 'gmail', at: q.createdAt, recipients: q.recipients.length });
   const all = [...byId.values()].sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  if (!all.length) return null;
+  if (!all.length && !legacy.length) return null;
   const hidden = new Set(hiddenCampaigns());
   const shown = all.filter((c) => !hidden.has(c.id)), hid = all.filter((c) => hidden.has(c.id));
   const unhide = (ids: string[]) => { unhideCampaigns(ids); force((x) => x + 1); };
@@ -211,6 +220,20 @@ export function CampaignStatsList({ projectId }: { projectId: string }) {
             <Btn xs onClick={() => unhide(hid.map((c) => c.id))}>Hiện lại tất cả</Btn>
           </div>
         )}
+        {legacy.length > 0 && (
+          <div class="row dim" style={{ gap: 6 }}>
+            <span class="grow">{legacy.length} chiến dịch cũ chưa gắn với email nào</span>
+            <Btn xs kind="ghost" onClick={() => setPeekOld(!peekOld)}>{peekOld ? 'Thu lại' : 'Xem'}</Btn>
+          </div>
+        )}
+        {peekOld && legacy.map((c) => (
+          <div key={c.id} class="row" style={{ gap: 6 }}>
+            <span class="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.subject}>{c.subject || c.id}</span>
+            <span class="dim">{c.recipients ? `${c.recipients} người · ` : ''}{new Date(c.at).toLocaleDateString('vi-VN')}</span>
+            <Btn xs onClick={() => void adopt(c)}>Gắn vào đây</Btn>
+            <Btn xs kind="ghost" title="Ai mở · ai bấm · ai mua" onClick={() => set({ modal: 'people', peopleOf: c.id })}>Xem</Btn>
+          </div>
+        ))}
         {peek && hid.map((c) => (
           <div key={c.id} class="row" style={{ gap: 6 }}>
             <span class="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.subject}</span>
@@ -226,6 +249,10 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
   const [st, setSt] = useState<CampaignStats | null>(null);
   const [err, setErr] = useState('');
   const load = async () => { try { setSt(await campaignStats(id)); setErr(''); } catch (e) { setErr((e as Error).message); } };
+  useEffect(() => { // a Gmail send from this browser: hand its recipient list to the relay so the report names people
+    const q0 = via === 'gmail' ? loadQueue(projectId) : null;
+    if (q0 && q0.id === id && q0.tracked && q0.recipients.length) void backfillRecipients(id, q0.recipients.slice(0, q0.cursor || q0.recipients.length), q0.createdAt).catch(() => {});
+  }, [id]);
   useEffect(() => {
     void load();
     const live = () => st?.send && ['scheduled', 'sending', 'waiting'].includes(st.send.status);
@@ -267,7 +294,9 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
         <span class="grow" />
         <Btn xs kind="ghost" onClick={onForget} title="Ẩn khỏi danh sách: số liệu vẫn còn, bấm Hiện lại ở cuối danh sách">Ẩn</Btn>
       </div>
-      {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
+      {err && (/không có chiến dịch/i.test(err)
+        ? <div class="check warn"><span class="lv">MẤT SỐ LIỆU</span><span class="m">Máy chủ không còn chiến dịch này: lần gửi trùng lúc máy chủ cập nhật nên phần đăng ký theo dõi bị mất. Mail vẫn đã tới người nhận; chỉ số mở/click của lần này không xem được. Bấm Ẩn để dọn khỏi danh sách.</span></div>
+        : <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>)}
     </div>
   );
 }

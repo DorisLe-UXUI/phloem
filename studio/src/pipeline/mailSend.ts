@@ -239,7 +239,7 @@ export async function runQueue(p: Project) {
   try {
     let m = await compose(p, acc.email, acc.name, { hosted: !!q.hosted, track: !!q.tracked });
     if (m.tracked) {
-      try { await registerCampaign(q.id, { subject: m.subject, from: acc.email, fromName: acc.name, links: m.links, labels: m.labels, via: 'gmail', project: p.id }); }
+      try { await registerCampaign(q.id, { subject: m.subject, from: acc.email, fromName: acc.name, links: m.links, labels: m.labels, via: 'gmail', project: p.id, recipients: q.recipients.length }); }
       catch (e) { log(`Không bật được theo dõi (${(e as Error).message}): gửi không theo dõi.`, 'er'); q.tracked = false; m = await compose(p, acc.email, acc.name, { hosted: !!q.hosted }); }
     }
     const tok = new Map<string, string>(); const sup = new Set<string>(); let tokBase = '';

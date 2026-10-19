@@ -6,6 +6,7 @@ import { assets } from '../storage/assets';
 import { askClaude, extractJson, type AiImage } from './client';
 import { siteSummary, type SiteProduct, type SiteProfile } from './site';
 
+import type { HouseStyle } from './clientStyle';
 export interface GenInput {
   goal: string;        // promo | newsletter | launch | welcome | event | cart | digest | other
   brandName: string;
@@ -25,6 +26,10 @@ export interface GenInput {
   products?: SiteProduct[];
   /** Second creative-director pass (default on). */
   refine?: boolean;
+  /** The client's house style (brand book + its past emails): every direction must look like that client's work. */
+  house?: HouseStyle | null;
+  /** A design trend the user asked for (TREND_OPTIONS id), '' = the AI picks what fits the brand. */
+  trend?: string;
 }
 
 export interface Variant { name: string; why: string; palette: string; vibe?: Vibe; headingFont?: string; bodyFont?: string; fields: EmailFields; blocks: BlockSpec[] }

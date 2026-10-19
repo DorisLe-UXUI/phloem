@@ -51,9 +51,9 @@ export function ReportsTab({ ctx }: { ctx: AudCtx }) {
                 <tr key={c.id} class="aud-click" onClick={() => set({ modal: 'people', peopleOf: c.id })} title="Xem ai mở, ai bấm, ai mua">
                   <td><b>{c.subject || '(không tiêu đề)'}</b>{c.status !== 'done' && <span class="chip" style={{ marginLeft: 6 }}>{c.status}</span>}</td>
                   <td class="dim">{c.via === 'gmail' ? 'Gmail' : c.list || 'danh sách dán tay'}{c.segment ? ` · ${c.segment}` : ''}</td>
-                  <td class="n">{c.sent.toLocaleString('vi-VN')}</td>
-                  <td class="n">{pct(c.opens, c.sent)}</td>
-                  <td class="n">{pct(c.clicks, c.sent)}</td>
+                  <td class="n">{c.sent ? c.sent.toLocaleString('vi-VN') : <span class="dim" title="Gửi trước khi Phloem lưu số người nhận">?</span>}</td>
+                  <td class="n"><b>{c.opens}</b>{c.sent ? <span class="dim"> · {pct(c.opens, c.sent)}</span> : null}</td>
+                  <td class="n"><b>{c.clicks}</b>{c.sent ? <span class="dim"> · {pct(c.clicks, c.sent)}</span> : null}</td>
                   <td class="n">{c.unsubscribes}</td>
                   <td class="n">{c.buyers || <span class="dim">0</span>}</td>
                   <td class="n">{c.orders || <span class="dim">0</span>}</td>

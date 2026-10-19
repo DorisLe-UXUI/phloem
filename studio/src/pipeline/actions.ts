@@ -522,6 +522,43 @@ function scoreOf(d: Doc, b: Brand, fields: Project['fields'], hasMobile: boolean
  *  keeps what was composed by hand and rebuilds the rest on the design system (redesignDoc); then the deterministic pass
  *  fixes everything the checker flags (polishDesign + links + alt + unsubscribe), all in ONE undo step. Without AI (no
  *  relay / key) only the deterministic pass runs. Subject/preheader are written by the AI when missing. */
+/** "Chỉnh bằng lời": the AI changes the open email the way the user asked, in the client's house style. ⌘Z undoes it. */
+export async function aiEdit(request: string): Promise<boolean> {
+  const p = get().project; const q = request.trim(); if (!p || !q) return false;
+  if (!(await aiTransport().catch(() => null))) { toast('AI chưa bật: đăng nhập tài khoản Phloem (relay) hoặc dán API key trong Cài đặt.', 'err'); return false; }
+  if (get().variant !== 'desktop') setVariant('desktop');
+  const pid = p.id;
+  const stage = (m: string) => set({ busy: { label: m, done: 0, total: 0 } });
+  const free = !!p.design?.html && !!p.design?.dir;
+  try {
+    if (free) {
+      const { docHash, editDesign } = await import('../ai/design');
+      if (docHash(p.desktop) !== p.design!.hash && !(await ask('Email đã được chỉnh tay sau khi AI vẽ. AI làm tiếp từ thiết kế gốc và giữ chữ hiện tại, nhưng vị trí hoặc màu chỉnh tay có thể đổi (⌘Z để quay lại). Tiếp tục?', 'Chỉnh bằng AI'))) return false;
+      stage('AI đang đọc yêu cầu…');
+      const r = await editDesign(p, q, stage);
+      if (get().project?.id !== pid) return false;
+      if (!r) { toast('AI giữ nguyên: thiết kế đã đáp ứng yêu cầu này.', 'info'); return false; }
+      commit(r.doc);
+      patchProject({ brand: r.brand, mobile: r.mobile ?? null, design: { ...p.design!, html: r.html, hash: docHash(r.doc), at: new Date().toISOString() } });
+      toast('Đã chỉnh theo yêu cầu. ⌘Z để quay lại bản trước.', 'ok');
+      return true;
+    }
+    if (doc().width !== 600) { toast('AI chỉ chỉnh bản desktop 600px.', 'err'); return false; }
+    const { redesignDoc } = await import('../ai/redesign');
+    const { houseBlock, houseStyleOf } = await import('../ai/clientStyle');
+    stage('Đang đọc phong cách khách hàng…');
+    const house = houseBlock(await houseStyleOf(p.clientId, 'vi', p.id).catch(() => null));
+    const before = scoreOf(doc(), brand(), p.fields, !!p.mobile);
+    const r = await redesignDoc(doc(), brand(), p.fields, before.score, before.suggestions, stage, [house, `YÊU CẦU CỦA NGƯỜI DÙNG (làm đúng điều này, đẹp và rõ ràng; giữ những gì yêu cầu không nhắc tới): ${q}`].filter(Boolean).join('\n\n'));
+    if (get().project?.id !== pid) return false;
+    commit(r.doc);
+    if (r.fields && Object.keys(r.fields).length) patchProject({ fields: { ...get().project!.fields, ...r.fields } });
+    toast(`Đã chỉnh theo yêu cầu${r.note ? `: ${r.note}` : ''}. ⌘Z để quay lại.`.slice(0, 220), 'ok');
+    return true;
+  } catch (e) { toast(`AI chưa chỉnh được: ${(e as Error).message}`.slice(0, 220), 'err'); return false; }
+  finally { set({ busy: null }); }
+}
+
 export async function autoFix(): Promise<string[]> {
   const changes: string[] = [];
   const p = get().project!; const pid = p.id; let b = brand(); const home = b.links?.website || b.links?.nav?.[0]?.url || '';
@@ -554,7 +591,9 @@ export async function autoFix(): Promise<string[]> {
   } else if (transport && d.width === 600 && get().variant === 'desktop') {
     set({ busy: { label: 'AI đang xem lại thiết kế…', done: 0, total: 0 } });
     try {
-      const r = await redesignDoc(d, b, p.fields, before.score, before.suggestions, (m) => set({ busy: { label: m, done: 0, total: 0 } }));
+      const { houseBlock, houseStyleOf } = await import('../ai/clientStyle');
+      const house = houseBlock(await houseStyleOf(p.clientId, 'vi', p.id).catch(() => null));
+      const r = await redesignDoc(d, b, p.fields, before.score, before.suggestions, (m) => set({ busy: { label: m, done: 0, total: 0 } }), house);
       if (get().project?.id !== pid) return changes; // the user moved on
       d = r.doc; fieldPatch = r.fields;
       if (r.vibe && r.vibe !== b.vibe) { b = { ...b, vibe: r.vibe }; changes.push(`Vibe ${r.vibe}`); }

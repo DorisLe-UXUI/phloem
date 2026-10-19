@@ -342,14 +342,14 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const proj = url.searchParams.get('project') || '';
           const list = S.campDue.all().filter((r) => r.owner === u.id && !/^(a_|test_)/.test(r.id)).map((r) => ({ id: r.id, ...JSON.parse(r.json) }))
             .filter((c) => !proj || c.project === proj)
-            .map((c) => ({ id: c.id, subject: c.send?.subject || c.subject || '', via: c.send ? 'server' : c.via || 'gmail', project: c.project || '', at: c.send?.sendAt || c.createdAt, recipients: c.send ? Object.values(Object.fromEntries(S.qCounts.all(u.id, c.id).map((x) => [x.status + x.variant, x.n]))).reduce((a, n) => a + n, 0) : Number(S.rcptCount.get(u.id, c.id).n) || 0 }))
+            .map((c) => ({ id: c.id, subject: c.send?.subject || c.subject || '', via: c.send ? 'server' : c.via || 'gmail', project: c.project || '', at: c.send?.sendAt || c.createdAt, recipients: c.send ? Object.values(Object.fromEntries(S.qCounts.all(u.id, c.id).map((x) => [x.status + x.variant, x.n]))).reduce((a, n) => a + n, 0) : Number(S.rcptCount.get(u.id, c.id).n) || c.recipients || 0 }))
             .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 100);
           json(res, 200, { campaigns: list }); return true;
         }
         if (p === '/mail/campaigns' && m === 'POST') {
           const b = await body(req); const id = String(b?.id || '').slice(0, 80); if (!id) { json(res, 400, { error: 'thiếu id' }); return true; }
           const prev = camp(u.id, id) || { createdAt: now() };
-          saveCamp(u.id, id, { ...prev, via: ['gmail', 'server'].includes(b.via) ? b.via : prev.via, project: b.project ? String(b.project).slice(0, 80) : prev.project, subject: String(b.subject || prev.subject || '').slice(0, 300), from: String(b.from || prev.from || '').slice(0, 200), fromName: String(b.fromName || prev.fromName || '').slice(0, 120), links: Array.isArray(b.links) ? b.links.map((x) => String(x).slice(0, 2000)).slice(0, 300) : prev.links || [], labels: Array.isArray(b.labels) ? b.labels.map((x) => String(x ?? '').slice(0, 80)).slice(0, 300) : prev.labels || [] });
+          saveCamp(u.id, id, { ...prev, recipients: Number.isFinite(Number(b.recipients)) && Number(b.recipients) > 0 ? Math.min(1e6, Math.round(Number(b.recipients))) : prev.recipients, via: ['gmail', 'server'].includes(b.via) ? b.via : prev.via, project: b.project ? String(b.project).slice(0, 80) : prev.project, subject: String(b.subject || prev.subject || '').slice(0, 300), from: String(b.from || prev.from || '').slice(0, 200), fromName: String(b.fromName || prev.fromName || '').slice(0, 120), links: Array.isArray(b.links) ? b.links.map((x) => String(x).slice(0, 2000)).slice(0, 300) : prev.links || [], labels: Array.isArray(b.labels) ? b.labels.map((x) => String(x ?? '').slice(0, 80)).slice(0, 300) : prev.labels || [] });
           json(res, 200, { ok: true }); return true;
         }
         const st = /^\/mail\/campaigns\/([^/]+)\/stats$/.exec(p);
@@ -361,6 +361,13 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const { html: _h, text: _t, ...send } = c.send || {};
           const ord = hooks.ordersSummary?.(u.id, id) || { orders: 0, revenue: 0, buyers: 0 };
           json(res, 200, { opens: Number(S.evReaders.get(u.id, id).u) || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, links: S.evLinks.all(u.id, id).map((r) => ({ url: c.links?.[r.link] || '', clicks: r.u })), byVariant, queue, send: c.send ? send : null, ...ord }); return true;
+        }
+        const rc = /^\/mail\/campaigns\/([^/]+)\/recipients$/.exec(p);
+        if (rc && m === 'POST') { // a browser send's recipient list, sent after the fact (sends from before the relay kept it)
+          const id = decodeURIComponent(rc[1]); const c = camp(u.id, id); if (!c) { json(res, 404, { error: 'không có chiến dịch' }); return true; }
+          const b = await body(req); const at = String(b?.at || c.createdAt || now()).slice(0, 40); let n = 0;
+          for (const e of (Array.isArray(b?.emails) ? b.emails : []).slice(0, 10000)) { const em = String(e).toLowerCase().trim(); if (EMAIL_RE.test(em)) { S.rcptAdd.run(u.id, id, em, '', at); n++; } }
+          json(res, 200, { ok: true, recorded: n }); return true;
         }
         const pp = /^\/mail\/campaigns\/([^/]+)\/people$/.exec(p);
         if (pp && m === 'GET') {

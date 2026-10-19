@@ -46,6 +46,27 @@ export interface CheckInput {
   hasMobile?: boolean;
 }
 
+// A real postal address (CAN-SPAM, Nghị định 91/2020): a street number + street/area word, or a US state + ZIP.
+const ADDRESS = /(\b\d{1,6}[a-z]?\s+[^\n,]{2,40}\b(street|st\.?|avenue|ave\.?|road|rd\.?|blvd|boulevard|drive|dr\.?|lane|ln\.?|way|suite|ste\.?|floor|fl\.?|đường|phố|ngõ|hẻm|phường|quận|huyện|xã|tầng|lầu)\b|\b(p\.?\s?o\.?\s?box)\b|\b[A-Z]{2}\s+\d{5}(-\d{4})?\b|\b(quận|q\.)\s?\d{1,2}\b|\b(tp\.?\s?hcm|hà nội|hồ chí minh|đà nẵng)\b)/i;
+const UNSUB = /(unsubscribe|opt[ -]?out|huỷ đăng ký|hủy đăng ký|ngừng nhận|\*\|UNSUB\|\*|\{\{\s*unsubscribe|%unsubscribe|\[unsubscribe\])/i;
+
+/** What a cold list (and spam filters) judge first: the law's footer, how much is picture, how soon the ask comes. */
+function deliverability(root: NNode, plan: SlicePlan, out: Check[]): void {
+  const nodes = flatten(root).map((f) => f.node);
+  const words = nodes.filter((n) => n.isText && n.text).map((n) => n.text!.replace(/\s+/g, ' ').trim()).join(' \n ');
+  const links = nodes.map((n) => n.link || '').filter(Boolean);
+  if (!ADDRESS.test(words)) out.push({ level: 'warn', code: 'address-missing', message: 'Chưa thấy địa chỉ bưu điện thật trong email. Luật chống spam (CAN-SPAM ở Mỹ, Nghị định 91 ở VN) bắt buộc có, kể cả mail lạnh B2B.' });
+  if (!UNSUB.test(words) && !links.some((l) => UNSUB.test(l))) out.push({ level: 'warn', code: 'unsub-missing', message: 'Thiết kế chưa có dòng huỷ đăng ký. Gửi qua Phloem (có theo dõi) sẽ tự chèn; gửi nơi khác thì bắt buộc phải có, và phải gỡ người huỷ trong 10 ngày làm việc.' });
+  const total = plan.slices.reduce((a, s) => a + s.w * s.h, 0) || 1;
+  const pic = plan.slices.filter((s) => !s.text && cellHasImage(root, s)).reduce((a, s) => a + s.w * s.h, 0);
+  const share = pic / total;
+  if (share > 0.6) out.push({ level: 'warn', code: 'image-heavy', message: `${Math.round(share * 100)}% email là ảnh. Hộp thư tắt ảnh (Gmail với người lạ, Outlook) sẽ mất phần lớn thông điệp, và tên miền mới dễ bị đẩy vào Quảng cáo/Spam. Gửi list lạnh nên để chữ quan trọng là chữ thật.` });
+  const firstCta = plan.slices.filter((s) => s.link && !/unsub|\*\|/i.test(s.link) && looksLikeCta(root, s)).sort((a, b) => a.y - b.y)[0];
+  if (firstCta && firstCta.y > 700) out.push({ level: 'warn', code: 'cta-late', message: `Nút bấm đầu tiên ở ${Math.round(firstCta.y)}px: người đọc phải cuộn mới thấy. Đưa CTA chính vào màn đầu (≈600px).`, sliceKey: firstCta.key });
+  const screens = plan.height / 700;
+  if (screens > 3.6) out.push({ level: 'info', code: 'screens', message: `Dài ≈ ${Math.round(screens)} màn hình điện thoại. Mail gửi người chưa quen nên đọc xong trong 5 giây: một thông điệp, một lời mời.` });
+}
+
 export function runChecks(inp: CheckInput): Check[] {
   const { root, plan } = inp;
   const out: Check[] = [];
@@ -98,6 +119,8 @@ export function runChecks(inp: CheckInput): Check[] {
       out.push({ level: 'warn', code: 'links-overlap', message: `"${a.name}" và "${b.name}" có link khác nhau nhưng chồng lên nhau — vùng chồng sẽ nhận link của layer sâu hơn.`, nodeId: b.id });
     }
   }
+
+  deliverability(root, plan, out);
 
   if (plan.slices.length > 40) out.push({ level: 'warn', code: 'slices-many', message: `${plan.slices.length} lát ảnh — nhiều request, email nặng. Gộp bớt link hoặc đơn giản hoá lưới.` });
 

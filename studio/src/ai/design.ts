@@ -12,6 +12,7 @@ import { GOAL_DESC, thumbOf, type GenInput } from './generate';
 import { siteSummary } from './site';
 import { extractHtml, htmlToDoc, tokenize } from './htmlToDoc';
 import { loadFluent3d } from '../design/library';
+import { houseBlock, houseStyleOf, type HouseStyle } from './clientStyle';
 
 export interface Palette { bg: string; surface: string; ink: string; muted: string; primary: string; accent: string; onPrimary: string; line: string }
 export interface Direction {
@@ -75,6 +76,23 @@ SIGNATURE HERO RECIPES (proven in Phloem; adapt one, combine two, never copy bli
 7. Collage: 2–3 photos as polaroids (white 10px border, rotate ±3–6deg, soft shadow) overlapping each other, translucent "tape" strips (rotated rgba rects) on corners, a handwritten-style accent word, 1–2 stickers; headline set on a solid colour block that overlaps the collage.
 8. Bento: a 2–3 column grid of cards with different spans and fills (one photo tile, one huge-number stat tile, one 3D-object tile, one quote/claim tile), radius 20–28px, 12px gaps, each tile a different but harmonious colour.
 
+TREND RADAR 2026 (what reads as fresh right now; pick the 1–2 moves that suit the brand, never stack them all)
+- Editorial serif revival: a high-contrast display serif with italic accents + a clean grotesk; magazine columns, issue numbers, pull quotes, drop caps.
+- Bento: modular tiles of different spans and fills (stat, photo, product, quote), radius 16–28px, 8–12px gaps.
+- Tactile 3D: soft rendered objects and glossy shapes casting real shadows onto saturated colour fields; squishy pill buttons.
+- Grain + aurora: blurred colour meshes under film grain, warm↔cool duotones (never the default purple SaaS gradient).
+- Big type crops: one giant word or number cropped by the section edge, outline type, stacked headlines in two weights.
+- Scrapbook: tape, polaroids, stickers, hand-drawn circles and arrows annotating the product, torn-paper bands.
+- Product cut-outs on colour: isolated products floating over a strong field with long soft shadows and spec call-outs on leader lines.
+- Neo-brutalist poster: thick rules, hard offset shadows (6px 6px 0 #000), boxed labels, mono type, bright primaries.
+- Quiet luxury: lots of air, tiny tracked caps, hairlines, one striking photo, muted earth palette, huge serif.
+- Soft glass: frosted cards over photos or meshes, pill buttons, 1px inner light borders.
+- Retro revival (playful brands only): 70s warm palette + rounded serifs, Y2K chrome + star sparkles, 90s web stickers.
+- Ticket & receipt: coupon notches, rows of dots as perforation, barcode from thin rects, receipt type for the offer.
+- Dark-mode native: rich near-black stage with neon or pastel accents that survives mail-client colour inversion.
+- Social proof as chat: reviews as message bubbles / UGC cards with stars and @handles.
+- Interactive look: a progress bar to free shipping, countdown tiles, scratch-card "reveal", toggles as decoration.
+
 AVOID (generic AI look)
 - Purple-on-white gradients by default; everything centred in identical rounded cards; emoji bullet lists; grey boxes; 24px headlines; Inter/Roboto everywhere; cookie-cutter SaaS sections; decoration unrelated to the brand; "Welcome to our newsletter" copy.
 
@@ -101,17 +119,36 @@ MOBILE: add @media (max-width:480px) rules: #email{width:100%!important}; stack 
 SIZE: total height 1600–2600px at 600px wide. Body text ≥ 15px, labels ≥ 12px, footer ≥ 12px, buttons ≥ 48px tall. Text on photos needs a scrim or a solid card behind it.`;
 
 /** The hero recipe list alone, for the planner. */
-const HERO_RECIPES = DESIGN_CRAFT.slice(DESIGN_CRAFT.indexOf('SIGNATURE HERO RECIPES'), DESIGN_CRAFT.indexOf('AVOID (generic AI look)')).trim();
+const HERO_RECIPES = DESIGN_CRAFT.slice(DESIGN_CRAFT.indexOf('SIGNATURE HERO RECIPES'), DESIGN_CRAFT.indexOf('TREND RADAR 2026')).trim();
+/** The trend radar alone, for the planner. */
+const TRENDS = DESIGN_CRAFT.slice(DESIGN_CRAFT.indexOf('TREND RADAR 2026'), DESIGN_CRAFT.indexOf('AVOID (generic AI look)')).trim();
 
 const CRITIC = `You are the creative director reviewing a designer's email before it ships. You receive the art direction, the HTML, and screenshots of how it RENDERS in Phloem (exactly what subscribers will see). Your standard is the best studio work on Behance, not "good enough".
 1. Silently score the hero and every section 1–10 on impact, typography, composition/layering, colour and polish. Anything below 8 is REBUILT, not nudged: bigger headline, a real overlap, a colour-field switch, a 3D object or photo used boldly, a stronger recipe from the list. A timid hero (small headline, pale flat background, nothing overlapping) is always below 8.
 2. Fix everything wrong in the render: overlapping or clipped text, elements outside the 600px canvas, misalignment, cramped or uneven spacing, weak contrast, awkward empty areas, badly cropped photos, decoration covering content, lowercase sentence starts, anything that did not convert (follow the technical contract), sections that feel unfinished.
 3. Keep the concept, palette, fonts, copy facts, links and image ids.
+4. If a CLIENT HOUSE STYLE is given, anything off-brand is a defect: wrong colour roles, a foreign type feel, copy against the voice, a "never" from the brand book.
 Return the COMPLETE revised HTML document in one \`\`\`html block. No commentary.`;
 
 // ---------------------------------------------------------------------------------------------------------------
 
-interface Ctx { lang: 'vi' | 'en'; brief: string; imageLines: string[]; thumbs: Map<string, AiImage>; validIds: Set<string>; fonts: string; presets: string }
+interface Ctx { lang: 'vi' | 'en'; brief: string; imageLines: string[]; thumbs: Map<string, AiImage>; validIds: Set<string>; fonts: string; presets: string; house: HouseStyle | null }
+
+/** Trends the user can ask for in Dựng bằng AI ('' = the AI picks what suits the brand). */
+export const TREND_OPTIONS: { id: string; label: string; brief: string }[] = [
+  { id: '', label: 'AI chọn hợp thương hiệu', brief: '' },
+  { id: 'editorial', label: 'Tạp chí (editorial serif)', brief: 'Editorial serif revival: magazine layout, high-contrast display serif with italic accents, issue numbers, pull quotes.' },
+  { id: 'bento', label: 'Bento', brief: 'Bento: modular tiles of different spans and fills (stat, photo, product, quote) with generous radii.' },
+  { id: 'tactile3d', label: '3D mềm (tactile)', brief: 'Tactile 3D: soft 3D objects and glossy shapes casting shadows onto saturated colour fields, squishy pill buttons.' },
+  { id: 'aurora', label: 'Gradient + grain', brief: 'Grain + aurora: blurred colour meshes under film grain, warm↔cool duotones, frosted glass over the mesh.' },
+  { id: 'bigtype', label: 'Chữ khổng lồ', brief: 'Big type crops: giant words/numbers cropped by the edges, outline type, stacked headlines.' },
+  { id: 'scrapbook', label: 'Scrapbook / collage', brief: 'Scrapbook: polaroids, tape, stickers, hand-drawn circles and arrows, torn-paper bands.' },
+  { id: 'cutout', label: 'Sản phẩm tách nền', brief: 'Product cut-outs floating on strong colour fields with long soft shadows and spec call-outs.' },
+  { id: 'brutalist', label: 'Brutalist poster', brief: 'Neo-brutalist poster: thick rules, hard offset shadows, boxed labels, mono type, bright primaries.' },
+  { id: 'luxury', label: 'Sang trọng tối giản', brief: 'Quiet luxury: lots of air, tiny tracked caps, hairlines, one striking photo, muted earth palette, huge serif.' },
+  { id: 'retro', label: 'Retro 70s / Y2K', brief: 'Retro revival: 70s warm palette and rounded serifs, or Y2K chrome with star sparkles (pick what suits the brand).' },
+  { id: 'dark', label: 'Nền tối neon', brief: 'Dark-mode native: rich near-black stage with neon or pastel accents.' },
+];
 
 function langOf(inp: GenInput): 'vi' | 'en' { return inp.language && inp.language !== 'auto' ? inp.language : (inp.site?.lang || '').toLowerCase().startsWith('en') ? 'en' : 'vi'; }
 
@@ -127,7 +164,10 @@ async function buildCtx(inp: GenInput): Promise<{ ctx: Ctx; images: AiImage[] }>
   }
   const fonts = FONTS.filter((f) => f.google && (lang !== 'vi' || f.vi)).map((f) => `${f.family} (${f.cat})`).join(', ');
   const presets = BRAND_PRESETS.map((p) => `${p.name} ${p.brand.primary}/${p.brand.accent} on ${p.brand.bg}`).join('; ');
+  const trend = TREND_OPTIONS.find((t) => t.id && t.id === inp.trend);
   const brief = [
+    houseBlock(inp.house),
+    trend ? `TREND THE USER WANTS: ${trend.brief} All three directions build on it in different ways (vary concept and composition)${inp.house ? ', inside the client house style' : ''}.` : '',
     inp.site ? `WEBSITE PROFILE (read by Phloem):\n${siteSummary(inp.site, inp.webBrand || {})}` : '',
     inp.webBrand ? `Brand colours from the website: primary ${inp.webBrand.primary}, accent ${inp.webBrand.accent}, ink ${inp.webBrand.ink}, background ${inp.webBrand.bg}.` : '',
     inp.products && inp.products.length ? `PRODUCTS (use exactly these names/prices/links/images):\n${inp.products.map((p) => `- ${p.name}${p.price ? ` · ${p.price}` : ''}${p.compareAt ? ` (was ${p.compareAt})` : ''} · ${p.url || ''}${p.assetId ? ` · image "${p.assetId}"` : ''}`).join('\n')}` : '',
@@ -139,11 +179,13 @@ async function buildCtx(inp: GenInput): Promise<{ ctx: Ctx; images: AiImage[] }>
     `Raw content (headlines, products, prices, links, dates, codes):\n${inp.content || '(none — write sensible copy for this email type, no invented numbers)'}`,
     `COPY LANGUAGE: ${lang === 'en' ? 'English (natural, concise marketing English)' : 'Vietnamese (tiếng Việt tự nhiên, đúng chính tả, có dấu)'}`,
   ].filter(Boolean).join('\n\n');
-  return { ctx: { lang, brief, imageLines, thumbs, validIds: new Set(ids), fonts, presets }, images };
+  return { ctx: { lang, brief, imageLines, thumbs, validIds: new Set(ids), fonts, presets, house: inp.house || null }, images };
 }
 
 const PLAN = `You are the creative director of a top design studio. Plan THREE email designs for the brief: three genuinely different art directions (different concept, composition, mood and type — not colour swaps), each one right for this brand and goal. If a website profile is given, all three must feel like that brand's own team made them (its colours, its voice); still vary concept and composition.
 The designer has: the user's photos, a library of studio-quality 3D objects (gifts, rockets, food, devices, hearts, trophies…), procedural backgrounds/patterns/glossy 3D shapes in any palette, thousands of icons and stickers, frosted-glass cards, and ~100 Google fonts with Vietnamese. Plan directions that use these deliberately (e.g. a hero built around one big 3D object, a glass card over a photo, a patterned band).
+If a CLIENT HOUSE STYLE is given, it outranks everything else: all three directions use the client's palette roles, type, voice, logo/footer treatment and photo style (screenshots of its recent emails may be attached as past-email-N: keep the family resemblance, never repeat their hero idea); the directions differ in concept and composition, not in brand.
+Each direction must feel current: name in "signature" which 1–2 moves from the TREND RADAR it uses (or the trend the user asked for).
 Each direction must clear the WOW bar: a first screen that is a finished poster (full-bleed colour field, spotlight stage or full-bleed photo; 3+ overlapping depth planes; a 72–140px headline). The three directions use three DIFFERENT hero recipes.
 Aesthetic territories to draw from (pick what fits, combine, or invent): editorial magazine, Swiss grid, neo-brutalist poster, luxury minimal, soft pastel / organic, playful toy-like stickers, retro-futuristic chrome, Y2K, art deco geometric, Japanese minimal, bold sports campaign, product-on-stage studio lighting, collage / scrapbook, monochrome high-contrast, warm craft / handmade.
 Return ONLY JSON:
@@ -152,8 +194,8 @@ Return ONLY JSON:
 /** Three distinct directions, planned together (so they differ for real). */
 export async function planDirections(inp: GenInput, c: Ctx, images: AiImage[], signal?: AbortSignal): Promise<Direction[]> {
   const text = await askClaude({
-    system: `${PLAN}\n\n${HERO_RECIPES}\n\nAllowed fonts: ${c.fonts}.\nPalette presets you may adapt: ${c.presets}.`,
-    turns: [{ role: 'user', text: `${c.brief}\n\nIMAGES (ids; attached in order):\n${c.imageLines.join('\n') || '(none — design with type, colour, shapes and icons)'}`, images }],
+    system: `${PLAN}\n\n${HERO_RECIPES}\n\n${TRENDS}\n\nAllowed fonts: ${c.fonts}.\nPalette presets you may adapt${c.house ? ' (only when the client palette does not cover a role)' : ''}: ${c.presets}.`,
+    turns: [{ role: 'user', text: `${c.brief}\n\nIMAGES (ids; attached in order):\n${c.imageLines.join('\n') || '(none — design with type, colour, shapes and icons)'}${c.house?.images.length ? `\n\nAfter the photos: ${c.house.images.length} screenshot(s) of this client's recent emails (style reference only, not usable images).` : ''}`, images: [...images, ...(c.house?.images || [])] }],
     maxTokens: 12000, effort: 'high',
   });
   if (signal?.aborted) throw new Error('Đã huỷ.');
@@ -162,7 +204,7 @@ export async function planDirections(inp: GenInput, c: Ctx, images: AiImage[], s
   if (!dirs.length) throw new Error('AI không lên được hướng thiết kế nào. Thử mô tả rõ hơn.');
   const hex = (v: unknown, d: string) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim().toUpperCase() : d);
   const okFont = (f: unknown, d: string) => { const hit = FONTS.find((x) => x.family.toLowerCase() === String(f || '').toLowerCase() && (c.lang !== 'vi' || x.vi)); return hit ? hit.family : d; };
-  return dirs.map((d) => ({
+  return dirs.map((d) => onBrand({
     ...d,
     palette: { bg: hex(d.palette?.bg, '#FFFFFF'), surface: hex(d.palette?.surface, '#F4F4F2'), ink: hex(d.palette?.ink, '#111111'), muted: hex(d.palette?.muted, '#666666'), primary: hex(d.palette?.primary, '#111111'), accent: hex(d.palette?.accent, '#FF5C39'), onPrimary: hex(d.palette?.onPrimary, '#FFFFFF'), line: hex(d.palette?.line, '#E5E5E5') },
     headingFont: okFont(d.headingFont, 'Be Vietnam Pro'), bodyFont: okFont(d.bodyFont, 'Be Vietnam Pro'),
@@ -170,7 +212,20 @@ export async function planDirections(inp: GenInput, c: Ctx, images: AiImage[], s
     layout: Array.isArray(d.layout) ? d.layout.map(String) : [],
     images: Array.isArray(d.images) ? d.images.filter((x) => x && c.validIds.has(String(x.id))).map((x) => ({ id: String(x.id), use: String(x.use || '') })) : [],
     fields: { campaignName: String(d.fields?.campaignName || d.name), subject: String(d.fields?.subject || ''), preheader: String(d.fields?.preheader || '') },
-  }));
+  }, c.house));
+}
+
+const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const near = (a: string, b: string) => { const x = rgb(a), y = rgb(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 48; };
+const lum = (h: string) => { const [r, g, b] = rgb(h).map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+/** The client's type and main colour are not up for debate: a direction that drifted gets them back. */
+export function onBrand(d: Direction, h: HouseStyle | null): Direction {
+  if (!h) return d;
+  const out = { ...d, palette: { ...d.palette } };
+  if (h.fonts.heading) out.headingFont = h.fonts.heading;
+  if (h.fonts.body) out.bodyFont = h.fonts.body;
+  if (h.primary && ![out.palette.primary, out.palette.accent, out.palette.bg].some((x) => near(x, h.primary!))) { out.palette.primary = h.primary; out.palette.onPrimary = lum(h.primary) > 0.45 ? '#111111' : '#FFFFFF'; }
+  return out;
 }
 
 function dirText(d: Direction): string {
@@ -184,10 +239,10 @@ function picks(c: Ctx, d: Direction, max = 8): AiImage[] {
 
 /** The designer writes the HTML, streaming (onHtml gets the partial document for a live preview). */
 export async function drawDirection(c: Ctx, d: Direction, onHtml: (html: string) => void, signal?: AbortSignal): Promise<string> {
-  const imgs = picks(c, d);
+  const imgs = picks(c, d); const ref = c.house?.images || [];
   const text = await streamClaude({
     system: `${DESIGN_CRAFT}\n\n${DESIGN_TECH}\n\nAllowed fonts (font-family values, exact spelling): ${c.fonts}.`,
-    turns: [{ role: 'user', text: `${c.brief}\n\n${dirText(d)}\n\nIMAGE LIST (data-img ids; the attached images are the first ${imgs.length} of the direction's picks, in order):\n${c.imageLines.join('\n') || '(no images: build the visuals with type, colour, SVG shapes, icons and stickers)'}\n\nDesign and code this email now.`, images: imgs }],
+    turns: [{ role: 'user', text: `${c.brief}\n\n${dirText(d)}\n\nIMAGE LIST (data-img ids; the attached images are the first ${imgs.length} of the direction's picks, in order):\n${c.imageLines.join('\n') || '(no images: build the visuals with type, colour, SVG shapes, icons and stickers)'}${ref.length ? `\n\nThe last ${ref.length} attachment(s) are screenshots of this client's recent emails: match their family look (type, colour roles, logo/header and footer treatment, buttons), not their layout.` : ''}\n\nDesign and code this email now.`, images: [...imgs, ...ref] }],
     maxTokens: 32000, effort: 'high',
   }, (t) => onHtml(extractHtml(t)), signal);
   const html = extractHtml(text);
@@ -309,13 +364,50 @@ export async function reviseDesign(p: Project, onStage: (m: string) => void): Pr
   await loadFluent3d().catch(() => null);
   const d = dz.dir as Direction;
   const ids = [...new Set([...dz.html.matchAll(/data-img="([^"]+)"/g)].map((m) => m[1]).filter((id) => assets.get(id)))];
-  const inp: GenInput = { goal: 'other', brandName: p.brand.name, brief: `Subject: ${p.fields.subject}\nPreheader: ${p.fields.preheader}`, content: '', tone: '', imageIds: ids, palette: 'auto', language: /[ăâđêôơư]/i.test(`${p.fields.subject} ${p.fields.preheader}`) ? 'vi' : 'en' };
+  const language: 'vi' | 'en' = /[ăâđêôơư]/i.test(`${p.fields.subject} ${p.fields.preheader}`) ? 'vi' : 'en';
+  const house = await houseStyleOf(p.clientId, language, p.id).catch(() => null);
+  const inp: GenInput = { goal: 'other', brandName: p.brand.name, brief: `Subject: ${p.fields.subject}\nPreheader: ${p.fields.preheader}`, content: '', tone: '', imageIds: ids, palette: 'auto', language, house };
   onStage('Creative director đang xem bản render…');
   const { ctx } = await buildCtx(inp);
   const html = await reviewDirection(ctx, d, dz.html, p.desktop, p.brand, [], () => onStage('Creative director đang vẽ lại…'));
   if (html === dz.html) return null;
   onStage('Đang tách layer…');
   const conv = await convertDesign(html, d, p.brand, ctx.validIds);
+  const used = [...new Set([...flatNodes(conv.doc.nodes), ...(conv.mobile ? flatNodes(conv.mobile.nodes) : [])].filter((n) => n.type === 'image' && n.assetId).map((n) => (n as { assetId: string }).assetId))];
+  await assets.persist(used, p.id);
+  return { html, ...conv };
+}
+const EDITOR = `You are the art director editing a finished email because the client asked for a change. You receive the art direction, the current HTML, screenshots of how it renders in Phloem (what subscribers get), the words currently on the canvas, and the request (often in Vietnamese).
+1. Do what is asked, and do it beautifully. A vague request ("đẹp hơn", "sang hơn", "trend hơn", "wow hơn", "hợp thương hiệu hơn") means a decisive, VISIBLE upgrade, never a nudge: a stronger hero (bigger type, real overlap, a colour-field or spotlight stage), sharper hierarchy, a fresher move from the TREND RADAR, richer depth (3D object, glass card, grain mesh), better rhythm between sections.
+2. Keep what the request does not touch: copy facts, prices, codes, links, image ids, and the palette and fonts unless the request is about them. Use the words currently on the canvas (the user may have edited them there).
+3. A CLIENT HOUSE STYLE, when given, always wins: stay on-brand while you change things.
+4. Fix any rendering problem you notice on the way (clipped or overlapping text, overflow past 600px, weak contrast, lowercase sentence starts).
+Return the COMPLETE revised HTML document in one \`\`\`html block. No commentary.`;
+
+/** "Chỉnh bằng lời": the art director edits the current free-form design as the user asked, looking at its render. */
+export async function editDesign(p: Project, request: string, onStage: (m: string) => void, signal?: AbortSignal): Promise<{ html: string; doc: Doc; mobile: Doc | null; brand: Brand; warnings: string[] } | null> {
+  const dz = p.design; if (!dz || !dz.dir || !dz.html) return null;
+  await loadFluent3d().catch(() => null);
+  const d = dz.dir as Direction;
+  const ids = [...new Set([...dz.html.matchAll(/data-img="([^"]+)"/g)].map((m) => m[1]).filter((id) => assets.get(id)))];
+  const language: 'vi' | 'en' = /[ăâđêôơư]/i.test(`${p.fields.subject} ${p.fields.preheader}`) ? 'vi' : 'en';
+  onStage('Đang đọc phong cách khách hàng…');
+  const house = await houseStyleOf(p.clientId, language, p.id).catch(() => null);
+  const inp: GenInput = { goal: 'other', brandName: p.brand.name, brief: `Subject: ${p.fields.subject}\nPreheader: ${p.fields.preheader}`, content: '', tone: '', imageIds: ids, palette: 'auto', language, house };
+  const { ctx } = await buildCtx(inp);
+  const words = flatNodes(p.desktop.nodes).filter((n) => n.type === 'text').map((n) => (n as { text: string }).text.replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 80);
+  const imgs = shots(p.desktop, p.brand);
+  onStage('Art director đang xem bản render…');
+  const text = await streamClaude({
+    system: `${EDITOR}\n\n${DESIGN_CRAFT}\n\n${DESIGN_TECH}\n\nAllowed fonts: ${ctx.fonts}.`,
+    turns: [{ role: 'user', text: `${ctx.brief}\n\n${dirText(d)}\n\nIMAGE LIST:\n${ctx.imageLines.join('\n') || '(none)'}\n\nWORDS ON THE CANVAS NOW:\n${words.map((w) => `- ${w}`).join('\n')}\n\nREQUEST: ${request}\n\nThe attached ${imgs.length} screenshot(s) are the current Phloem render, top to bottom (600px wide).\n\nCURRENT HTML:\n\`\`\`html\n${dz.html}\n\`\`\``, images: imgs }],
+    maxTokens: 32000, effort: 'high',
+  }, () => onStage('Art director đang vẽ lại theo yêu cầu…'), signal);
+  const html = extractHtml(text);
+  if (!/<(div|section|table)[\s>]/i.test(html) || html === dz.html) return null;
+  onStage('Đang tách layer…');
+  const conv = await convertDesign(html, d, p.brand, ctx.validIds);
+  await readyDoc(conv.doc);
   const used = [...new Set([...flatNodes(conv.doc.nodes), ...(conv.mobile ? flatNodes(conv.mobile.nodes) : [])].filter((n) => n.type === 'image' && n.assetId).map((n) => (n as { assetId: string }).assetId))];
   await assets.persist(used, p.id);
   return { html, ...conv };

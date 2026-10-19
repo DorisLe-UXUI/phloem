@@ -9,7 +9,8 @@ import * as A from '../pipeline/actions';
 import { brandForPalette, brandForVariant, generateVariants, variantToDoc, type GenInput, type Variant } from '../ai/generate';
 import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
-import { designEmail, docHash, redrawDirection, type DesignVariant } from '../ai/design';
+import { designEmail, docHash, redrawDirection, TREND_OPTIONS, type DesignVariant } from '../ai/design';
+import { houseStyleOf, type HouseStyle } from '../ai/clientStyle';
 import { capitalizeSentences, prepareHtml } from '../ai/htmlToDoc';
 import * as ops from '../model/ops';
 import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, linksFromSite, type SiteProduct, type SiteProfile } from '../ai/site';
@@ -100,6 +101,11 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
   useEffect(() => { const u = (get().settings.relayUrl || '').replace(/\/$/, ''); if (!u) return; fetch(u + '/', { signal: AbortSignal.timeout(2500) }).then((r) => r.json()).then((j) => setRelayUp(!!j?.ai && !!j?.auth)).catch(() => setRelayUp(false)); }, [s.settings.relayUrl, s.user?.id]);
   const [thumbs, setThumbs] = useState<string[]>([]);
   const [err, setErr] = useState('');
+  // the client this email is for: its brand book + recent emails steer every direction (switchable)
+  const clientId = A.currentClientId();
+  const [house, setHouse] = useState<HouseStyle | null | undefined>(undefined);
+  const [useHouse, setUseHouse] = useState(true);
+  useEffect(() => { setHouse(undefined); void houseStyleOf(clientId, form.language === 'en' ? 'en' : 'vi', s.project?.id).then(setHouse).catch(() => setHouse(null)); }, [clientId]);
   const [, bump] = useState(0);
   const file = useRef<HTMLInputElement>(null);
   const logoFile = useRef<HTMLInputElement>(null);
@@ -163,6 +169,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
       if ((form.website || '').trim() && !form.site) { // typed a website but never pressed "AI đọc web": read it first
         const r = await analyzeNow(); if (r) input = r;
       }
+      input = { ...input, house: useHouse ? house || null : null };
       await document.fonts.ready;
       if (mode === 'design') {
         let list: DesignVariant[] = [];
@@ -269,6 +276,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
         </button>
       </div>
       {mode === 'design' && <label class="row small" style={{ gap: 8, cursor: 'pointer' }}><input type="checkbox" checked={review} onChange={(e) => setReview((e.target as HTMLInputElement).checked)} /><span>Creative director soát và làm đẹp thêm một vòng trên bản render <span class="muted">(đẹp hơn: khoảng 8–10 phút cho 3 phương án, tắt thì khoảng 5 phút)</span></span></label>}
+      {clientId && <HouseCard house={house} on={useHouse} onToggle={setUseHouse} />}
       <div class="small muted">Dán link website: AI tự vào xem, lấy logo, màu, font, ảnh thật và giọng văn. Thêm ảnh và nội dung thô nếu có.</div>
       <div class="card glow">
         <div class="row"><Icon name="external" style={{ color: 'var(--neon)' }} /><b class="grow">Website thương hiệu</b>{form.site && <span class="chip on">đã đọc {form.site.siteName || form.site.title}</span>}</div>
@@ -308,7 +316,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
       <div class="grid3">
         <Field label="Giọng điệu"><Select value={form.tone} options={TONES} onChange={(v) => upd({ tone: v })} /></Field>
         <Field label="Ngôn ngữ copy"><Select value={form.language || 'auto'} options={[{ v: 'auto', label: 'Theo website / nội dung' }, { v: 'vi', label: 'Tiếng Việt' }, { v: 'en', label: 'English' }]} onChange={(v) => upd({ language: v as GenInput['language'] })} /></Field>
-        <div />
+        <Field label="Xu hướng thiết kế" hint="2026"><Select value={form.trend || ''} options={TREND_OPTIONS.map((t) => ({ v: t.id, label: t.label }))} onChange={(v) => upd({ trend: v })} /></Field>
       </div>
       <Field label="Email này để làm gì? Gửi cho ai?" hint="brief"><TextArea rows={2} value={form.brief} placeholder="Sale cuối tuần 30% cho khách cũ, muốn họ quay lại mua đồ gốm trước Tết…" onCommit={(v) => upd({ brief: v })} onInput={(v) => upd({ brief: v })} /></Field>
       <Field label="Nội dung thô" hint="tiêu đề, sản phẩm, giá, link, ngày, chính sách… dán thoải mái"><TextArea rows={6} value={form.content} placeholder={'Cốc men tro 300ml 245.000₫ → 171.000₫ https://terra.vn/p/coc\nĐĩa ăn 24cm 320.000₫ → 224.000₫\nFreeship toàn quốc, đổi trả 30 ngày\nMã TERRA30 đến hết Chủ nhật 19/10'} onCommit={(v) => upd({ content: v })} onInput={(v) => upd({ content: v })} /></Field>
@@ -443,4 +451,25 @@ function LiveHtml({ html, ids }: { html: string; ids: string[] }) {
     return () => clearTimeout(t);
   }, [html]);
   return <div ref={wrap} class="live-html"><iframe ref={ref} sandbox="allow-same-origin" title="Đang vẽ" style={{ width: 600, height: 1320, transform: `scale(${k})` }} /></div>;
+}
+
+/** Which client style the AI will follow: brand book, past emails, type and colours, with a switch. */
+function HouseCard({ house, on, onToggle }: { house: HouseStyle | null | undefined; on: boolean; onToggle: (v: boolean) => void }) {
+  if (house === undefined) return <div class="card"><div class="small dim">Đang đọc phong cách khách hàng…</div></div>;
+  if (!house) return null;
+  const empty = !house.hasBook && !house.pastEmails;
+  return (
+    <div class={`card ${on && !empty ? 'glow' : ''}`}>
+      <div class="row"><Icon name="palette" style={{ color: 'var(--neon)' }} /><b class="grow">Phong cách khách hàng · {house.name}</b>{!empty && <label class="row small" style={{ gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={on} onChange={(e) => onToggle((e.target as HTMLInputElement).checked)} />Theo phong cách này</label>}</div>
+      {empty ? <div class="small muted">Khách này chưa có bộ nhận diện hay mail cũ nào. Tạo bộ nhận diện ở Phloem MKT (Thương hiệu) hoặc cho AI đọc website bên dưới để mail đúng chất khách.</div> : (
+        <div class="row wrap small" style={{ gap: 8 }}>
+          {house.hasBook && <span class="chip on">bộ nhận diện</span>}
+          {house.pastEmails > 0 && <span class="chip on">học từ {house.pastEmails} mail cũ{house.images.length ? ` (${house.images.length} ảnh)` : ''}</span>}
+          {(house.fonts.heading || house.fonts.body) && <span class="chip">{[house.fonts.heading, house.fonts.body].filter(Boolean).join(' / ')}</span>}
+          {[house.primary, house.accent].filter(Boolean).map((c) => <i key={c} title={c} style={{ width: 16, height: 16, borderRadius: '50%', background: c, border: '1px solid var(--line-2)', display: 'inline-block' }} />)}
+          <span class="dim">AI giữ màu, font, giọng văn, logo và chân mail của khách; ba phương án khác nhau ở ý tưởng, không khác thương hiệu.</span>
+        </div>
+      )}
+    </div>
+  );
 }

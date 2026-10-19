@@ -75,9 +75,15 @@ export async function hostImages(items: { key: string; bytes: Uint8Array; mime: 
 }
 
 // ---------- campaigns, tokens, stats ----------
-export const registerCampaign = (id: string, c: { subject: string; from: string; fromName: string; links: string[]; labels?: string[]; via?: 'gmail' | 'server'; project?: string }) => api<{ ok: true }>('/mail/campaigns', { body: { id, ...c } });
+export const registerCampaign = (id: string, c: { subject: string; from: string; fromName: string; links: string[]; labels?: string[]; via?: 'gmail' | 'server'; project?: string; recipients?: number }) => api<{ ok: true }>('/mail/campaigns', { body: { id, ...c } });
 export const recipientTokens = (campaign: string, emails: string[], variant = '') => api<{ base: string; tokens: Record<string, string>; suppressed: string[] }>('/mail/tokens', { body: { campaign, emails, variant } });
 export const campaignStats = (id: string) => api<CampaignStats>(`/mail/campaigns/${encodeURIComponent(id)}/stats`);
+/** Record who a browser send went to (sends from before the relay kept the list), so the report can name them. */
+export async function backfillRecipients(id: string, emails: string[], at?: string): Promise<void> {
+  const key = `phloem.mail.rcpt.${id}`; try { if (localStorage.getItem(key)) return; } catch { /* ignore */ }
+  for (let i = 0; i < emails.length; i += 2000) await api<{ ok: true }>(`/mail/campaigns/${encodeURIComponent(id)}/recipients`, { body: { emails: emails.slice(i, i + 2000), at } });
+  try { localStorage.setItem(key, '1'); } catch { /* ignore */ }
+}
 /** Each recipient of a campaign: opened, which links, what they bought (orders the shop's tag matched to this email). */
 export const campaignPeople = (id: string) => api<CampaignPeople>(`/mail/campaigns/${encodeURIComponent(id)}/people`);
 

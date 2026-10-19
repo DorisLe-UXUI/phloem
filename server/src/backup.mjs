@@ -2,7 +2,7 @@
 // restored from an S3-compatible bucket at boot and a consistent, gzipped snapshot is uploaded ~10 min after writes and on
 // shutdown, only when something changed (Render's free plan allows 5 GB of outbound traffic a month: full uploads on every
 // wake-up and sleep used it up). Asset bytes are separate objects in the same bucket (blobs.mjs). Zero dependencies: AWS Signature V4 by hand. Works with Cloudflare R2 (free 10 GB), Backblaze B2, AWS S3, MinIO.
-import { createHash, createHmac } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, readFileSync, renameSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip, createGzip } from 'node:zlib';
@@ -14,7 +14,7 @@ export function backupConfig(env = process.env) {
   const endpoint = String(env.BACKUP_S3_ENDPOINT || '').replace(/\/$/, '');
   const bucket = env.BACKUP_S3_BUCKET, key = env.BACKUP_S3_KEY, secret = env.BACKUP_S3_SECRET;
   if (!endpoint || !bucket || !key || !secret) return null;
-  return { endpoint, bucket, key, secret, region: env.BACKUP_S3_REGION || 'auto', prefix: String(env.BACKUP_S3_PREFIX || 'phloem/').replace(/^\/+/, ''), every: Math.max(1, Number(env.BACKUP_EVERY_MIN || 60)), debounce: Math.max(1, Number(env.BACKUP_DEBOUNCE_SEC || 600)) };
+  return { endpoint, bucket, key, secret, region: env.BACKUP_S3_REGION || 'auto', prefix: String(env.BACKUP_S3_PREFIX || 'phloem/').replace(/^\/+/, ''), every: Math.max(1, Number(env.BACKUP_EVERY_MIN || 60)), debounce: Math.max(1, Number(env.BACKUP_DEBOUNCE_SEC || 60)) }; // ≤ 1 min behind: a crash or deploy loses at most that
 }
 
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -52,10 +52,10 @@ function call(cfg, method, objectKey, payload = Buffer.alloc(0), extra = {}, opt
     const req = mod({ protocol: url.protocol, hostname: url.hostname, port: url.port || undefined, path: url.pathname + url.search, method, headers: { ...headers, 'content-length': streamed ? payload.size : payload.length }, timeout: 60_000 }, (res) => {
       if (opts.toFile && res.statusCode === 200) {
         const part = `${opts.toFile}.part`;
-        pipeline(res, createWriteStream(part)).then(() => { renameSync(part, opts.toFile); resolve({ status: 200, body: Buffer.alloc(0), size: statSync(opts.toFile).size }); }, (e) => { try { unlinkSync(part); } catch { /* none */ } reject(e); });
+        pipeline(res, createWriteStream(part)).then(() => { renameSync(part, opts.toFile); resolve({ status: 200, body: Buffer.alloc(0), size: statSync(opts.toFile).size, headers: res.headers }); }, (e) => { try { unlinkSync(part); } catch { /* none */ } reject(e); });
         return;
       }
-      const parts = []; res.on('data', (c) => parts.push(c)); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(parts) })); res.on('error', reject);
+      const parts = []; res.on('data', (c) => parts.push(c)); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(parts), headers: res.headers })); res.on('error', reject);
     });
     req.on('timeout', () => req.destroy(new Error('timeout')));
     req.on('error', reject);
@@ -66,6 +66,11 @@ function call(cfg, method, objectKey, payload = Buffer.alloc(0), extra = {}, opt
 
 /** Fresh container (no database file yet) → pull the last snapshot and the auth secret from the bucket.
  *  Returns 'restored' | 'empty' (bucket has no snapshot) | 'local' (a database file is already here) | 'failed' | 'off'. */
+/** Which container wrote the snapshot this one booted from, and why (a shutdown snapshot is final; an interval one may
+ *  be followed by the old container's last upload while both run during a deploy). */
+export const restoredFrom = { instance: '', reason: '', etag: '', at: 0 };
+/** This container's id, stamped on every upload so a newer instance can tell its own uploads from the old one's. */
+export const INSTANCE = randomBytes(6).toString('hex');
 export async function restoreBackup(cfg, dataDir, log = console.log, { tries = 3, wait = 2000 } = {}) {
   if (!cfg) return 'off';
   const dbFile = join(dataDir, 'phloem.db');
@@ -75,7 +80,7 @@ export async function restoreBackup(cfg, dataDir, log = console.log, { tries = 3
       const t0 = Date.now();
       // gzipped snapshot first (current format), the plain one from older relays otherwise; streamed to disk either way
       let db = await call(cfg, 'GET', cfg.prefix + 'phloem.db.gz', undefined, {}, { toFile: `${dbFile}.gz` });
-      if (db.status === 200) { await pipeline(createReadStream(`${dbFile}.gz`), createGunzip(), createWriteStream(dbFile)); unlinkSync(`${dbFile}.gz`); db = { ...db, size: statSync(dbFile).size }; }
+      if (db.status === 200) { await pipeline(createReadStream(`${dbFile}.gz`), createGunzip(), createWriteStream(dbFile)); unlinkSync(`${dbFile}.gz`); db = { ...db, size: statSync(dbFile).size }; Object.assign(restoredFrom, { instance: String(db.headers?.['x-amz-meta-phloem-instance'] || ''), reason: String(db.headers?.['x-amz-meta-phloem-reason'] || ''), etag: String(db.headers?.etag || ''), at: Date.now() }); }
       else if (db.status === 404) db = await call(cfg, 'GET', cfg.prefix + 'phloem.db', undefined, {}, { toFile: dbFile });
       if (db.status === 404) { log('[backup] no snapshot in the bucket yet'); return 'empty'; }
       if (db.status !== 200) throw new Error(`GET phloem.db → HTTP ${db.status} ${db.body.toString('utf8').slice(0, 160)}`);
@@ -97,6 +102,8 @@ export function startBackups(cfg, db, dataDir, log = console.log, opts = {}) {
   // the bucket already holds this database (just restored, or a warm container): nothing to upload until a write
   const inBucket = opts.restored === 'restored' || opts.restored === 'local';
   const state = { enabled: !!cfg, at: null, error: null, bytes: 0, ms: 0, dirty: false, uploading: null, paused: !!opts.paused, daily: '' };
+  const me = opts.instance || INSTANCE;
+  state.settled = Promise.resolve(); // senders start at once unless a deploy handover is being watched (below)
   if (!cfg) return state;
   if (state.paused) state.error = 'restore failed at boot; uploads paused so the bucket copy is not overwritten (redeploy to retry)';
   let lastHash = '';
@@ -118,7 +125,7 @@ export function startBackups(cfg, db, dataDir, log = console.log, opts = {}) {
         if (h === lastHash) return;
         await pipeline(createReadStream(tmp), createGzip({ level: 9 }), createWriteStream(gz));
         const snap = { file: gz, size: statSync(gz).size, hash: await hashFile(gz) };
-        const r = await call(cfg, 'PUT', cfg.prefix + 'phloem.db.gz', snap, { 'content-type': 'application/gzip' });
+        const r = await call(cfg, 'PUT', cfg.prefix + 'phloem.db.gz', snap, { 'content-type': 'application/gzip', 'x-amz-meta-phloem-instance': me, 'x-amz-meta-phloem-reason': String(reason).replace(/[^\w -]/g, '').slice(0, 40) });
         if (r.status < 200 || r.status >= 300) throw new Error(`PUT phloem.db.gz → HTTP ${r.status} ${r.body.toString('utf8').slice(0, 160)}`);
         const secFile = join(dataDir, 'auth-secret');
         if (existsSync(secFile) && !process.env.AUTH_SECRET) { const s = await call(cfg, 'PUT', cfg.prefix + 'auth-secret', readFileSync(secFile), { 'content-type': 'text/plain' }); if (s.status < 200 || s.status >= 300) throw new Error(`PUT auth-secret → HTTP ${s.status}`); }
@@ -152,8 +159,62 @@ export function startBackups(cfg, db, dataDir, log = console.log, opts = {}) {
     setTimeout(() => { log(`[backup] shutdown snapshot still running after ${Date.now() - t0} ms; exiting`); process.exit(0); }, 25_000).unref();
   };
   if (opts.signals !== false) { process.once('SIGTERM', () => bye('SIGTERM')); process.once('SIGINT', () => bye('SIGINT')); }
+  // Deploys overlap: the new container restores the last upload while the old one still records opens, clicks and
+  // sends, then uploads once more on SIGTERM. Watch the bucket for that final upload and merge what it adds, and hold
+  // the senders (state.settled) until then so both containers never work the same queue.
+  if (opts.restored === 'restored' && !state.paused && !/^SIG/.test(restoredFrom.reason)) {
+    const watchMs = Number(opts.lateWatchMs ?? 240_000), every = Number(opts.latePollMs ?? 10_000);
+    state.settled = new Promise((done) => {
+      const t0 = Date.now(); let seenTag = restoredFrom.etag;
+      const tick = async () => {
+        try {
+          const h = await call(cfg, 'HEAD', cfg.prefix + 'phloem.db.gz');
+          const who = String(h.headers?.['x-amz-meta-phloem-instance'] || ''), why = String(h.headers?.['x-amz-meta-phloem-reason'] || ''), tag = String(h.headers?.etag || '');
+          if (h.status === 200 && who !== me && tag && tag !== seenTag) { // the other container uploaded after our restore
+            seenTag = tag;
+            const file = join(dataDir, `late-${process.pid}.db`);
+            const g = await call(cfg, 'GET', cfg.prefix + 'phloem.db.gz', undefined, {}, { toFile: `${file}.gz` });
+            if (g.status === 200) {
+              await pipeline(createReadStream(`${file}.gz`), createGunzip(), createWriteStream(file));
+              const n = mergeLate(db, file);
+              log(`[backup] merged ${n} row(s) from the previous container's last snapshot (${why || 'upload'})`);
+              markDirty(); void snapshot('after late merge', true);
+            }
+            for (const f of [file, `${file}.gz`]) { try { unlinkSync(f); } catch { /* gone */ } }
+            if (/^SIG/.test(why)) return done(); // that was its final word
+          }
+        } catch (e) { log('[backup] late check failed:', e?.message || e); }
+        if (Date.now() - t0 >= watchMs) return done();
+        setTimeout(tick, every).unref?.();
+      };
+      setTimeout(tick, Math.min(every, 3000)).unref?.();
+    });
+  }
   state.now = snapshot;
   state.markDirty = markDirty;
   state.stop = () => { clearInterval(poll); clearInterval(every); clearTimeout(first); if (timer) clearTimeout(timer); };
   return state;
+}
+
+/** Rows the other database has and this one does not, table by table (shared columns). Tables with a key keep this
+ *  side's version of a row; append-only ones (events, logs) gain the missing rows. A queued send the old container
+ *  already sent is marked sent here, so it is never sent twice. */
+export function mergeLate(db, file) {
+  db.exec(`ATTACH DATABASE '${file.replace(/'/g, "''")}' AS late`);
+  let added = 0;
+  try {
+    const q = (s0) => `"${String(s0).replace(/"/g, '""')}"`;
+    const tables = db.prepare("SELECT name FROM late.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all().map((r) => r.name);
+    for (const t of tables) {
+      const mine = db.prepare(`PRAGMA main.table_info(${q(t)})`).all().map((c) => c.name); if (!mine.length) continue;
+      const theirs = new Set(db.prepare(`PRAGMA late.table_info(${q(t)})`).all().map((c) => c.name));
+      const cols = mine.filter((c) => theirs.has(c)); if (!cols.length) continue;
+      const list = cols.map(q).join(', ');
+      try { added += Number(db.prepare(`INSERT OR IGNORE INTO main.${q(t)} (${list}) SELECT ${list} FROM late.${q(t)} EXCEPT SELECT ${list} FROM main.${q(t)}`).run().changes) || 0; } catch { /* odd table: skip */ }
+    }
+    if (tables.includes('mail_queue')) {
+      try { added += Number(db.prepare("UPDATE main.mail_queue AS m SET status = l.status, error = l.error, sent_at = l.sent_at FROM late.mail_queue AS l WHERE m.owner = l.owner AND m.campaign = l.campaign AND m.email = l.email AND m.status = 'queued' AND l.status <> 'queued'").run().changes) || 0; } catch { /* older SQLite: inserts still merged */ }
+    }
+  } finally { db.exec('DETACH DATABASE late'); }
+  return added;
 }

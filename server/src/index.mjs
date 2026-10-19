@@ -197,8 +197,8 @@ const server = createServer(async (req, res) => {
   }
 });
 
-MAIL.start();
-AUD.start();
+// senders wait until a deploy's old container has handed over (its last snapshot merged), so nobody sends twice
+void BACKUPS.settled.then(() => { MAIL.start(); AUD.start(); });
 server.listen(PORT, () => {
   console.log(`phloem-relay listening on ${PUBLIC_URL}  (token ${RELAY_TOKEN ? 'required' : 'off'}; oauth mailchimp=${!!OAUTH.mailchimp.clientId} klaviyo=${!!OAUTH.klaviyo.clientId})`);
 });
@@ -762,11 +762,13 @@ const bearer = (req) => { const m = /^Bearer\s+(.+)$/i.exec(req.headers.authoriz
 function requireUser(req, res) { const u = AUTH.me(bearer(req)); if (!u) json(res, 401, { error: 'Cần đăng nhập.', code: 'expired' }); return u; }
 /** Routes that spend money or reach out to the internet: a signed-in user, or the relay token when one is configured. */
 function gate(req, res) { if (RELAY_TOKEN && req.headers['x-phloem-token'] === RELAY_TOKEN) return true; return !!requireUser(req, res); }
-const USER_QUOTA = Number(process.env.USER_QUOTA_MB || 500) * 1048576;
-const TOTAL_QUOTA = Number(process.env.TOTAL_QUOTA_MB || 5000) * 1048576;
-function checkQuota(res, userId, delta) {
+// Picture bytes live in the bucket (R2: 10 GB free), not in the database, so the caps are about the bucket. The relay's
+// admins (the agency running it) have no per-account cap, only the total one.
+const USER_QUOTA = Number(process.env.USER_QUOTA_MB || 1500) * 1048576;
+const TOTAL_QUOTA = Number(process.env.TOTAL_QUOTA_MB || 9000) * 1048576;
+function checkQuota(res, userId, delta, user = null) {
   const used = Number(DB.assets.usage(userId).bytes) + Number(DB.projects.count(userId).bytes);
-  if (used + delta > USER_QUOTA || DB.usageAll() + delta > TOTAL_QUOTA) { json(res, 413, { error: 'Hết dung lượng lưu trữ. Hãy xoá ảnh hoặc email cũ.', code: 'quota' }); return false; }
+  if (delta > 0 && ((!user?.admin && used + delta > USER_QUOTA) || DB.usageAll() + delta > TOTAL_QUOTA)) { json(res, 413, { error: `Hết dung lượng lưu trữ (${Math.round(used / 1048576)} MB / ${Math.round(USER_QUOTA / 1048576)} MB). Hãy xoá ảnh hoặc email cũ.`, code: 'quota' }); return false; }
   return true;
 }
 function raw(req, limit) {
@@ -788,7 +790,7 @@ async function dbRoute(url, req, res) {
     if (kind === 'projects') {
       if (m === 'GET' && !id) return json(res, 200, { projects: PROJECTS.list(u.id), deleted: PROJECTS.tombstones(u.id) });
       if (m === 'GET') { const p = await PROJECTS.get(u.id, id); return p ? json(res, 200, { project: p }) : json(res, 404, { error: 'không có project này' }); }
-      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); const prev = DB.projects.list(u.id).find((x) => x.id === id); if (!checkQuota(res, u.id, JSON.stringify(p).length - (prev?.size || 0))) return; const r = await PROJECTS.put(u.id, p); return r.stale ? json(res, 409, { error: 'Bản trên relay mới hơn.', code: 'stale', updatedAt: r.updatedAt }) : json(res, 200, r); }
+      if (m === 'PUT' && id) { const p = await body(req); if (!p || p.id !== id) return json(res, 400, { error: 'id không khớp' }); const prev = DB.projects.list(u.id).find((x) => x.id === id); if (!checkQuota(res, u.id, JSON.stringify(p).length - (prev?.size || 0), u)) return; const r = await PROJECTS.put(u.id, p); return r.stale ? json(res, 409, { error: 'Bản trên relay mới hơn.', code: 'stale', updatedAt: r.updatedAt }) : json(res, 200, r); }
       if (m === 'DELETE' && id) { await PROJECTS.remove(u.id, id); return json(res, 200, { ok: true }); }
     }
     if (kind === 'assets') {
@@ -798,7 +800,7 @@ async function dbRoute(url, req, res) {
         const data = await raw(req, 15 * 1024 * 1024);
         const meta = { id, name: decodeURIComponent(String(req.headers['x-asset-name'] || 'image')), mime: String(req.headers['content-type'] || 'application/octet-stream').split(';')[0], w: Number(req.headers['x-asset-w'] || 0), h: Number(req.headers['x-asset-h'] || 0), meta: assetTags(req.headers['x-asset-meta']) };
         if (!meta.mime.startsWith('image/')) return json(res, 415, { error: 'chỉ nhận ảnh' });
-        if (!checkQuota(res, u.id, data.length - (DB.assets.meta(u.id, id)?.bytes || 0))) return;
+        if (!checkQuota(res, u.id, data.length - (DB.assets.meta(u.id, id)?.bytes || 0), u)) return;
         const a = await ASSETS.put(u.id, meta, data);
         return a ? json(res, 200, { asset: a }) : json(res, 409, { error: 'id ảnh đã được dùng' });
       }
@@ -815,7 +817,7 @@ async function dbRoute(url, req, res) {
     }
     if (kind === 'kv' && id) {
       if (m === 'GET') return json(res, 200, DB.kv.get(u.id, id));
-      if (m === 'PUT') { const p = await body(req); if (!checkQuota(res, u.id, JSON.stringify(p).length)) return; return json(res, 200, DB.kv.put(u.id, id, p.value, p.updatedAt)); }
+      if (m === 'PUT') { const p = await body(req); if (!checkQuota(res, u.id, JSON.stringify(p).length, u)) return; return json(res, 200, DB.kv.put(u.id, id, p.value, p.updatedAt)); }
     }
     if (kind === 'stats' && m === 'GET') return json(res, 200, DB.stats(u.id));
     return json(res, 404, { error: 'không có route db này' });

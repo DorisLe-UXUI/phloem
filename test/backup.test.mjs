@@ -10,14 +10,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from '../server/src/db.mjs';
 import { signToken } from '../server/src/auth.mjs';
-import { restoreBackup, startBackups } from '../server/src/backup.mjs';
+import { mergeLate, restoreBackup, restoredFrom, startBackups } from '../server/src/backup.mjs';
 import { createAssetStore, createBlobStore, createProjectStore } from '../server/src/blobs.mjs';
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 
 /** In-memory S3: PUT/GET/DELETE /<bucket>/<key>; refuses unsigned calls; `fail` forces an HTTP status. */
 async function mockS3() {
   const objects = new Map(); const log = [];
-  const s = { objects, log, fail: 0 };
+  const s = { objects, log, fail: 0, meta: new Map() };
   const srv = createServer((req, res) => {
     const parts = []; req.on('data', (c) => parts.push(c));
     req.on('end', () => {
@@ -25,10 +26,11 @@ async function mockS3() {
       log.push(`${req.method} ${key}`);
       if (s.fail) { res.statusCode = s.fail; return res.end('nope'); }
       if (!/^AWS4-HMAC-SHA256 Credential=k\//.test(req.headers.authorization || '')) { res.statusCode = 403; return res.end('unsigned'); }
-      if (req.method === 'PUT') { objects.set(key, Buffer.concat(parts)); res.statusCode = 200; return res.end(); }
+      if (req.method === 'PUT') { const b = Buffer.concat(parts); objects.set(key, b); s.meta.set(key, { etag: `"${createHash('md5').update(b).digest('hex')}"`, ...Object.fromEntries(Object.entries(req.headers).filter(([k]) => k.startsWith('x-amz-meta-'))) }); res.statusCode = 200; return res.end(); }
+      const head = () => { for (const [k, v] of Object.entries(s.meta.get(key) || {})) res.setHeader(k, v); };
       if (req.method === 'DELETE') { objects.delete(key); res.statusCode = 204; return res.end(); }
-      if (req.method === 'GET') { const b = objects.get(key); res.statusCode = b ? 200 : 404; return res.end(b || 'NoSuchKey'); }
-      if (req.method === 'HEAD') { res.statusCode = objects.has(key) ? 200 : 404; return res.end(); }
+      if (req.method === 'GET') { const b = objects.get(key); if (b) head(); res.statusCode = b ? 200 : 404; return res.end(b || 'NoSuchKey'); }
+      if (req.method === 'HEAD') { if (objects.has(key)) head(); res.statusCode = objects.has(key) ? 200 : 404; return res.end(); }
       res.statusCode = 405; res.end();
     });
   });
@@ -396,4 +398,42 @@ test('relay: an old snapshot with in-row thumbnails loads, thumbnails move out, 
     relay?.kill('SIGKILL'); await s3.close();
     for (const d of [...dirs, legacy]) rmSync(d, { recursive: true, force: true });
   }
+});
+
+test('deploy overlap: the new container merges the old one\'s last snapshot and holds the senders until then', async () => {
+  const s3 = await mockS3();
+  try {
+    // the old container: some events, an interval upload
+    const dirA = tmp('late-a-'); const a = openDb(join(dirA, 'phloem.db'));
+    a.raw.exec("CREATE TABLE IF NOT EXISTS ev (campaign TEXT, kind TEXT, at TEXT); CREATE TABLE IF NOT EXISTS q (email TEXT PRIMARY KEY, status TEXT)");
+    a.raw.exec("INSERT INTO ev VALUES ('c1','open','1'); INSERT INTO q VALUES ('x@y.co','queued')");
+    const stA = startBackups(s3.cfg, a.raw, dirA, quiet, { instance: 'old', debounceSec: 1e6, firstMs: 1e9, signals: false });
+    await stA.now('interval', true);
+    // the new container restores that upload…
+    const dirB = tmp('late-b-');
+    assert.equal(await restoreBackup(s3.cfg, dirB, quiet), 'restored');
+    assert.equal(restoredFrom.instance, 'old'); assert.equal(restoredFrom.reason, 'interval');
+    const b = openDb(join(dirB, 'phloem.db'));
+    const stB = startBackups(s3.cfg, b.raw, dirB, quiet, { instance: 'new', restored: 'restored', debounceSec: 1e6, firstMs: 1e9, signals: false, lateWatchMs: 5000, latePollMs: 50 });
+    let settled = false; void stB.settled.then(() => { settled = true; });
+    // …while the old one still records: a click, a second open, and it sends the queued email; then SIGTERM uploads
+    a.raw.exec("INSERT INTO ev VALUES ('c1','click','2'); INSERT INTO ev VALUES ('c1','open','3'); UPDATE q SET status = 'sent'");
+    b.raw.exec("INSERT INTO ev VALUES ('c1','open','4')"); // the new one already took a hit too
+    await stA.now('SIGTERM', true);
+    await until(() => settled);
+    const rows = b.raw.prepare('SELECT kind, at FROM ev ORDER BY at').all().map((r) => `${r.kind}${r.at}`);
+    assert.deepEqual(rows, ['open1', 'click2', 'open3', 'open4'], 'nothing lost, nothing doubled');
+    stA.stop(); stB.stop();
+  } finally { await s3.close(); }
+});
+
+test('mergeLate keeps this side for keyed rows and never resends a queued email', () => {
+  const dir = tmp('merge-'); const x = openDb(join(dir, 'x.db')); const y = openDb(join(dir, 'y.db'));
+  for (const d of [x, y]) d.raw.exec("CREATE TABLE IF NOT EXISTS mail_queue (owner TEXT, campaign TEXT, email TEXT, variant TEXT DEFAULT '', status TEXT, error TEXT DEFAULT '', sent_at TEXT, PRIMARY KEY (owner, campaign, email))");
+  x.raw.exec("INSERT INTO mail_queue (owner, campaign, email, status) VALUES ('u','c','a@b.co','queued'), ('u','c','c@d.co','queued')");
+  y.raw.exec("INSERT INTO mail_queue (owner, campaign, email, status, sent_at) VALUES ('u','c','a@b.co','sent','t1'), ('u','c','e@f.co','queued', NULL)");
+  y.raw.close?.();
+  mergeLate(x.raw, join(dir, 'y.db'));
+  const st = Object.fromEntries(x.raw.prepare('SELECT email, status FROM mail_queue').all().map((r) => [r.email, r.status]));
+  assert.deepEqual(st, { 'a@b.co': 'sent', 'c@d.co': 'queued', 'e@f.co': 'queued' });
 });
