@@ -39,6 +39,10 @@ const CF_AI_TOKEN = process.env.CF_AI_TOKEN || '';
 const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY || '';
 const CF_ACCOUNT = CF_AI_TOKEN ? cfAccountId() : '';
 const CF_IMAGE_MODEL = process.env.CF_IMAGE_MODEL || '@cf/black-forest-labs/flux-2-klein-4b';
+/** Cloudflare image models a request may pick (the rest of the allowance math is in the docs): klein4 is the free workhorse
+ *  (~60 a day), the others are sharper but use the daily allowance up in a few pictures. */
+const CF_MODELS = { klein4: '@cf/black-forest-labs/flux-2-klein-4b', klein9: '@cf/black-forest-labs/flux-2-klein-9b', dev: '@cf/black-forest-labs/flux-2-dev', lucid: '@cf/leonardo/lucid-origin', phoenix: '@cf/leonardo/phoenix-1.0' };
+const CF_BEST = CF_MODELS[process.env.CF_BEST_MODEL] || process.env.CF_BEST_MODEL || CF_MODELS.dev;
 const IMAGE_PROVIDER = (process.env.IMAGE_PROVIDER || (GEMINI_API_KEY ? 'google' : OPENAI_API_KEY ? 'openai' : '')).toLowerCase();
 const IMAGE_AI = CF_ACCOUNT ? 'cloudflare' : IMAGE_PROVIDER; // what the app is told: anything truthy means "can paint"
 let cfResting = 0; // until this time the free Workers AI allowance is used up; skip straight to Google
@@ -337,12 +341,18 @@ async function googleImageModel() {
   return googleModel;
 }
 /** FLUX on Cloudflare Workers AI → { b64, mime } or { error, status }. A used-up daily allowance rests it until 00:00 UTC. */
-async function cloudflareImage(prompt, aspect, refs = []) {
+async function cloudflareImage(prompt, aspect, refs = [], model = CF_IMAGE_MODEL) {
   const [width, height] = fluxSize(aspect);
-  const form = new FormData();
-  form.set('prompt', prompt); form.set('width', String(width)); form.set('height', String(height));
-  refs.forEach((r, i) => form.set(`input_image_${i}`, new Blob([Buffer.from(r.b64, 'base64')], { type: r.mime }), `ref${i}.${r.mime === 'image/png' ? 'png' : 'jpg'}`));
-  const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/ai/run/${CF_IMAGE_MODEL}`, { method: 'POST', headers: { Authorization: `Bearer ${CF_AI_TOKEN}` }, body: form, signal: AbortSignal.timeout(90_000) });
+  let body; const headers = { Authorization: `Bearer ${CF_AI_TOKEN}` };
+  if (/leonardo/.test(model)) { // JSON models, text only
+    body = JSON.stringify({ prompt, width: Math.min(width, 2500), height: Math.min(height, 2500), guidance: 4.5 }); headers['Content-Type'] = 'application/json';
+  } else { // FLUX.2: multipart, with the reference pictures
+    const form = new FormData();
+    form.set('prompt', prompt); form.set('width', String(width)); form.set('height', String(height));
+    refs.forEach((r, i) => form.set(`input_image_${i}`, new Blob([Buffer.from(r.b64, 'base64')], { type: r.mime }), `ref${i}.${r.mime === 'image/png' ? 'png' : 'jpg'}`));
+    body = form;
+  }
+  const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/ai/run/${model}`, { method: 'POST', headers, body, signal: AbortSignal.timeout(150_000) });
   const j = await r.json().catch(() => ({}));
   const b64 = j?.result?.image;
   if (r.ok && b64) return { b64, mime: sniffMime(b64) };
@@ -432,8 +442,9 @@ async function aiImage(p, res) {
   if (!IMAGE_AI) return json(res, 503, { error: 'Relay chưa có key tạo ảnh. Thêm CF_AI_TOKEN (Cloudflare, miễn phí theo ngày) hoặc GEMINI_API_KEY trong Render → Environment.', code: 'no_image_key' });
   let cfError = '';
   if (CF_ACCOUNT && cfResting <= Date.now() && !(pro && IMAGE_PROVIDER === 'google')) {
-    const out = await cloudflareImage(prompt, aspect, refs).catch((e) => ({ error: String(e?.message || e) }));
-    if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_IMAGE_MODEL.split('/').pop() });
+    const cfModel = CF_MODELS[p?.cf] || CF_IMAGE_MODEL;
+    const out = await cloudflareImage(prompt, aspect, refs, cfModel).catch((e) => ({ error: String(e?.message || e) }));
+    if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: cfModel.split('/').pop() });
     cfError = out.error;
     if (!IMAGE_PROVIDER) return json(res, out.status || 502, { error: out.error });
   }
@@ -459,7 +470,7 @@ async function aiImage(p, res) {
         // free-tier keys get an image quota of 0: say what to do instead of Google's raw quota dump
         if (/prepayment credits are depleted|billing|insufficient.*(credit|fund)/i.test(msg)) {
           // Google is out of credit: the free Cloudflare allowance paints instead when it was skipped for a 'pro' request
-          if (CF_ACCOUNT && cfResting <= Date.now() && pro) { const out = await cloudflareImage(prompt, aspect, refs).catch((e) => ({ error: String(e?.message || e) })); if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_IMAGE_MODEL.split('/').pop() }); }
+          if (CF_ACCOUNT && cfResting <= Date.now() && pro) { const out = await cloudflareImage(prompt, aspect, refs, CF_BEST).catch((e) => ({ error: String(e?.message || e) })); if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_BEST.split('/').pop() }); }
           return json(res, 402, { error: GOOGLE_BILLING, code: 'google_billing' });
         }
         if (r.status === 429 && /free_tier|limit: 0/.test(msg)) return json(res, 429, { error: 'Key Gemini đang ở gói miễn phí: Google không cho tạo ảnh ở gói này (hạn mức = 0). Vào Google AI Studio → Billing, bật thanh toán cho project của key (trả theo số ảnh), rồi thử lại. Hoặc dùng OPENAI_API_KEY.', code: 'image_billing' });
