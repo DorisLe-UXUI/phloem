@@ -214,6 +214,10 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     evPeople: q('SELECT email_hash AS h, kind, link, COUNT(*) AS n, MIN(at) AS first, MAX(at) AS last FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY email_hash, kind, link'),
   };
   const camp = (owner, id) => { const r = S.campGet.get(owner, id); return r ? JSON.parse(r.json) : null; };
+  // campaigns withdrawn after a wrong send: their links lead nowhere (env RECALLED_CAMPAIGNS, comma-separated, or the campaign's own flag)
+  const recalled = new Set([...String(env.RECALLED_CAMPAIGNS || '').split(/[\s,]+/).filter(Boolean),
+    'q_mvfgzb0i', 'q_mvfehw9t', 'q_mvanyhfi', 'q_mv9q8mow', // Intac emails withdrawn 2026-10-20 after a wrong send (Gmail sends, owner u_766f…)
+  ]);
   const saveCamp = (owner, id, c) => { const t = now(); S.campPut.run(id, owner, JSON.stringify(c), c.createdAt || t, t); };
   const event = (t, kind, link = null) => {
     const eh = sha(`${t.owner}|${t.email}`).slice(0, 24);
@@ -294,6 +298,9 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
       const [, , token, idx] = p.split('/'); const t = readToken(secret, token);
       const c = t ? camp(t.owner, t.campaign) : null; const i = Number(idx);
       const dest = c && Array.isArray(c.links) && Number.isInteger(i) ? c.links[i] : null;
+      if (c && (c.recalled || recalled.has(t.campaign))) { // withdrawn after a wrong send: no destination, an apology (unsubscribe still works)
+        html(res, 410, page('This email was withdrawn', 'It was sent by mistake. Please disregard it, and sorry for the trouble.')); return true;
+      }
       if (!dest || !/^https?:\/\//i.test(dest)) { html(res, 404, page('Link không còn', 'Link này không tồn tại hoặc chiến dịch đã bị xoá.')); return true; }
       try { event(t, 'click', i); } catch { /* still redirect */ }
       // a per-click id rides along (?phl=…): the shop's order tag sends it back, so an order is matched to this exact email
@@ -361,6 +368,12 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const { html: _h, text: _t, ...send } = c.send || {};
           const ord = hooks.ordersSummary?.(u.id, id) || { orders: 0, revenue: 0, buyers: 0 };
           json(res, 200, { opens: Number(S.evReaders.get(u.id, id).u) || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, links: S.evLinks.all(u.id, id).map((r) => ({ url: c.links?.[r.link] || '', clicks: r.u })), byVariant, queue, send: c.send ? send : null, ...ord }); return true;
+        }
+        const wd = /^\/mail\/campaigns\/([^/]+)\/recall$/.exec(p);
+        if (wd && m === 'POST') { // "Thu hồi": links of a sent campaign stop working (reversible with {on:false})
+          const id = decodeURIComponent(wd[1]); const c = camp(u.id, id); if (!c) { json(res, 404, { error: 'không có chiến dịch' }); return true; }
+          const b = await body(req); saveCamp(u.id, id, { ...c, recalled: b?.on !== false, recalledAt: b?.on !== false ? now() : null });
+          json(res, 200, { ok: true, recalled: b?.on !== false }); return true;
         }
         const rc = /^\/mail\/campaigns\/([^/]+)\/recipients$/.exec(p);
         if (rc && m === 'POST') { // a browser send's recipient list, sent after the fact (sends from before the relay kept it)

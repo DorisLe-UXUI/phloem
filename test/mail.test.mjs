@@ -166,3 +166,22 @@ test('server queue: skips suppressed, respects the daily cap, adds List-Unsubscr
   const stats = await call('GET', '/mail/campaigns/ab/stats');
   assert.deepEqual(stats.obj.byVariant.B, { opens: 2, clicks: 0 });
 });
+
+test('recall: a withdrawn campaign\'s links show an apology instead of the destination; env list works too; reversible', async () => {
+  const { createMail: cm, makeToken: mk } = await import('../server/src/mail.mjs');
+  const { openDb } = await import('../server/src/db.mjs');
+  const { mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const db = openDb(join(mkdtempSync(join(tmpdir(), 'phloem-recall-')), 'p.db'));
+  const json = (res, code, obj) => { res.statusCode = code; res.obj = obj; res.end(JSON.stringify(obj)); };
+  const mail = cm({ raw: db.raw, secret: 's', publicUrl: 'https://r.test', json, body: async (req) => req.body || {}, rawBody: async () => Buffer.alloc(0), requireUser: (req, res) => req.user || (json(res, 401, {}), null), throttled: () => false, env: { RECALLED_CAMPAIGNS: 'old1' }, log: () => {} });
+  const call = async (method, path, { user = { id: 'u' }, body } = {}) => { const res = { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(x) { this.text = String(x ?? ''); } }; await mail.handle(new URL(path, 'https://r.test'), { method, headers: {}, user, body }, res); return res; };
+  for (const id of ['c1', 'old1']) await call('POST', '/mail/campaigns', { body: { id, subject: 'Oops', links: ['https://shop.test/x'] } });
+  assert.equal((await call('GET', `/c/${mk('s', 'u', 'c1', 'a@b.co', '')}/0`, { user: null })).statusCode, 302);
+  assert.equal((await call('POST', '/mail/campaigns/c1/recall', { body: { on: true } })).obj.recalled, true);
+  const r = await call('GET', `/c/${mk('s', 'u', 'c1', 'a@b.co', '')}/0`, { user: null });
+  assert.equal(r.statusCode, 410); assert.match(r.text, /withdrawn/); assert.ok(!r.headers.location);
+  assert.equal((await call('GET', `/c/${mk('s', 'u', 'old1', 'a@b.co', '')}/0`, { user: null })).statusCode, 410, 'env list');
+  assert.equal((await call('GET', `/u/${mk('s', 'u', 'c1', 'a@b.co', '')}`, { user: null })).statusCode, 200, 'unsubscribe still works');
+  await call('POST', '/mail/campaigns/c1/recall', { body: { on: false } });
+  assert.equal((await call('GET', `/c/${mk('s', 'u', 'c1', 'a@b.co', '')}/0`, { user: null })).statusCode, 302, 'reversible');
+});
