@@ -13,7 +13,7 @@ export interface Segment { id: string; name: string; list: string; match: 'all' 
 export interface SignupForm { id: string; list: string; name: string; title: string; intro: string; button: string; success: string; redirect: string; doubleOptIn: boolean; tags: string[]; consentText: string; fields: { first_name: boolean; last_name: boolean; phone: boolean; birthday: boolean; groups?: boolean }; groupsLabel?: string; colors: { bg: string; accent: string; text: string }; url: string }
 export interface Step { id?: string; type: 'email' | 'tag'; delayHours: number; subject?: string; project?: string; projectName?: string; html?: string; text?: string; links?: string[]; hasHtml?: boolean; add?: string[]; remove?: string[]; log?: Record<string, number>; stats?: { opens: number; clicks: number; unsubscribes: number } | null }
 export interface Automation { id: string; name: string; list: string; trigger: { type: 'subscribe' | 'tag' | 'date' | 'inactive'; tag?: string; field?: string; days?: number }; steps: Step[]; sender: { owner: string; id: string } | null; status: 'draft' | 'active' | 'paused'; runs?: Record<string, number> }
-export interface Report { days: number; growth: { day: string; subscribed: number; unsubscribed: number }[]; lists: { id: string; name: string; counts: Record<ContactStatus, number>; total: number }[]; campaigns: { id: string; subject: string; at: string; status: string; list: string; segment: string; sent: number; opens: number; clicks: number; unsubscribes: number; failed: number; orders: number; revenue: number }[] }
+export interface Report { days: number; growth: { day: string; subscribed: number; unsubscribed: number }[]; lists: { id: string; name: string; counts: Record<ContactStatus, number>; total: number }[]; campaigns: { id: string; via?: 'gmail' | 'server'; subject: string; at: string; status: string; list: string; segment: string; sent: number; opens: number; clicks: number; unsubscribes: number; failed: number; orders: number; buyers?: number; revenue: number }[] }
 export interface SenderRef { id: string; label: string; fromEmail: string; fromName: string }
 
 const q = (client: string | null | undefined, extra = '') => { const p = new URLSearchParams(extra); if (client) p.set('client', client); const s = p.toString(); return s ? `?${s}` : ''; };
@@ -94,7 +94,7 @@ export function rowsToContacts(rows: string[][], map: string[]): Partial<Contact
 }
 
 // ---------- orders (the shop's order tag) ----------
-export interface Order { orderId: string; value: number; currency: string; email: string; at: string; receivedAt: string; match: '' | 'click' | 'email'; campaign: string; subject: string; clickedAt: string | null; source: string }
+export interface Order { orderId: string; value: number; currency: string; email: string; at: string; receivedAt: string; match: '' | 'click' | 'email'; campaign: string; subject: string; clickedAt: string | null; source: string; kind?: '' | 'product' | 'service'; items?: string }
 export interface OrdersReport { days: number; attributionDays: number; orders: Order[]; totals: { orders: number; revenue: number; emailOrders: number; emailRevenue: number } }
 export interface Site { key: string; name: string; domain: string; createdAt: string }
 export const orders = (client: string | null | undefined, days = 30) => relayApi<OrdersReport>(`/aud/orders${q(client, `days=${days}`)}`);
@@ -113,7 +113,8 @@ window.phloemOrder=function(o){try{var c=(document.cookie.match(/(?:^|; )phl=([^
 }
 /** The thank-you page: one call with the order's numbers (placeholders replaced by the platform's variables). */
 export const thankYouSnippet = `<script>
-  phloemOrder({ order_id: 'MÃ_ĐƠN', value: TỔNG_TIỀN, currency: 'VND', email: 'EMAIL_KHÁCH' });
+  // kind: 'hang' (mua hàng) hoặc 'dich_vu' (đặt dịch vụ / lịch hẹn) · items: tên sản phẩm hoặc gói dịch vụ
+  phloemOrder({ order_id: 'MÃ_ĐƠN', value: TỔNG_TIỀN, currency: 'VND', email: 'EMAIL_KHÁCH', kind: 'hang', items: 'TÊN_SẢN_PHẨM' });
 </script>`;
 /** Shopify → Settings → Customer events → Add custom pixel. */
 export function shopifyPixel(relay: string, key: string): string {
@@ -124,6 +125,7 @@ analytics.subscribe('checkout_completed', async (event) => {
   try { phl = (await browser.cookie.get('phl')) || (await browser.localStorage.getItem('phl')) || ''; } catch (e) {}
   fetch('${relay}/t/order', { method: 'POST', keepalive: true, body: JSON.stringify({
     k: '${key}', phl, order_id: String(c.order?.id || c.token), value: c.totalPrice?.amount, currency: c.currencyCode, email: c.email,
+    kind: 'hang', items: (c.lineItems || []).map((l) => l.quantity > 1 ? l.title + ' x' + l.quantity : l.title).join(', '),
   }) });
 });`;
 }

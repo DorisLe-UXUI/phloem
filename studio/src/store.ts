@@ -12,7 +12,7 @@ import type { Client, MktView } from './mkt/types';
 
 export type Tool = 'select' | 'rect' | 'text' | 'image' | 'hand';
 export type Variant = 'desktop' | 'mobile';
-export type Modal = null | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai' | 'auth' | 'catalog' | 'aicode' | 'aiadmin';
+export type Modal = null | 'people' | 'templates' | 'clients' | 'settings' | 'preview' | 'export' | 'shortcuts' | 'figma' | 'brand' | 'rename' | 'ai' | 'auth' | 'catalog' | 'aicode' | 'aiadmin';
 export type RightTab = 'design' | 'email' | 'export' | 'ai';
 export type LeftTab = 'layers' | 'blocks' | 'assets' | 'design' | 'apps';
 
@@ -34,6 +34,8 @@ export interface State {
   /** Group the user has "entered" by double-clicking. */
   enteredGroup: string | null;
   modal: Modal;
+  /** Campaign shown in the "who opened / clicked / bought" window (modal 'people'). */
+  peopleOf: string | null;
   rightTab: RightTab;
   leftTab: LeftTab;
   /** Phone layout: panels become bottom sheets over the canvas; this says which one is up. */
@@ -113,6 +115,7 @@ export const initialState: State = {
   editingText: null,
   enteredGroup: null,
   modal: null,
+  peopleOf: null,
   user: getSession()?.user ?? null,
   authTab: 'login',
   guestProjects: 0,

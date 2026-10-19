@@ -260,3 +260,44 @@ test('groups: named tags on the list; a signup form lets people pick only those'
   await call('POST', `/f/${form.id}`, { user: null, raw: 'email=g%40x.co&group=nen&group=hack', headers: { 'content-type': 'application/x-www-form-urlencoded' } });
   assert.deepEqual((await call('GET', `/aud/lists/${list.id}/contacts/g@x.co`)).obj.contact.tags, ['nen'], 'unknown groups are ignored');
 });
+
+test('per-person campaign report: who opened, which link, what they bought; browser sends are named too', async () => {
+  const { call, mail } = harness();
+  const { orderKind } = await import('../server/src/audience.mjs');
+  assert.equal(orderKind('Dịch vụ'), 'service'); assert.equal(orderKind('đặt lịch'), 'service'); assert.equal(orderKind('product'), 'product'); assert.equal(orderKind('hàng'), 'product'); assert.equal(orderKind('x'), '');
+  const s = await sender(call);
+  const list = (await call('POST', '/aud/lists', { body: { name: 'Shop' } })).obj.list;
+  await call('POST', `/aud/lists/${list.id}/import`, { body: { attest: true, rows: [{ email: 'mua@x.co', first_name: 'Mua', last_name: 'Lê' }, { email: 'xem@x.co' }, { email: 'im@x.co' }] } });
+  await call('POST', '/mail/campaigns', { body: { id: 'sale10', subject: 'Sale', links: ['https://shop.vn/spa?utm_content=dat-lich', 'https://shop.vn/sale'] } });
+  await call('POST', '/mail/send', { body: { campaign: 'sale10', sender: s.id, subject: 'Sale', html: '<a href="__PHLOEM_CLICK_0__">x</a>', audience: { list: list.id } } });
+  await mail.tick();
+  const tok = (e) => makeToken(SECRET, 'u_1', 'sale10', e, '');
+  await call('GET', `/o/${tok('xem@x.co')}.gif`, { user: null });
+  await call('GET', `/o/${tok('mua@x.co')}.gif`, { user: null });
+  const loc = (await call('GET', `/c/${tok('mua@x.co')}/0`, { user: null })).headers.location;
+  const phl = /phl=([\w-]+)/.exec(loc)[1];
+  const site = (await call('POST', '/aud/sites', { body: { name: 'shop.vn' } })).obj.site;
+  const beacon = (o) => call('POST', '/t/order', { user: null, raw: JSON.stringify({ k: site.key, ...o }) });
+  await beacon({ order_id: 'B1', value: '590.000', phl, kind: 'dịch vụ', items: [{ name: 'Gói spa 60 phút' }] }); // booked a service, no email given
+  await beacon({ order_id: 'B2', value: 120000, email: 'MUA@x.co', kind: 'hàng', items: 'Kem dưỡng' });
+  const r = (await call('GET', '/mail/campaigns/sale10/people')).obj;
+  assert.equal(r.campaign.subject, 'Sale'); assert.equal(r.campaign.via, 'server');
+  assert.deepEqual({ ...r.totals, unknownOpens: 0, unknownClicks: 0 }, { recipients: 3, opened: 2, clicked: 1, buyers: 1, orders: 2, revenue: 710000, unsubscribed: 0, bounced: 0, failed: 0, unknownOpens: 0, unknownClicks: 0 });
+  const by = Object.fromEntries(r.people.map((x) => [x.email, x]));
+  assert.equal(by['mua@x.co'].name, 'Mua Lê'); assert.equal(by['mua@x.co'].opens, 1); assert.equal(by['mua@x.co'].links[0].url, 'https://shop.vn/spa?utm_content=dat-lich');
+  assert.deepEqual(by['mua@x.co'].orders.map((o) => [o.orderId, o.kind, o.items, o.value]).sort(), [['B1', 'service', 'Gói spa 60 phút', 590000], ['B2', 'product', 'Kem dưỡng', 120000]]);
+  assert.equal(by['mua@x.co'].orders.find((o) => o.orderId === 'B1').link, 0, 'the order remembers which link sold it');
+  assert.equal(by['xem@x.co'].opens, 1); assert.equal(by['xem@x.co'].clicks, 0); assert.equal(by['im@x.co'].opens, 0); assert.equal(by['im@x.co'].status, 'sent');
+  const st = (await call('GET', '/mail/campaigns/sale10/stats')).obj;
+  assert.equal(st.orders, 2); assert.equal(st.revenue, 710000); assert.equal(st.buyers, 1);
+  assert.equal((await call('GET', '/mail/campaigns/sale10/people', { user: U3 })).statusCode, 404, 'only the sender sees its recipients');
+  // a Gmail send from the browser: recipients are recorded when their tokens are issued
+  await call('POST', '/mail/campaigns', { body: { id: 'g1', via: 'gmail', subject: 'Bản tin', links: ['https://shop.vn'] } });
+  await call('POST', '/mail/tokens', { body: { campaign: 'g1', emails: ['A@b.co', 'c@d.co'] } });
+  await call('GET', `/o/${makeToken(SECRET, 'u_1', 'g1', 'a@b.co', '')}.gif`, { user: null });
+  const g = (await call('GET', '/mail/campaigns/g1/people')).obj;
+  assert.equal(g.campaign.via, 'gmail'); assert.equal(g.totals.recipients, 2); assert.equal(g.totals.opened, 1);
+  const rep = (await call('GET', '/aud/reports')).obj;
+  const gr = rep.campaigns.find((c) => c.id === 'g1'); assert.equal(gr.via, 'gmail'); assert.equal(gr.sent, 2); assert.equal(gr.opens, 1);
+  assert.equal(rep.campaigns.find((c) => c.id === 'sale10').buyers, 1);
+});

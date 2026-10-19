@@ -47,10 +47,19 @@ CREATE INDEX IF NOT EXISTS aud_clicks_email ON aud_clicks(scope, email, at);
 CREATE TABLE IF NOT EXISTS aud_sites (key TEXT PRIMARY KEY, scope TEXT NOT NULL, json TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS aud_orders (scope TEXT NOT NULL, order_id TEXT NOT NULL, value REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, received_at TEXT NOT NULL, click_id TEXT NOT NULL DEFAULT '', campaign TEXT NOT NULL DEFAULT '', campaign_owner TEXT NOT NULL DEFAULT '', match TEXT NOT NULL DEFAULT '', clicked_at TEXT, source TEXT NOT NULL DEFAULT 'tag', PRIMARY KEY (scope, order_id));
 CREATE INDEX IF NOT EXISTS aud_orders_at ON aud_orders(scope, at);
+CREATE INDEX IF NOT EXISTS aud_orders_camp ON aud_orders(campaign_owner, campaign);
+CREATE INDEX IF NOT EXISTS aud_clicks_camp ON aud_clicks(owner, campaign);
 `;
 /** Days an order still counts for the email click before it (Klaviyo uses 5, Mailchimp 5–30; a week fits VN shopping). */
 export const ATTRIBUTION_DAYS = 7;
 /** "590.000", "590,000", "1.290.000đ", 590000, "12.5" → a number (dots/commas as thousands when grouped by three). */
+/** Order tag `kind`: a booked service or bought goods (Vietnamese or English words), '' when the shop does not say. */
+export function orderKind(v) {
+  const t = String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
+  if (/^(service|dich[\s_-]?vu|dv|booking|dat[\s_-]?lich|lich[\s_-]?hen|goi)/.test(t)) return 'service';
+  if (/^(product|hang|san[\s_-]?pham|sp|order|don[\s_-]?hang|mua[\s_-]?hang)/.test(t)) return 'product';
+  return '';
+}
 export function parseMoney(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   const t = String(v ?? '').replace(/[^\d.,-]/g, '');
@@ -111,6 +120,9 @@ export function monthDay(v) {
 
 export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody, requireUser, throttled, ipOf, access, can, mail, log = console.log, tz = 7 }) {
   db.exec(SCHEMA);
+  // what was bought: product or service (bookings), and a short label of the items
+  try { db.exec("ALTER TABLE aud_orders ADD COLUMN kind TEXT NOT NULL DEFAULT ''"); } catch { /* column exists */ }
+  try { db.exec("ALTER TABLE aud_orders ADD COLUMN items TEXT NOT NULL DEFAULT ''"); } catch { /* column exists */ }
   const q = (sql) => db.prepare(sql);
   const S = {
     listPut: q('INSERT INTO aud_lists (scope, id, json, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(scope, id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at'),
@@ -165,9 +177,12 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
     siteGet: q('SELECT * FROM aud_sites WHERE key = ?'),
     siteAll: q('SELECT * FROM aud_sites WHERE scope = ? ORDER BY created_at'),
     siteDel: q('DELETE FROM aud_sites WHERE key = ? AND scope = ?'),
-    orderIns: q('INSERT INTO aud_orders (scope, order_id, value, currency, email, at, received_at, click_id, campaign, campaign_owner, match, clicked_at, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(scope, order_id) DO NOTHING'),
+    orderIns: q('INSERT INTO aud_orders (scope, order_id, value, currency, email, at, received_at, click_id, campaign, campaign_owner, match, clicked_at, source, kind, items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(scope, order_id) DO NOTHING'),
+    orderSumCamp: q("SELECT COUNT(*) AS n, SUM(o.value) AS v, COUNT(DISTINCT COALESCE(NULLIF(o.email, ''), k.email, o.click_id)) AS b FROM aud_orders o LEFT JOIN aud_clicks k ON k.id = o.click_id WHERE o.campaign_owner = ? AND o.campaign = ? AND o.match <> ''"),
+    orderOfCamp: q("SELECT o.order_id, o.value, o.currency, o.email, o.at, o.match, o.kind, o.items, o.clicked_at, k.email AS click_email, k.link AS click_link FROM aud_orders o LEFT JOIN aud_clicks k ON k.id = o.click_id WHERE o.campaign_owner = ? AND o.campaign = ? AND o.match <> '' ORDER BY o.at DESC LIMIT 5000"),
+    clicksOfCamp: q('SELECT email, link, at FROM aud_clicks WHERE owner = ? AND campaign = ? LIMIT 50000'),
+    cName: q("SELECT first_name, last_name FROM aud_contacts WHERE scope = ? AND email = ? AND (first_name <> '' OR last_name <> '') LIMIT 1"),
     orderAll: q('SELECT * FROM aud_orders WHERE scope = ? AND at >= ? ORDER BY at DESC LIMIT 2000'),
-    orderByCampaign: q("SELECT campaign, COUNT(*) AS n, SUM(value) AS v FROM aud_orders WHERE scope = ? AND campaign_owner = ? AND match <> '' GROUP BY campaign"),
     metaGet: q('SELECT value FROM aud_meta WHERE key = ?'),
     metaPut: q('INSERT OR REPLACE INTO aud_meta (key, value) VALUES (?, ?)'),
   };
@@ -399,7 +414,8 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
     const email = normEmail(d.email); const okEmail = EMAIL_RE.test(email) ? email : '';
     const tAt = Date.parse(String(d.at || '')); const atMs = Number.isFinite(tAt) && Math.abs(tAt - Date.now()) < 2 * DAY ? tAt : Date.now();
     const a = attribute(site.scope, d.phl, okEmail, atMs);
-    S.orderIns.run(site.scope, orderId, Math.max(0, parseMoney(d.value ?? d.total)), String(d.currency || 'VND').slice(0, 8).toUpperCase(), okEmail, new Date(atMs).toISOString(), now(), a.click?.id || '', a.click?.campaign || '', a.click?.owner || '', a.match, a.click?.at || null, String(d.source || 'tag').slice(0, 20));
+    const items = (Array.isArray(d.items) ? d.items.map((x) => (typeof x === 'string' ? x : x?.name || x?.title || '')).filter(Boolean).join(', ') : String(d.items ?? d.product ?? d.service ?? '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+    S.orderIns.run(site.scope, orderId, Math.max(0, parseMoney(d.value ?? d.total)), String(d.currency || 'VND').slice(0, 8).toUpperCase(), okEmail || a.click?.email || '', new Date(atMs).toISOString(), now(), a.click?.id || '', a.click?.campaign || '', a.click?.owner || '', a.match, a.click?.at || null, String(d.source || 'tag').slice(0, 20), orderKind(d.kind ?? d.type), items);
     done(true);
   }
 
@@ -436,6 +452,17 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
       const id = randomBytes(9).toString('base64url');
       S.clickIns.run(id, t.owner, t.campaign, scope, t.email, Number.isInteger(link) ? link : null, now());
       return id;
+    },
+    ordersSummary: (owner, campaign) => { const r = S.orderSumCamp.get(owner, campaign); return { orders: r?.n || 0, revenue: r?.v || 0, buyers: r?.b || 0 }; },
+    /** Clickers and matched orders of one campaign, with the buyer's address where it is known (order email, else the click's). */
+    campaignExtras: (owner, campaign) => ({
+      clicks: S.clicksOfCamp.all(owner, campaign),
+      orders: S.orderOfCamp.all(owner, campaign).map((o) => ({ email: o.email || o.click_email || '', orderId: o.order_id, value: o.value, currency: o.currency, at: o.at, match: o.match, kind: o.kind || '', items: o.items || '', clickedAt: o.clicked_at, link: Number.isInteger(o.click_link) ? o.click_link : null })),
+    }),
+    namesOf: (owner, c, emails) => {
+      const scope = c?.audience?.scope || c?.scope || `u:${owner}`; const out = {};
+      for (const e of emails.slice(0, 50000)) { const r = S.cName.get(scope, e); if (r) out[e] = [r.first_name, r.last_name].filter(Boolean).join(' '); }
+      return out;
     },
     onUnsubscribe: (t, c) => { const scope = c?.audience?.scope || c?.scope || `u:${t.owner}`; S.cStatusAll.run('unsubscribed', now(), now(), scope, t.email); },
     onBounce: (owner, email, kind) => { for (const sc of scopesOfUser(owner)) S.cStatusAll.run(kind === 'complaint' ? 'complained' : 'bounced', null, now(), sc, email); },
@@ -649,7 +676,7 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
         const rows = S.orderAll.all(scope, new Date(Date.now() - days * DAY).toISOString());
         const subj = new Map();
         const subjectOf = (owner, id) => { const k = `${owner}|${id}`; if (!subj.has(k)) { const c = id ? mail.campaign(owner, id) : null; subj.set(k, c ? (c.send?.subject || c.subject || id) : ''); } return subj.get(k); };
-        const orders = rows.map((r) => ({ orderId: r.order_id, value: r.value, currency: r.currency, email: r.email, at: r.at, receivedAt: r.received_at, match: r.match, campaign: r.campaign, subject: r.match ? subjectOf(r.campaign_owner, r.campaign) : '', clickedAt: r.clicked_at, source: r.source }));
+        const orders = rows.map((r) => ({ orderId: r.order_id, value: r.value, currency: r.currency, email: r.email, at: r.at, receivedAt: r.received_at, match: r.match, campaign: r.campaign, campaignOwner: r.campaign_owner, subject: r.match ? subjectOf(r.campaign_owner, r.campaign) : '', clickedAt: r.clicked_at, source: r.source, kind: r.kind || '', items: r.items || '' }));
         const fromEmail = orders.filter((o) => o.match);
         json(res, 200, { days, attributionDays: ATTRIBUTION_DAYS, orders, totals: { orders: orders.length, revenue: orders.reduce((a, o) => a + o.value, 0), emailOrders: fromEmail.length, emailRevenue: fromEmail.reduce((a, o) => a + o.value, 0) } });
         return true;
@@ -661,9 +688,10 @@ export function createAudience({ raw: db, secret, publicUrl, json, body, rawBody
         const off = `${tz >= 0 ? '+' : ''}${tz}`;
         const sub = Object.fromEntries(S.growthSub.all(off, scope, since).map((r) => [r.d, r.n])), unsub = Object.fromEntries(S.growthUnsub.all(off, scope, since).map((r) => [r.d, r.n]));
         const growth = []; for (let i = days - 1; i >= 0; i--) { const d = new Date(Date.now() + tz * 3600e3 - i * DAY).toISOString().slice(0, 10); growth.push({ day: d, subscribed: sub[d] || 0, unsubscribed: unsub[d] || 0 }); }
-        const rev = Object.fromEntries(S.orderByCampaign.all(scope, u.id).map((r) => [r.campaign, { orders: r.n, revenue: r.v || 0 }]));
         const lists = S.listAll.all(scope).map(listOf).map((l) => ({ id: l.id, name: l.name, counts: l.counts, total: l.total }));
-        const campaigns = mail.campaigns(u.id).filter((c) => c.send && (c.audience?.scope === scope || (!c.audience && scope === `u:${u.id}`))).map((c) => { const st = mail.stats(u.id, c.id); const sent = st.queue.sent || 0; return { id: c.id, subject: c.send.subject || c.subject, at: c.send.sendAt || c.createdAt, status: c.send.status, list: c.audience?.listName || '', segment: c.audience?.segmentName || '', sent, opens: st.opens, clicks: st.clicks, unsubscribes: st.unsubscribes, failed: st.queue.failed || 0, orders: rev[c.id]?.orders || 0, revenue: rev[c.id]?.revenue || 0 }; }).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 50);
+        // server sends of this space, plus (personal space) emails sent from the browser through Gmail with tracking on
+        const mine = scope === `u:${u.id}`;
+        const campaigns = mail.campaigns(u.id).filter((c) => !/^(a_|test_)/.test(c.id) && !/^\[Thử\]/.test(c.subject || '') && (c.send ? (c.audience?.scope === scope || (!c.audience && mine)) : mine)).map((c) => { const st = mail.stats(u.id, c.id); const sent = c.send ? st.queue.sent || 0 : st.browserSent; const o = mailHooks.ordersSummary(u.id, c.id); return { id: c.id, via: c.send ? 'server' : 'gmail', subject: c.send?.subject || c.subject, at: c.send?.sendAt || c.createdAt, status: c.send?.status || 'done', list: c.audience?.listName || '', segment: c.audience?.segmentName || '', sent, opens: st.opens, clicks: st.clicks, unsubscribes: st.unsubscribes, failed: st.queue.failed || 0, orders: o.orders, buyers: o.buyers, revenue: o.revenue }; }).filter((c) => c.sent || c.opens || c.clicks).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 50);
         json(res, 200, { days, growth, lists, campaigns }); return true;
       }
       json(res, 404, { error: 'không có route này' }); return true;

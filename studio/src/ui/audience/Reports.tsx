@@ -3,6 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { toast } from '../../store';
 import { createSite, orders as fetchOrders, reports, shopifyPixel, sites as fetchSites, tagSnippet, thankYouSnippet, type OrdersReport, type Report, type Site } from '../../pipeline/audience';
 import { connectGA, gaConnected, gaEmailOrders, gaProperties, gaPropertyInfo, type GaOrder, type GaProperty } from '../../pipeline/ga4';
+import { set } from '../../store';
 import { Btn, Seg } from '../components';
 import { fmtDate, pct, type AudCtx } from './AudiencePage';
 
@@ -43,20 +44,22 @@ export function ReportsTab({ ctx }: { ctx: AudCtx }) {
       </div>
       <div class="adm-table aud-table">
         <table>
-          <thead><tr><th>Chiến dịch</th><th>Gửi tới</th><th class="n">Đã gửi</th><th class="n">Mở</th><th class="n">Click</th><th class="n">Huỷ ĐK</th><th class="n">Đơn</th><th class="n">Doanh thu</th><th>Ngày</th></tr></thead>
+          <thead><tr><th>Chiến dịch</th><th>Gửi tới</th><th class="n">Đã gửi</th><th class="n">Mở</th><th class="n">Click</th><th class="n">Huỷ ĐK</th><th class="n">Người mua</th><th class="n">Đơn</th><th class="n">Doanh thu</th><th>Ngày</th><th /></tr></thead>
           <tbody>
-            {!r.campaigns.length ? <tr><td colSpan={9} class="dim">Chưa có chiến dịch gửi qua máy chủ. Mở một email → Xuất → Gửi bằng email thường → Máy chủ gửi → chọn danh sách.</td></tr>
+            {!r.campaigns.length ? <tr><td colSpan={11} class="dim">Chưa có email nào gửi có theo dõi. Mở một email → Xuất → Gửi bằng email thường (Gmail hoặc Máy chủ gửi) khi đã đăng nhập.</td></tr>
               : r.campaigns.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} class="aud-click" onClick={() => set({ modal: 'people', peopleOf: c.id })} title="Xem ai mở, ai bấm, ai mua">
                   <td><b>{c.subject || '(không tiêu đề)'}</b>{c.status !== 'done' && <span class="chip" style={{ marginLeft: 6 }}>{c.status}</span>}</td>
-                  <td class="dim">{c.list || 'danh sách dán tay'}{c.segment ? ` · ${c.segment}` : ''}</td>
+                  <td class="dim">{c.via === 'gmail' ? 'Gmail' : c.list || 'danh sách dán tay'}{c.segment ? ` · ${c.segment}` : ''}</td>
                   <td class="n">{c.sent.toLocaleString('vi-VN')}</td>
                   <td class="n">{pct(c.opens, c.sent)}</td>
                   <td class="n">{pct(c.clicks, c.sent)}</td>
                   <td class="n">{c.unsubscribes}</td>
+                  <td class="n">{c.buyers || <span class="dim">0</span>}</td>
                   <td class="n">{c.orders || <span class="dim">0</span>}</td>
                   <td class="n">{c.revenue ? money(c.revenue) : <span class="dim">–</span>}</td>
                   <td class="dim">{fmtDate(c.at)}</td>
+                  <td><span class="btn xs ghost">Ai mua?</span></td>
                 </tr>
               ))}
           </tbody>
@@ -120,11 +123,12 @@ function OrdersSection({ ctx, days }: { ctx: AudCtx; days: number }) {
           <div class="row"><Seg value={only} options={[{ v: 'all', label: `Tất cả · ${o.orders.length}` }, { v: 'email', label: `Từ email · ${t!.emailOrders}` }]} onChange={setOnly} /></div>
           <div class="adm-table aud-table">
             <table>
-              <thead><tr><th>Thời gian (giờ VN)</th><th>Mã đơn</th><th class="n">Giá trị</th><th>Từ email?</th><th>Người mua</th><th>Bấm link lúc</th></tr></thead>
+              <thead><tr><th>Thời gian (giờ VN)</th><th>Mã đơn</th><th>Mua gì</th><th class="n">Giá trị</th><th>Từ email?</th><th>Người mua</th><th>Bấm link lúc</th></tr></thead>
               <tbody>{rows.map((x) => (
                 <tr key={x.orderId}>
                   <td class="mono">{vnTime(x.at)}</td>
                   <td class="mono">{x.orderId}</td>
+                  <td>{x.kind ? <span class={`chip ppl-order ${x.kind}`}><em>{x.kind === 'service' ? 'Dịch vụ' : 'Mua hàng'}</em></span> : null} <span class="dim">{x.items || ''}</span></td>
                   <td class="n">{money(x.value, x.currency)}</td>
                   <td>{x.match === 'click' ? <span class="chip on" title="Khớp mã click trong link email">Có · {x.subject || x.campaign}</span> : x.match === 'email' ? <span class="chip" title="Không có mã click; khớp theo email người mua đã bấm link">Có (theo email) · {x.subject || x.campaign}</span> : <span class="chip warn">Không</span>}</td>
                   <td class="mono dim">{x.email || '–'}</td>

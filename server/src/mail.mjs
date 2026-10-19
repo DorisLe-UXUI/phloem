@@ -5,7 +5,8 @@
 //   GET|POST /u/:token                unsubscribe page / one-click unsubscribe (RFC 8058) → suppression list
 //   GET /o/:token.gif                 open pixel          GET /c/:token/:i   click redirect
 //   /mail/suppressions                list / add / remove suppressed addresses
-//   /mail/campaigns/:id/stats         opens, clicks, unsubscribes, sends
+//   /mail/campaigns/:id/stats         opens, clicks, unsubscribes, sends, orders
+//   /mail/campaigns/:id/people        each recipient: opened, which links, what they bought (orders matched to this email)
 //   /mail/senders                     sending accounts (Resend, Brevo, Amazon SES), credentials encrypted at rest
 //   /mail/send                        server-side queue: schedule, daily cap, A/B subject test, pause/resume/cancel
 // Zero dependencies. Tokens are HMAC-signed so a link can never be forged for another address or campaign.
@@ -28,6 +29,7 @@ CREATE INDEX IF NOT EXISTS mail_events_c ON mail_events(owner, campaign, kind);
 CREATE TABLE IF NOT EXISTS mail_senders (owner TEXT NOT NULL, id TEXT NOT NULL, enc BLOB NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (owner, id));
 CREATE TABLE IF NOT EXISTS mail_queue (owner TEXT NOT NULL, campaign TEXT NOT NULL, email TEXT NOT NULL, variant TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', error TEXT NOT NULL DEFAULT '', sent_at TEXT, PRIMARY KEY (owner, campaign, email));
 CREATE INDEX IF NOT EXISTS mail_queue_s ON mail_queue(owner, campaign, status);
+CREATE TABLE IF NOT EXISTS mail_rcpt (owner TEXT NOT NULL, campaign TEXT NOT NULL, email TEXT NOT NULL, variant TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, PRIMARY KEY (owner, campaign, email));
 `;
 
 /** Image bucket: its own bucket + public URL; credentials default to the backup token (scope it to both buckets). */
@@ -191,6 +193,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     evRecent: q('SELECT 1 FROM mail_events WHERE owner = ? AND campaign = ? AND email_hash = ? AND kind = ? AND COALESCE(link, -1) = ? AND at > ? LIMIT 1'),
     evStats: q('SELECT kind, variant, COUNT(*) AS n, COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY kind, variant'),
     evTotals: q('SELECT kind, COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY kind'),
+    evReaders: q("SELECT COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? AND kind IN ('open', 'click')"),
     evLinks: q("SELECT link, COUNT(*) AS n, COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? AND kind = 'click' GROUP BY link"),
     senderPut: q('INSERT INTO mail_senders (owner, id, enc, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(owner, id) DO UPDATE SET enc = excluded.enc, updated_at = excluded.updated_at'),
     senderList: q('SELECT id, enc, updated_at FROM mail_senders WHERE owner = ?'),
@@ -204,6 +207,11 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     qCancel: q("UPDATE mail_queue SET status = 'cancelled' WHERE owner = ? AND campaign = ? AND status = 'queued'"),
     qSkipSup: q("UPDATE mail_queue SET status = 'skipped', error = 'đã huỷ đăng ký', sent_at = ? WHERE owner = ? AND campaign = ? AND status = 'queued' AND email IN (SELECT email FROM mail_suppressions WHERE owner = ?)"),
     qRelabel: q("UPDATE mail_queue SET variant = ? WHERE owner = ? AND campaign = ? AND status = 'queued' AND variant = 'rest'"),
+    qAll: q('SELECT email, variant, status, error, sent_at FROM mail_queue WHERE owner = ? AND campaign = ? LIMIT 100000'),
+    rcptAdd: q('INSERT INTO mail_rcpt (owner, campaign, email, variant, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner, campaign, email) DO NOTHING'),
+    rcptAll: q('SELECT email, variant, at FROM mail_rcpt WHERE owner = ? AND campaign = ? LIMIT 100000'),
+    rcptCount: q('SELECT COUNT(*) AS n FROM mail_rcpt WHERE owner = ? AND campaign = ?'),
+    evPeople: q('SELECT email_hash AS h, kind, link, COUNT(*) AS n, MIN(at) AS first, MAX(at) AS last FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY email_hash, kind, link'),
   };
   const camp = (owner, id) => { const r = S.campGet.get(owner, id); return r ? JSON.parse(r.json) : null; };
   const saveCamp = (owner, id, c) => { const t = now(); S.campPut.run(id, owner, JSON.stringify(c), c.createdAt || t, t); };
@@ -217,6 +225,48 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
   const senders = (owner) => S.senderList.all(owner).map((r) => { try { const s = JSON.parse(decrypt(secret, r.enc)); return { ...s, id: r.id, updatedAt: r.updated_at }; } catch { return null; } }).filter(Boolean);
   const hookToken = (owner, sid) => b64u(createHmac('sha256', secret).update(`hook:${owner}:${sid}`).digest()).slice(0, 24);
   const publicSender = (s, owner) => ({ webhook: owner ? `${publicUrl}/hooks/${s.provider}/${owner}/${s.id}/${hookToken(owner, s.id)}` : undefined, domain: s.domain || null, id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret) });
+
+  /** Every recipient of a campaign with what they did: opens, which links, unsubscribe/bounce, and orders matched to
+   *  this email by the shop's order tag. Events are stored per hashed address, so they are named by hashing the
+   *  campaign's own recipient list (queue for server sends, mail_rcpt for browser sends); nothing outside it is revealed. */
+  function people(owner, id) {
+    const c = camp(owner, id); if (!c) return null;
+    const rows = new Map();
+    const row = (email) => { let r = rows.get(email); if (!r) { r = { email, name: '', status: '', sentAt: null, variant: '', error: '', opens: 0, firstOpen: null, lastOpen: null, clicks: 0, lastClick: null, links: [], orders: [], unsubAt: null, bounced: '' }; rows.set(email, r); } return r; };
+    for (const r of S.rcptAll.all(owner, id)) { const x = row(r.email); x.status = 'sent'; x.sentAt = r.at; x.variant = r.variant; }
+    for (const r of S.qAll.all(owner, id)) { const x = row(r.email); x.status = r.status; x.sentAt = r.sent_at || x.sentAt; x.variant = r.variant || x.variant; x.error = r.error || ''; }
+    // older browser sends never listed their recipients: the audience side still knows who clicked and who bought
+    const extra = hooks.campaignExtras?.(owner, id, c) || { clicks: [], orders: [] };
+    for (const k of extra.clicks) if (k.email && !rows.has(k.email)) row(k.email).status = 'unknown';
+    for (const o of extra.orders) if (o.email && !rows.has(o.email)) row(o.email).status = 'unknown';
+    const byHash = new Map(); for (const e of rows.keys()) byHash.set(sha(`${owner}|${e}`).slice(0, 24), e);
+    const unknown = { open: new Set(), click: new Set() };
+    for (const ev of S.evPeople.all(owner, id)) {
+      const email = byHash.get(ev.h);
+      if (!email) { unknown[ev.kind]?.add(ev.h); continue; }
+      const x = rows.get(email);
+      if (ev.kind === 'open') { x.opens += ev.n; x.firstOpen = !x.firstOpen || ev.first < x.firstOpen ? ev.first : x.firstOpen; x.lastOpen = !x.lastOpen || ev.last > x.lastOpen ? ev.last : x.lastOpen; }
+      else if (ev.kind === 'click') { x.clicks += ev.n; x.lastClick = !x.lastClick || ev.last > x.lastClick ? ev.last : x.lastClick; x.links.push({ i: ev.link, url: c.links?.[ev.link] || '', n: ev.n, last: ev.last }); }
+      else if (ev.kind === 'unsub') x.unsubAt = ev.last;
+    }
+    const lost = [];
+    for (const o of extra.orders) { const { email, ...ord } = o; if (email) rows.get(email).orders.push(ord); else lost.push(ord); }
+    const sup = new Map(S.supList.all(owner).map((r) => [r.email, r]));
+    for (const x of rows.values()) { const s0 = sup.get(x.email); if (s0 && (s0.source === 'bounce' || s0.source === 'complaint')) x.bounced = s0.source; if (s0 && s0.source === 'unsubscribe' && s0.campaign === id && !x.unsubAt) x.unsubAt = s0.at; }
+    const names = hooks.namesOf?.(owner, c, [...rows.keys()]) || {};
+    for (const x of rows.values()) x.name = names[x.email] || '';
+    const list = [...rows.values()];
+    const got = list.filter((x) => x.status === 'sent' || x.status === 'unknown');
+    const opened = list.filter((x) => x.opens || x.clicks), clicked = list.filter((x) => x.clicks), bought = list.filter((x) => x.orders.length);
+    const orders = extra.orders.length, revenue = extra.orders.reduce((a, o) => a + (o.value || 0), 0);
+    const send = c.send || {};
+    return {
+      campaign: { id, subject: send.subject || c.subject || '', from: c.fromName || c.from || '', via: c.send ? 'server' : c.via || 'gmail', at: send.sendAt || c.createdAt, links: c.links || [], labels: c.labels || [], list: c.audience?.listName || '', segment: c.audience?.segmentName || '' },
+      totals: { recipients: got.length, opened: opened.length, clicked: clicked.length, buyers: bought.length, orders, revenue, unsubscribed: list.filter((x) => x.unsubAt).length, bounced: list.filter((x) => x.bounced).length, failed: list.filter((x) => x.status === 'failed').length, unknownOpens: unknown.open.size, unknownClicks: unknown.click.size },
+      lostOrders: lost, // matched to this email by click id but the buyer's address is not known
+      people: list,
+    };
+  }
 
   const page = (title, msg, extra = '') => `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f3;font:16px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#141714}main{max-width:440px;margin:24px;padding:32px;background:#fff;border-radius:16px;box-shadow:0 18px 40px -20px rgba(0,0,0,.25);text-align:center}h1{font-size:22px;margin:0 0 8px}p{color:#555;margin:0 0 18px}button{font:inherit;font-weight:700;padding:12px 22px;border:0;border-radius:999px;background:#111;color:#fff;cursor:pointer}small{display:block;margin-top:18px;color:#999}</style></head><body><main><h1>${esc(title)}</h1><p>${msg}</p>${extra}<small>Gửi bằng Phloem Email</small></main></body></html>`;
   const html = (res, code, s) => { res.statusCode = code; res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(s); };
@@ -283,14 +333,23 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
         if (p === '/mail/tokens' && m === 'POST') {
           const b = await body(req); const cid = String(b?.campaign || '').slice(0, 80);
           if (!cid || !camp(u.id, cid)) { json(res, 404, { error: 'Đăng ký chiến dịch trước (POST /mail/campaigns).' }); return true; }
-          const out = {}; for (const e of (Array.isArray(b?.emails) ? b.emails : []).slice(0, 1000)) { const em = String(e).toLowerCase().trim(); if (EMAIL_RE.test(em)) out[em] = makeToken(secret, u.id, cid, em, String(b?.variant || '')); }
+          const out = {}; const at = now();
+          for (const e of (Array.isArray(b?.emails) ? b.emails : []).slice(0, 1000)) { const em = String(e).toLowerCase().trim(); if (EMAIL_RE.test(em)) { out[em] = makeToken(secret, u.id, cid, em, String(b?.variant || '')); S.rcptAdd.run(u.id, cid, em, String(b?.variant || ''), at); } } // who got it: the per-person report names them
           const sup = new Set(S.supList.all(u.id).map((r) => r.email));
           json(res, 200, { base: publicUrl, tokens: out, suppressed: Object.keys(out).filter((e) => sup.has(e)) }); return true;
+        }
+        if (p === '/mail/campaigns' && m === 'GET') { // this account's sent campaigns (any browser), newest first
+          const proj = url.searchParams.get('project') || '';
+          const list = S.campDue.all().filter((r) => r.owner === u.id && !/^(a_|test_)/.test(r.id)).map((r) => ({ id: r.id, ...JSON.parse(r.json) }))
+            .filter((c) => !proj || c.project === proj)
+            .map((c) => ({ id: c.id, subject: c.send?.subject || c.subject || '', via: c.send ? 'server' : c.via || 'gmail', project: c.project || '', at: c.send?.sendAt || c.createdAt, recipients: c.send ? Object.values(Object.fromEntries(S.qCounts.all(u.id, c.id).map((x) => [x.status + x.variant, x.n]))).reduce((a, n) => a + n, 0) : Number(S.rcptCount.get(u.id, c.id).n) || 0 }))
+            .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 100);
+          json(res, 200, { campaigns: list }); return true;
         }
         if (p === '/mail/campaigns' && m === 'POST') {
           const b = await body(req); const id = String(b?.id || '').slice(0, 80); if (!id) { json(res, 400, { error: 'thiếu id' }); return true; }
           const prev = camp(u.id, id) || { createdAt: now() };
-          saveCamp(u.id, id, { ...prev, subject: String(b.subject || prev.subject || '').slice(0, 300), from: String(b.from || prev.from || '').slice(0, 200), fromName: String(b.fromName || prev.fromName || '').slice(0, 120), links: Array.isArray(b.links) ? b.links.map((x) => String(x).slice(0, 2000)).slice(0, 300) : prev.links || [] });
+          saveCamp(u.id, id, { ...prev, via: ['gmail', 'server'].includes(b.via) ? b.via : prev.via, project: b.project ? String(b.project).slice(0, 80) : prev.project, subject: String(b.subject || prev.subject || '').slice(0, 300), from: String(b.from || prev.from || '').slice(0, 200), fromName: String(b.fromName || prev.fromName || '').slice(0, 120), links: Array.isArray(b.links) ? b.links.map((x) => String(x).slice(0, 2000)).slice(0, 300) : prev.links || [], labels: Array.isArray(b.labels) ? b.labels.map((x) => String(x ?? '').slice(0, 80)).slice(0, 300) : prev.labels || [] });
           json(res, 200, { ok: true }); return true;
         }
         const st = /^\/mail\/campaigns\/([^/]+)\/stats$/.exec(p);
@@ -300,7 +359,14 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const byVariant = {}; for (const r of S.evStats.all(u.id, id)) { const v = r.variant || '-'; byVariant[v] ||= { opens: 0, clicks: 0 }; if (r.kind === 'open') byVariant[v].opens = r.u; else if (r.kind === 'click') byVariant[v].clicks = r.u; }
           const qc = S.qCounts.all(u.id, id); const queue = {}; for (const r of qc) queue[r.status] = (queue[r.status] || 0) + r.n;
           const { html: _h, text: _t, ...send } = c.send || {};
-          json(res, 200, { opens: tot.open || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, links: S.evLinks.all(u.id, id).map((r) => ({ url: c.links?.[r.link] || '', clicks: r.u })), byVariant, queue, send: c.send ? send : null }); return true;
+          const ord = hooks.ordersSummary?.(u.id, id) || { orders: 0, revenue: 0, buyers: 0 };
+          json(res, 200, { opens: Number(S.evReaders.get(u.id, id).u) || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, links: S.evLinks.all(u.id, id).map((r) => ({ url: c.links?.[r.link] || '', clicks: r.u })), byVariant, queue, send: c.send ? send : null, ...ord }); return true;
+        }
+        const pp = /^\/mail\/campaigns\/([^/]+)\/people$/.exec(p);
+        if (pp && m === 'GET') {
+          const r = people(u.id, decodeURIComponent(pp[1]));
+          if (!r) { json(res, 404, { error: 'không có chiến dịch' }); return true; }
+          json(res, 200, r); return true;
         }
         if (p === '/mail/suppressions') {
           if (m === 'GET') { json(res, 200, { suppressions: S.supList.all(u.id) }); return true; }
@@ -450,6 +516,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     let h = mergeFields(html, f), unsub = '';
     if (tracked) { const per = personalize(html, publicUrl, makeToken(secret, owner, campaign, to, variant), f); h = per.html; unsub = per.unsub; }
     await PROV[sender.provider].send(sender, { to, subject: mergeFields(subject, f, false), html: h, text: text ? mergeFields(text, f, false) + (unsub ? `\n\nHuỷ đăng ký: ${unsub}` : '') : '', headers: unsub ? { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : {} });
+    if (tracked) S.rcptAdd.run(owner, campaign, String(to).toLowerCase(), variant, now()); // automation emails get a per-person report too
   }
   return {
     handle,
@@ -459,7 +526,8 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     suppressed: (owner, email) => !!S.supHas.get(owner, String(email).toLowerCase()),
     suppress: (owner, email, source, campaign = '') => S.supAdd.run(owner, String(email).toLowerCase(), now(), source, campaign),
     senderIds: (owner) => senders(owner).map((x) => ({ id: x.id, label: x.label || PROV[x.provider]?.label, fromEmail: x.fromEmail, fromName: x.fromName })),
-    stats: (owner, id) => { const tot = Object.fromEntries(S.evTotals.all(owner, id).map((r) => [r.kind, r.u])); const qc = {}; for (const r of S.qCounts.all(owner, id)) qc[r.status] = (qc[r.status] || 0) + r.n; return { opens: tot.open || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, queue: qc }; },
+    stats: (owner, id) => { const tot = Object.fromEntries(S.evTotals.all(owner, id).map((r) => [r.kind, r.u])); const qc = {}; for (const r of S.qCounts.all(owner, id)) qc[r.status] = (qc[r.status] || 0) + r.n; return { opens: Number(S.evReaders.get(owner, id).u) || 0, clicks: tot.click || 0, unsubscribes: tot.unsub || 0, queue: qc, browserSent: Number(S.rcptCount.get(owner, id).n) || 0 }; },
+    people,
     campaigns: (owner) => S.campDue.all().filter((r) => r.owner === owner).map((r) => ({ id: r.id, ...JSON.parse(r.json) })),
     health: () => ({ img: !!img, tracking: true, queue: true }),
     start: () => { const t = setInterval(() => { void tick(); }, 20_000); t.unref?.(); },

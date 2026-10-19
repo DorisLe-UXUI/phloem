@@ -42,7 +42,7 @@ function textFooter(p: Project, sender: string, senderName: string, unsubUrl = '
 }
 
 export interface ComposeOpts { /** slices on the relay's public bucket instead of cid: attachments */ hosted?: boolean; /** unsubscribe + click placeholders, filled per recipient */ track?: boolean }
-export interface Composed { html: string; text: string; parts: MimePart[]; kb: number; subject: string; links: string[]; hosted: boolean; tracked: boolean }
+export interface Composed { html: string; text: string; parts: MimePart[]; kb: number; subject: string; links: string[]; labels: string[]; hosted: boolean; tracked: boolean }
 
 /** Build the email once: HTML (+ hosted or cid: images) + a plain-text twin + a live-text footer when sent. */
 async function compose(p: Project, sender: string, senderName = '', o: ComposeOpts = {}): Promise<Composed> {
@@ -67,11 +67,11 @@ async function compose(p: Project, sender: string, senderName = '', o: ComposeOp
   const foot = sender ? textFooter(p, sender, senderName, unsub) : null;
   let html = replaceMergeTags(htmlFor(p, foot ? ({ footerHtml: foot.html } as Profile) : null, ex, images, mobileImages, 'full'), sender, unsub);
   if (!hosted) { const u = uniqueCids(html, parts); html = u.html; parts = u.parts; }
-  let links: string[] = [];
-  if (o.track) { const t = trackLinks(html); html = t.html; links = t.links; }
+  let links: string[] = [], labels: string[] = [];
+  if (o.track) { const t = trackLinks(html); html = t.html; links = t.links; labels = t.labels; }
   const text = plainText(p.fields.preheader || '', ex.plan.slices.map((s) => ({ alt: s.alt, link: s.link }))) + (foot ? `\n\n${foot.text}` : '');
   const kb = Math.round((parts.reduce((a, x) => a + x.bytes.length, 0) + html.length) / 1024);
-  return { html, text, parts, kb, subject: p.fields.subject || p.fields.campaignName || p.name, links, hosted, tracked: !!o.track };
+  return { html, text, parts, kb, subject: p.fields.subject || p.fields.campaignName || p.name, links, labels, hosted, tracked: !!o.track };
 }
 /** A finished email for server-side sends (automation steps): hosted images, tracked links, live text, footer. */
 export async function composeForSend(p: Project, fromEmail: string, fromName: string): Promise<{ html: string; text: string; links: string[]; subject: string; kb: number }> {
@@ -239,7 +239,7 @@ export async function runQueue(p: Project) {
   try {
     let m = await compose(p, acc.email, acc.name, { hosted: !!q.hosted, track: !!q.tracked });
     if (m.tracked) {
-      try { await registerCampaign(q.id, { subject: m.subject, from: acc.email, fromName: acc.name, links: m.links }); }
+      try { await registerCampaign(q.id, { subject: m.subject, from: acc.email, fromName: acc.name, links: m.links, labels: m.labels, via: 'gmail', project: p.id }); }
       catch (e) { log(`Không bật được theo dõi (${(e as Error).message}): gửi không theo dõi.`, 'er'); q.tracked = false; m = await compose(p, acc.email, acc.name, { hosted: !!q.hosted }); }
     }
     const tok = new Map<string, string>(); const sup = new Set<string>(); let tokBase = '';
@@ -333,7 +333,7 @@ export async function startServerQueue(p: Project, sender: Sender, recipientsRaw
     const m = await compose(p, sender.fromEmail, sender.fromName, { hosted: true, track: true });
     if (!m.hosted) throw new Error('Gửi qua máy chủ cần ảnh lưu trên host, nhưng relay chưa có kho ảnh (IMG_S3_BUCKET).');
     const id = `s_${Date.now().toString(36)}`;
-    await registerCampaign(id, { subject: m.subject, from: sender.fromEmail, fromName: sender.fromName, links: m.links });
+    await registerCampaign(id, { subject: m.subject, from: sender.fromEmail, fromName: sender.fromName, links: m.links, labels: m.labels, via: 'server', project: p.id });
     const r = await startServerSend({ campaign: id, sender: sender.id, subject: m.subject, html: m.html, text: m.text, recipients: list, sendAt: when ? when.toISOString() : undefined, perDay, ab: opt.ab || null, ...(opt.audience ? { audience: { client: opt.audience.client || undefined, list: opt.audience.list, segment: opt.audience.segment || undefined, tags: opt.audience.tags } } : {}) });
     rememberCampaign({ id, projectId: p.id, subject: m.subject, via: 'server', at: new Date().toISOString(), recipients: r.recipients });
     toast(`Đã lên lịch gửi ${r.recipients.toLocaleString('vi-VN')} email${when ? ` lúc ${when.toLocaleString('vi-VN')}` : ''}.`, 'ok');

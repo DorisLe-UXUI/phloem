@@ -11,7 +11,15 @@ export interface MailHealth { img: boolean; tracking: boolean; queue: boolean }
 export interface Sender { webhook?: string; domain?: { name: string; verified?: boolean; checkedAt?: string } | null; id: string; provider: 'resend' | 'brevo' | 'ses'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean }
 export interface ProviderInfo { id: Sender['provider']; label: string; perDay: number }
 export interface SendInfo { sender: string; subject: string; sendAt: string; status: 'scheduled' | 'sending' | 'waiting' | 'paused' | 'cancelled' | 'done' | 'error'; perDay: number; lastError: string; testSentAt: string | null; ab: null | { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number; phase: 'test' | 'wait' | 'rest'; winner: 'A' | 'B' | null; scores?: { A: number; B: number } } }
-export interface CampaignStats { opens: number; clicks: number; unsubscribes: number; links: { url: string; clicks: number }[]; byVariant: Record<string, { opens: number; clicks: number }>; queue: Record<string, number>; send: SendInfo | null }
+export interface CampaignStats { opens: number; clicks: number; unsubscribes: number; links: { url: string; clicks: number }[]; byVariant: Record<string, { opens: number; clicks: number }>; queue: Record<string, number>; send: SendInfo | null; orders?: number; revenue?: number; buyers?: number }
+export interface PersonOrder { orderId: string; value: number; currency: string; at: string; match: 'click' | 'email'; kind: '' | 'product' | 'service'; items: string; clickedAt: string | null; link: number | null }
+export interface CampaignPerson { email: string; name: string; status: '' | 'sent' | 'queued' | 'failed' | 'skipped' | 'cancelled' | 'unknown'; sentAt: string | null; variant: string; error: string; opens: number; firstOpen: string | null; lastOpen: string | null; clicks: number; lastClick: string | null; links: { i: number; url: string; n: number; last: string }[]; orders: PersonOrder[]; unsubAt: string | null; bounced: '' | 'bounce' | 'complaint' }
+export interface CampaignPeople {
+  campaign: { id: string; subject: string; from: string; via: 'gmail' | 'server'; at: string; links: string[]; labels: string[]; list: string; segment: string };
+  totals: { recipients: number; opened: number; clicked: number; buyers: number; orders: number; revenue: number; unsubscribed: number; bounced: number; failed: number; unknownOpens: number; unknownClicks: number };
+  lostOrders: PersonOrder[];
+  people: CampaignPerson[];
+}
 
 const base = () => get().settings.relayUrl.trim().replace(/\/$/, '');
 /** Signed in to a relay account (the mail routes are per user). */
@@ -67,9 +75,11 @@ export async function hostImages(items: { key: string; bytes: Uint8Array; mime: 
 }
 
 // ---------- campaigns, tokens, stats ----------
-export const registerCampaign = (id: string, c: { subject: string; from: string; fromName: string; links: string[] }) => api<{ ok: true }>('/mail/campaigns', { body: { id, ...c } });
+export const registerCampaign = (id: string, c: { subject: string; from: string; fromName: string; links: string[]; labels?: string[]; via?: 'gmail' | 'server'; project?: string }) => api<{ ok: true }>('/mail/campaigns', { body: { id, ...c } });
 export const recipientTokens = (campaign: string, emails: string[], variant = '') => api<{ base: string; tokens: Record<string, string>; suppressed: string[] }>('/mail/tokens', { body: { campaign, emails, variant } });
 export const campaignStats = (id: string) => api<CampaignStats>(`/mail/campaigns/${encodeURIComponent(id)}/stats`);
+/** Each recipient of a campaign: opened, which links, what they bought (orders the shop's tag matched to this email). */
+export const campaignPeople = (id: string) => api<CampaignPeople>(`/mail/campaigns/${encodeURIComponent(id)}/people`);
 
 // ---------- suppression list ----------
 export const listSuppressions = () => api<{ suppressions: { email: string; at: string; source: string; campaign: string }[] }>('/mail/suppressions');
@@ -93,7 +103,13 @@ export interface CampaignRef { id: string; projectId: string; subject: string; v
 const LS = 'phloem.mail.campaigns';
 export function myCampaigns(projectId?: string): CampaignRef[] { try { const all = JSON.parse(localStorage.getItem(LS) || '[]') as CampaignRef[]; return projectId ? all.filter((c) => c.projectId === projectId) : all; } catch { return []; } }
 export function rememberCampaign(c: CampaignRef) { try { const all = myCampaigns().filter((x) => x.id !== c.id); all.unshift(c); localStorage.setItem(LS, JSON.stringify(all.slice(0, 60))); } catch { /* ignore */ } }
-export function forgetCampaign(id: string) { try { localStorage.setItem(LS, JSON.stringify(myCampaigns().filter((x) => x.id !== id))); } catch { /* ignore */ } }
+/** Hide from the list (the numbers stay on the relay); hidden ones can be shown again. */
+const LS_HIDDEN = 'phloem.mail.hidden';
+export function hiddenCampaigns(): string[] { try { return JSON.parse(localStorage.getItem(LS_HIDDEN) || '[]'); } catch { return []; } }
+export function forgetCampaign(id: string) { try { localStorage.setItem(LS_HIDDEN, JSON.stringify([id, ...hiddenCampaigns().filter((x) => x !== id)].slice(0, 300))); } catch { /* ignore */ } }
+export function unhideCampaigns(ids: string[]) { try { localStorage.setItem(LS_HIDDEN, JSON.stringify(hiddenCampaigns().filter((x) => !ids.includes(x)))); } catch { /* ignore */ } }
+/** Campaigns of this account on the relay (any browser); `project` narrows to one email's sends. */
+export const serverCampaigns = (project?: string) => api<{ campaigns: (Omit<CampaignRef, 'projectId'> & { project: string })[] }>(`/mail/campaigns${project ? `?project=${encodeURIComponent(project)}` : ''}`);
 
 // ---------- sending domain ----------
 export interface DnsRecord { type: string; name: string; value: string; priority?: number; status?: string; note?: string }

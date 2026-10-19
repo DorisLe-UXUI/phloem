@@ -91,14 +91,21 @@ export const UNSUB_PLACEHOLDER = '__PHLOEM_UNSUB__';
 /** Swap every trackable link (http/https hrefs) for __PHLOEM_CLICK_i__; `links[i]` is where i redirects. The same URL
  *  shares one index, so per-link click counts add up across repeated buttons. mailto:, tel:, anchors and the unsubscribe
  *  link stay as they are. */
-export function trackLinks(html: string): { html: string; links: string[] } {
-  const links: string[] = []; const at = new Map<string, number>();
-  const out = html.replace(/(<a\b[^>]*?\bhref=)(["'])(https?:\/\/[^"']+)\2/gi, (_m, pre: string, q: string, url: string) => {
+export function trackLinks(html: string): { html: string; links: string[]; labels: string[] } {
+  const links: string[] = [], labels: string[] = []; const at = new Map<string, number>();
+  const out = html.replace(/(<a\b[^>]*?\bhref=)(["'])(https?:\/\/[^"']+)\2/gi, (m: string, pre: string, q: string, url: string, off: number, all: string) => {
     const u = url.replace(/&amp;/g, '&');
-    let i = at.get(u); if (i === undefined) { i = links.length; links.push(u); at.set(u, i); }
+    let i = at.get(u); if (i === undefined) { i = links.length; links.push(u); labels.push(linkText(all, off + m.length)); at.set(u, i); }
     return `${pre}${q}__PHLOEM_CLICK_${i}__${q}`;
   });
-  return { html: out, links };
+  return { html: out, links, labels };
+}
+/** What a link shows: the picture's alt text or the anchor's words (reports name links by it). */
+function linkText(html: string, from: number): string {
+  const end = html.indexOf('</a>', from); const inner = html.slice(html.indexOf('>', from) + 1, end < 0 ? from + 800 : Math.min(end, from + 4000));
+  const alt = /\balt=(["'])([^"']*)\1/i.exec(inner)?.[2] || '';
+  const words = alt || inner.replace(/<[^>]+>/g, ' ');
+  return words.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 /** Browser-side twin of the relay's personalize(): one recipient's links + open pixel. */
 export function personalizeHtml(html: string, base: string, token: string): { html: string; unsub: string } {

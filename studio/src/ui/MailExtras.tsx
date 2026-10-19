@@ -7,8 +7,8 @@ import { set, toast } from '../store';
 import { audLists, previewRules, segments as audSegments, type AudList, type Segment } from '../pipeline/audience';
 import { HOSTED_PREF, loadQueue, parseRecipients, startServerQueue } from '../pipeline/mailSend';
 import {
-  addSuppressions, campaignStats, deleteSender, forgetCampaign, listSenders, listSuppressions, mailHealth, mailHealthCached, mailSignedIn, myCampaigns,
-  removeSuppression, saveSender, serverSendControl, testSender, type CampaignStats, type ProviderInfo, type Sender,
+  addSuppressions, campaignStats, deleteSender, forgetCampaign, hiddenCampaigns, listSenders, listSuppressions, mailHealth, mailHealthCached, mailSignedIn, myCampaigns,
+  removeSuppression, saveSender, serverCampaigns, serverSendControl, testSender, unhideCampaigns, type CampaignRef, type CampaignStats, type ProviderInfo, type Sender,
 } from '../pipeline/mailServer';
 import { Btn, Field, Num, Seg, Select, TextArea, TextInput, Toggle, Progress } from './components';
 import { Icon } from './icons';
@@ -182,16 +182,42 @@ export function SenderForm({ providers, onSaved, onCancel }: { providers: Provid
 
 // ---------------------------------------------------------------------------------------------------------------
 const STATUS: Record<string, string> = { scheduled: 'đã lên lịch', sending: 'đang gửi', waiting: 'chờ (hạn mức / A-B)', paused: 'tạm dừng', cancelled: 'đã huỷ', done: 'xong', error: 'lỗi' };
-/** Campaigns this browser started for this email, with live numbers. */
+/** Campaigns sent from this email (this browser's, the relay's, and the Gmail queue's), with live numbers. Hidden ones
+ *  stay one click away. */
 export function CampaignStatsList({ projectId }: { projectId: string }) {
   const [, force] = useState(0);
-  const list = myCampaigns(projectId);
-  if (!mailSignedIn() || !list.length) return null;
+  const [remote, setRemote] = useState<CampaignRef[]>([]);
+  const [peek, setPeek] = useState(false);
+  useEffect(() => { if (mailSignedIn()) void serverCampaigns(projectId).then((r) => setRemote(r.campaigns.map(({ project: _p, ...c }) => ({ ...c, projectId })))).catch(() => {}); }, [projectId]);
+  if (!mailSignedIn()) return null;
+  const byId = new Map<string, CampaignRef>();
+  for (const c of [...myCampaigns(projectId), ...remote]) if (!byId.has(c.id)) byId.set(c.id, c);
+  const q = loadQueue(projectId);
+  if (q?.tracked && !byId.has(q.id)) byId.set(q.id, { id: q.id, projectId, subject: q.subject, via: 'gmail', at: q.createdAt, recipients: q.recipients.length });
+  const all = [...byId.values()].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  if (!all.length) return null;
+  const hidden = new Set(hiddenCampaigns());
+  const shown = all.filter((c) => !hidden.has(c.id)), hid = all.filter((c) => hidden.has(c.id));
+  const unhide = (ids: string[]) => { unhideCampaigns(ids); force((x) => x + 1); };
   return (
     <details class="small" open>
-      <summary class="dim">Thống kê chiến dịch ({list.length})</summary>
+      <summary class="dim">Thống kê chiến dịch ({shown.length})</summary>
       <div class="col" style={{ gap: 6, marginTop: 6 }}>
-        {list.slice(0, 8).map((c) => <CampaignRow key={c.id} id={c.id} subject={c.subject} via={c.via} at={c.at} recipients={c.recipients} projectId={projectId} onForget={() => { forgetCampaign(c.id); force((x) => x + 1); }} />)}
+        {shown.slice(0, 8).map((c) => <CampaignRow key={c.id} id={c.id} subject={c.subject} via={c.via} at={c.at} recipients={c.recipients} projectId={projectId} onForget={() => { forgetCampaign(c.id); force((x) => x + 1); }} />)}
+        {hid.length > 0 && (
+          <div class="row dim" style={{ gap: 6 }}>
+            <span class="grow">{hid.length} chiến dịch đã ẩn</span>
+            <Btn xs kind="ghost" onClick={() => setPeek(!peek)}>{peek ? 'Thu lại' : 'Xem'}</Btn>
+            <Btn xs onClick={() => unhide(hid.map((c) => c.id))}>Hiện lại tất cả</Btn>
+          </div>
+        )}
+        {peek && hid.map((c) => (
+          <div key={c.id} class="row" style={{ gap: 6 }}>
+            <span class="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.subject}</span>
+            <span class="dim">{new Date(c.at).toLocaleDateString('vi-VN')}</span>
+            <Btn xs onClick={() => unhide([c.id])}>Hiện lại</Btn>
+          </div>
+        ))}
       </div>
     </details>
   );
@@ -223,6 +249,10 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
             <Stat label="Click" v={nf(st.clicks)} sub={pct(st.clicks, sent)} />
             <Stat label="Huỷ ĐK" v={nf(st.unsubscribes)} sub={pct(st.unsubscribes, sent)} />
           </div>
+          <div class="row camp-buy" title="Đơn hàng / đặt dịch vụ mà mã theo dõi trên website khớp với mail này">
+            <div class="grow"><div class="dim" style={{ fontSize: 11 }}>Đã mua</div><b>{nf(st.buyers || 0)}</b> <span class="dim">người · {nf(st.orders || 0)} đơn</span></div><b class={st.revenue ? 'neon' : 'dim'} style={{ fontSize: 15 }}>{st.revenue ? `${Math.round(st.revenue).toLocaleString('vi-VN')}₫` : '0₫'}</b>
+          </div>
+          <Btn sm kind="primary" icon="search" onClick={() => set({ modal: 'people', peopleOf: id })}>Ai mở · ai bấm · ai mua</Btn>
           {via === 'server' && total > 0 && <Progress done={(st.queue.sent || 0) + (st.queue.failed || 0) + (st.queue.skipped || 0)} total={total - (st.queue.cancelled || 0)} />}
           {via === 'server' && total > 0 && <div class="dim">{nf(st.queue.queued || 0)} chờ · {nf(st.queue.failed || 0)} lỗi · {nf(st.queue.skipped || 0)} bỏ qua (đã huỷ ĐK){send?.lastError ? ` · ${send.lastError}` : ''}</div>}
           {send?.ab && <div class="dim">A/B: A {st.byVariant.A ? `${nf(st.byVariant.A.opens)} mở · ${nf(st.byVariant.A.clicks)} click` : '–'} | B {st.byVariant.B ? `${nf(st.byVariant.B.opens)} mở · ${nf(st.byVariant.B.clicks)} click` : '–'}{send.ab.winner ? ` → thắng: ${send.ab.winner === 'B' ? `B "${send.ab.subjectB}"` : 'A'}` : send.ab.phase === 'wait' ? ' · đang chờ kết quả' : ''}</div>}
@@ -235,7 +265,7 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
         {via === 'server' && send && ['paused', 'error'].includes(send.status) && <Btn xs kind="primary" onClick={() => void ctl('resume')}>Tiếp tục</Btn>}
         {via === 'server' && send && !['done', 'cancelled'].includes(send.status) && <Btn xs kind="ghost" onClick={() => void ctl('cancel')}>Huỷ</Btn>}
         <span class="grow" />
-        <Btn xs kind="ghost" onClick={onForget} title="Ẩn khỏi danh sách (số liệu vẫn còn trên relay)">Ẩn</Btn>
+        <Btn xs kind="ghost" onClick={onForget} title="Ẩn khỏi danh sách: số liệu vẫn còn, bấm Hiện lại ở cuối danh sách">Ẩn</Btn>
       </div>
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
     </div>
