@@ -41,6 +41,7 @@ import { BRAND_PRESETS, DEFAULT_BRAND, type Doc } from './model/types';
 import { htmlToDoc } from './ai/htmlToDoc';
 import { polishDesign } from './pipeline/polish';
 import { renderToCanvas } from './render/renderer';
+import { letterDoc } from './ai/cold';
 import { animBlocks, makeMobile } from './model/ops';
 import { finalizeSlices } from '../../src/ui/imageops';
 import { exportProject, previewHtml } from './pipeline/exportFlow';
@@ -125,6 +126,7 @@ import { explainLive } from './pipeline/liveText';
 window.addEventListener('online', () => { void A.syncNow().catch(() => { /* reported in the sync chip */ }); });
 
 (window as unknown as { __phloemDev?: unknown }).__phloemDev = {
+  letterDoc,
   polish: (d: Doc) => polishDesign(d, get().project!.brand),
   /** The open doc rendered as the export will see it (data URL). */
   renderPng: (scale = 1) => { const p = get().project!; const d = get().variant === 'mobile' && p.mobile ? p.mobile : p.desktop; return renderToCanvas(d, p.brand, assets, scale).toDataURL('image/png'); },

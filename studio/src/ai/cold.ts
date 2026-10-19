@@ -18,7 +18,7 @@ export interface ColdLetter {
   ps?: string;
   signature: { name: string; title: string; company: string; phone?: string; website?: string };
 }
-export interface ColdInput extends GenInput { segments?: string; signer?: string; postal?: string; offer?: string }
+export type ColdInput = GenInput;
 
 const COLD = `You write B2B cold emails that get replies. The reader never asked for this email, opens it on a phone, and decides in 5 seconds: who is this, what is in it for me, what do I do next. Often it lands in a shared inbox (info@, owner, receptionist), not with the decision maker.
 RULES
@@ -76,7 +76,7 @@ export function letterDoc(l: ColdLetter, postal: string, lang: 'vi' | 'en', base
   if (l.proof?.text) para(l.proof.text, { color: l.proof.url ? { token: 'primary' } : { token: 'ink' }, underline: !!l.proof.url, link: l.proof.url || null, name: 'Proof' });
   y += 4;
   const sig = [l.signature.name, [l.signature.title, l.signature.company].filter(Boolean).join(', '), l.signature.phone, l.signature.website].filter(Boolean).join('\n');
-  if (sig) { const n = para(sig, { fontSize: 15, lineHeight: 1.5, name: 'Signature' }, 18); if (l.signature.website && /^https?:\/\//i.test(l.signature.website)) n.link = null; }
+  if (sig) para(sig, { fontSize: 15, lineHeight: 1.5, name: 'Signature' }, 18);
   if (l.ps) para(`P.S. ${l.ps}`, { fontSize: 15 }, 24);
   nodes.push(mkRect({ x: X, y, w: W, h: 1, fill: { token: 'line' }, name: 'Rule' })); y += 17;
   const legal = lang === 'en'

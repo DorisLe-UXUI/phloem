@@ -30,6 +30,8 @@ export interface GenInput {
   house?: HouseStyle | null;
   /** A design trend the user asked for (TREND_OPTIONS id), '' = the AI picks what fits the brand. */
   trend?: string;
+  /** Thư lạnh B2B: one segment per line, the one offer name, who signs, the postal address the law asks for. */
+  segments?: string; offer?: string; signer?: string; postal?: string;
 }
 
 export interface Variant { name: string; why: string; palette: string; vibe?: Vibe; headingFont?: string; bodyFont?: string; fields: EmailFields; blocks: BlockSpec[] }

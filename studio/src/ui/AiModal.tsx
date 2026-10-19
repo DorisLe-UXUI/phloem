@@ -11,6 +11,7 @@ import { ensureFonts } from '../render/fonts';
 import { aiTransport, type AiTransport } from '../ai/client';
 import { designEmail, docHash, redrawDirection, TREND_OPTIONS, type DesignVariant } from '../ai/design';
 import { houseStyleOf, type HouseStyle } from '../ai/clientStyle';
+import { coldLetters, letterDoc, letterText, type ColdLetter } from '../ai/cold';
 import { capitalizeSentences, prepareHtml } from '../ai/htmlToDoc';
 import * as ops from '../model/ops';
 import { analyzeSite, brandFromSite, dominantColors, importSiteImages, lightVersionOf, linksFromSite, type SiteProduct, type SiteProfile } from '../ai/site';
@@ -22,7 +23,7 @@ import { ask } from './confirm';
 const GOALS = [
   { v: 'promo', label: 'Khuyến mãi / sale' }, { v: 'intro', label: 'Giới thiệu dịch vụ / thương hiệu' }, { v: 'newsletter', label: 'Newsletter định kỳ' }, { v: 'launch', label: 'Ra mắt sản phẩm' },
   { v: 'welcome', label: 'Chào mừng người mới' }, { v: 'event', label: 'Mời sự kiện' }, { v: 'cart', label: 'Nhắc giỏ hàng' },
-  { v: 'digest', label: 'Bản tin biên tập' }, { v: 'reengagement', label: 'Kéo khách quay lại' }, { v: 'other', label: 'Khác' },
+  { v: 'digest', label: 'Bản tin biên tập' }, { v: 'reengagement', label: 'Kéo khách quay lại' }, { v: 'cold', label: 'Thư lạnh B2B (người chưa đăng ký)' }, { v: 'other', label: 'Khác' },
 ];
 const TONES = [{ v: 'thân thiện, gần gũi', label: 'Thân thiện' }, { v: 'sang trọng, tối giản', label: 'Sang trọng' }, { v: 'sôi nổi, thúc giục', label: 'Sôi nổi' }, { v: 'chuyên nghiệp, rõ ràng', label: 'Chuyên nghiệp' }];
 
@@ -105,6 +106,8 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
   const clientId = A.currentClientId();
   const [house, setHouse] = useState<HouseStyle | null | undefined>(undefined);
   const [useHouse, setUseHouse] = useState(true);
+  const [letters, setLetters] = useState<ColdLetter[]>([]);
+  const cold = form.goal === 'cold';
   useEffect(() => { setHouse(undefined); void houseStyleOf(clientId, form.language === 'en' ? 'en' : 'vi', s.project?.id).then(setHouse).catch(() => setHouse(null)); }, [clientId]);
   const [, bump] = useState(0);
   const file = useRef<HTMLInputElement>(null);
@@ -170,6 +173,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
         const r = await analyzeNow(); if (r) input = r;
       }
       input = { ...input, house: useHouse ? house || null : null };
+      if (input.goal === 'cold') { setLetters([]); setLetters(await coldLetters(input, setStage)); return; }
       await document.fonts.ready;
       if (mode === 'design') {
         let list: DesignVariant[] = [];
@@ -249,6 +253,20 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
     }
   };
 
+  /** A cold letter becomes its own email (on the client's board), plain live text with the legal footer. */
+  const useLetter = async (l: ColdLetter, quiet = false) => {
+    const lang: 'vi' | 'en' = form.language === 'en' || (form.language !== 'vi' && /^[\x00-\x7F\s]*$/.test(l.body.join(' '))) ? 'en' : 'vi';
+    const { doc, brand } = letterDoc(l, (form.postal || '').trim(), lang, baseBrand());
+    await A.newProject('blank', brand, `${l.segment} · ${l.fields.subject || 'Thư lạnh'}`.slice(0, 80));
+    A.commit(doc, false);
+    A.patchProject({ fields: l.fields, brand });
+    if (!quiet) { close0(); toast(`Đã tạo email "${l.segment}". Kiểm tra tab Email trước khi gửi.`, 'ok'); }
+  };
+  const useAllLetters = async () => {
+    for (const l of letters) await useLetter(l, true);
+    close0(); toast(`Đã tạo ${letters.length} email, mỗi nhóm khách một bản${clientId ? ', trên bảng của khách' : ''}.`, 'ok');
+  };
+
   /** Images the composer worked with (site import, uploads, logo) belong to the project the variant lands in. */
   const tagForProject = (pid: string) => { const ids = [...form.imageIds, form.logoAssetId, form.logoLightAssetId].filter((x): x is string => !!x).filter((id) => !assets.get(id)?.project); if (ids.length) assets.tag(ids, { project: pid }); };
   const all = assets.all();
@@ -319,6 +337,19 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
         <Field label="Xu hướng thiết kế" hint="2026"><Select value={form.trend || ''} options={TREND_OPTIONS.map((t) => ({ v: t.id, label: t.label }))} onChange={(v) => upd({ trend: v })} /></Field>
       </div>
       <Field label="Email này để làm gì? Gửi cho ai?" hint="brief"><TextArea rows={2} value={form.brief} placeholder="Sale cuối tuần 30% cho khách cũ, muốn họ quay lại mua đồ gốm trước Tết…" onCommit={(v) => upd({ brief: v })} onInput={(v) => upd({ brief: v })} /></Field>
+      {cold && (
+        <div class="card glow col" style={{ gap: 8 }}>
+          <div class="row"><Icon name="mail" style={{ color: 'var(--neon)' }} /><b class="grow">Thư lạnh B2B</b><span class="chip">chữ thật · ngắn · 1 lời mời</span></div>
+          <div class="small muted">Người nhận chưa đăng ký: thư phải trông như người viết, đọc xong trong 5 giây, chỉ bán một thứ. AI viết mỗi nhóm khách một bản với câu mở đầu riêng, kèm địa chỉ và dòng huỷ đăng ký theo luật chống spam.</div>
+          <Field label="Nhóm khách" hint="mỗi dòng một nhóm"><TextArea rows={4} value={form.segments || ''} placeholder={'A · Chủ doanh nghiệp 2–20 tỷ, dòng tiền là đoán mò\nB · Đang chạy Google Ads, không biết lãi thật\nC · Startup công nghệ vừa gọi vốn\nD · Chuẩn bị chuyển nhượng / bán công ty'} onInput={(v) => upd({ segments: v })} onCommit={(v) => upd({ segments: v })} /></Field>
+          <div class="grid2">
+            <Field label="Ưu đãi (một tên duy nhất)"><TextInput value={form.offer || ''} placeholder="Free cash-flow session (30 phút)" onInput={(v) => upd({ offer: v })} onCommit={(v) => upd({ offer: v })} /></Field>
+            <Field label="Người ký"><TextInput value={form.signer || ''} placeholder="Tên, chức danh, SĐT" onInput={(v) => upd({ signer: v })} onCommit={(v) => upd({ signer: v })} /></Field>
+          </div>
+          <Field label="Địa chỉ bưu điện thật" hint="bắt buộc (CAN-SPAM / Nghị định 91)"><TextInput value={form.postal || ''} placeholder="1201 Main St, Suite 400, Dallas, TX 75202" onInput={(v) => upd({ postal: v })} onCommit={(v) => upd({ postal: v })} /></Field>
+          {!(form.postal || '').trim() && <div class="check warn"><span class="lv">LUẬT</span><span class="m">Chưa có địa chỉ bưu điện: thư sẽ để chỗ trống và chưa được gửi.</span></div>}
+        </div>
+      )}
       <Field label="Nội dung thô" hint="tiêu đề, sản phẩm, giá, link, ngày, chính sách… dán thoải mái"><TextArea rows={6} value={form.content} placeholder={'Cốc men tro 300ml 245.000₫ → 171.000₫ https://terra.vn/p/coc\nĐĩa ăn 24cm 320.000₫ → 224.000₫\nFreeship toàn quốc, đổi trả 30 ngày\nMã TERRA30 đến hết Chủ nhật 19/10'} onCommit={(v) => upd({ content: v })} onInput={(v) => upd({ content: v })} /></Field>
       <Eyebrow action={{ label: '+ Tải ảnh', onClick: () => file.current?.click() }}>Ảnh ({form.imageIds.length} đã chọn cho AI, tối đa 30 ảnh được xem trước) · dán Ctrl+V hoặc kéo thả vào đây</Eyebrow>
       <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files); }}>
@@ -350,6 +381,18 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
         {BRAND_PRESETS.map((p) => <button key={p.name} class={`preset ${form.palette === p.name ? 'on' : ''}`} onClick={() => upd({ palette: p.name })}><i style={{ background: p.brand.primary, borderColor: p.brand.bg }} />{p.name}</button>)}
       </div>
       <div ref={resultsRef} />
+      {letters.length > 0 && (
+        <div class="col" style={{ gap: 10 }}>
+          <div class="row"><b class="grow">{letters.length} thư lạnh</b><Btn sm kind="primary" icon="plus" onClick={() => void useAllLetters()}>Tạo tất cả {letters.length} email</Btn></div>
+          {letters.map((l, i) => (
+            <div key={i} class="card col" style={{ gap: 6 }}>
+              <div class="row" style={{ gap: 6 }}><span class="chip on">{l.segment}</span><b class="grow">{l.fields.subject}</b><Btn xs onClick={() => void useLetter(l)}>Tạo email này</Btn></div>
+              {l.hook && <div class="small dim">Góc tiếp cận: {l.hook}</div>}
+              <pre class="small" style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif', lineHeight: 1.5, background: '#fff', color: '#1f1f1f', padding: 12, borderRadius: 8 }}>{letterText(l, (form.postal || '').trim())}</pre>
+            </div>
+          ))}
+        </div>
+      )}
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span>{/đăng nhập/i.test(err) && <Btn sm kind="primary" onClick={() => set({ modal: 'auth', authTab: 'login' })}>Đăng nhập</Btn>}</div>}
       {busy && mode === 'blocks' && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage === 'refine' ? 'Creative director AI đang duyệt và sửa lại 3 phương án…' : 'AI đang đọc nội dung và ảnh, dựng 3 phương án…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Thường mất 20–60 giây. Kết quả là block Phloem thật, không phải ảnh mockup.</div></div>}
       {busy && mode === 'design' && !designs.length && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage || 'Đang bắt đầu…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Bước lên ý tưởng mất khoảng 20–40 giây, sau đó 3 email được vẽ cùng lúc, bạn xem trực tiếp bên dưới.</div></div>}
