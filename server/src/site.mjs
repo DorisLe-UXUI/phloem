@@ -36,23 +36,37 @@ export async function publicAddrs(host) {
   } catch { return null; }
 }
 export const isPublicHost = async (host) => !!(await publicAddrs(host));
+/** IPv6-only shops on Shopify (AAAA in 2620:127:f00f::/48, no A record) are served by Shopify's IPv4 edge too, chosen by
+ *  SNI/Host: add those addresses so a relay without IPv6 (Render) can still read the store. */
+export async function withIpv4Edge(addrs) {
+  if (!addrs || addrs.some((a) => a.family === 4) || !addrs.some((a) => /^2620:127:f00f:/i.test(a.address))) return addrs;
+  try { const v4 = (await lookup('shops.myshopify.com', { all: true, family: 4 })).filter((a) => !privateV4(a.address)); return [...v4, ...addrs]; } catch { return addrs; }
+}
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 const err = (status, message) => Object.assign(new Error(message), { status });
 
 /** One HTTP GET to a vetted address: the socket connects to the address we checked (no second DNS lookup), TLS still validates the hostname. */
-function getOnce(u, addrs, accept, timeout, deadline) {
+function getOnce(u, addrs0, accept, timeout, deadline) {
+  // IPv4 first: hosts like Render have no IPv6 route, and Node's happy-eyeballs path then fails with a cryptic
+  // "reading 'setServername'" instead of a connection error, so connect to one vetted address ourselves.
+  const addrs = [...addrs0].sort((a, b) => a.family - b.family);
+  const v6only = addrs.every((a) => a.family === 6);
   return new Promise((resolve, reject) => {
     const mod = u.protocol === 'https:' ? httpsRequest : httpRequest;
     const req = mod({
       protocol: u.protocol, hostname: u.hostname, port: u.port || undefined, path: u.pathname + u.search, method: 'GET', servername: u.hostname,
-      headers: { 'User-Agent': UA, Accept: accept, 'Accept-Encoding': 'identity' }, timeout,
-      lookup: (_host, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } if (opts && opts.all) cb(null, addrs.map((a) => ({ address: a.address, family: a.family }))); else cb(null, addrs[0].address, addrs[0].family); },
+      headers: { 'User-Agent': UA, Accept: accept, 'Accept-Encoding': 'identity' }, timeout, autoSelectFamily: false,
+      lookup: (_host, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } if (opts && opts.all) cb(null, [{ address: addrs[0].address, family: addrs[0].family }]); else cb(null, addrs[0].address, addrs[0].family); },
     }, resolve);
     const killer = setTimeout(() => req.destroy(err(504, 'hết thời gian chờ')), Math.max(1000, deadline - Date.now()));
     req.on('response', () => clearTimeout(killer));
     req.on('timeout', () => req.destroy(err(504, 'hết thời gian chờ')));
-    req.on('error', (e) => { clearTimeout(killer); reject(e.status ? e : err(502, e.message)); });
+    req.on('error', (e) => {
+      clearTimeout(killer);
+      if (!e.status && v6only && /setServername|ENETUNREACH|EHOSTUNREACH|EADDRNOTAVAIL|ECONNREFUSED|ETIMEDOUT/i.test(`${e.code || ''} ${e.message}`)) return reject(err(502, `${u.hostname} chỉ có địa chỉ IPv6 nên máy chủ Phloem chưa vào được. Thử tên miền chính của thương hiệu hoặc thêm ảnh và nội dung tay.`));
+      reject(e.status ? e : err(502, e.message));
+    });
     req.end();
   });
 }
@@ -74,7 +88,7 @@ export async function safeGet(url, { accept = '*/*', limit = 2_000_000, timeout 
   const deadline = Date.now() + budget; // whole fetch incl. redirects and body
   for (let hop = 0; hop < 6; hop++) {
     if (!/^https?:$/.test(u.protocol)) throw err(400, 'chỉ http/https');
-    const addrs = await publicAddrs(u.hostname);
+    const addrs = await withIpv4Edge(await publicAddrs(u.hostname));
     if (!addrs) throw err(403, 'không tải địa chỉ nội bộ');
     if (Date.now() > deadline) throw err(504, 'hết thời gian chờ');
     const res = await getOnce(u, addrs, accept, timeout, deadline);
