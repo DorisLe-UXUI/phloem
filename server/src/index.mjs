@@ -457,7 +457,11 @@ async function aiImage(p, res) {
         if (r.status === 404) googleModel = undefined;
         const msg = String(j?.error?.message || `HTTP ${r.status}`);
         // free-tier keys get an image quota of 0: say what to do instead of Google's raw quota dump
-        if (/prepayment credits are depleted|billing|insufficient.*(credit|fund)/i.test(msg)) return json(res, 402, { error: GOOGLE_BILLING, code: 'google_billing' });
+        if (/prepayment credits are depleted|billing|insufficient.*(credit|fund)/i.test(msg)) {
+          // Google is out of credit: the free Cloudflare allowance paints instead when it was skipped for a 'pro' request
+          if (CF_ACCOUNT && cfResting <= Date.now() && pro) { const out = await cloudflareImage(prompt, aspect, refs).catch((e) => ({ error: String(e?.message || e) })); if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_IMAGE_MODEL.split('/').pop() }); }
+          return json(res, 402, { error: GOOGLE_BILLING, code: 'google_billing' });
+        }
         if (r.status === 429 && /free_tier|limit: 0/.test(msg)) return json(res, 429, { error: 'Key Gemini đang ở gói miễn phí: Google không cho tạo ảnh ở gói này (hạn mức = 0). Vào Google AI Studio → Billing, bật thanh toán cho project của key (trả theo số ảnh), rồi thử lại. Hoặc dùng OPENAI_API_KEY.', code: 'image_billing' });
         return json(res, r.status === 429 ? 429 : 502, { error: `Google (${pick.name.replace('models/', '')}): ${msg.slice(0, 300)}` });
       }
