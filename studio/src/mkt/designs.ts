@@ -668,8 +668,13 @@ export async function paintShot(client: Client, idea: string, aspect: Aspect, op
 /** AI picture quality per client: 'pro' = the best Gemini image model (sharp text, faces), 'lite' = cheapest. */
 export type ImageQuality = 'pro' | 'lite' | 'local';
 const qKey = (clientId: string) => `phloem.mkt.imgq.${clientId}`;
-export function imageQuality(clientId: string): ImageQuality { try { const v = localStorage.getItem(qKey(clientId)); return v === 'lite' || v === 'local' ? v : 'pro'; } catch { return 'pro'; } }
-export function setImageQuality(clientId: string, q: ImageQuality) { try { localStorage.setItem(qKey(clientId), q); } catch { /* private mode */ } }
+/** Per client, else the last choice made for any client, else free local AI on the copy served by the bridge, else Pro. */
+export function imageQuality(clientId: string): ImageQuality {
+  const ok = (v: string | null): v is ImageQuality => v === 'pro' || v === 'lite' || v === 'local';
+  try { const v = localStorage.getItem(qKey(clientId)); if (ok(v)) return v; const g = localStorage.getItem('phloem.mkt.imgq'); if (ok(g)) return g; } catch { /* private mode */ }
+  return typeof location !== 'undefined' && location.origin === 'http://localhost:8790' ? 'local' : 'pro';
+}
+export function setImageQuality(clientId: string, q: ImageQuality) { try { localStorage.setItem(qKey(clientId), q); localStorage.setItem('phloem.mkt.imgq', q); } catch { /* private mode */ } }
 export async function generateImage(clientId: string, prompt: string, aspect: Aspect = '1:1', refIds: string[] = []): Promise<string> {
   if (imageQuality(clientId) === 'local') {
     // free, on this Mac (FLUX): it can't look at reference pictures, so the prompt carries the style alone

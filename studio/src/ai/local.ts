@@ -57,3 +57,39 @@ export async function localShot(prompt: string, seconds: number, onStage: (m: st
     }
   }
 }
+
+// ---- opening Phloem from the bridge (http://localhost:8790/mkt/) without signing in again ----
+// The public page opens the local copy and hands it the session by postMessage (never in the URL), only to that origin;
+// the local copy accepts it only from the published Phloem site.
+const PUBLIC_SITES = ['https://dorisle-uxui.github.io'];
+const SESSION_KEY = 'phloem.session';
+export const isLocalCopy = () => typeof location !== 'undefined' && location.origin === LOCAL_AI;
+export function openOnThisMac() {
+  const w = window.open(`${LOCAL_AI}/mkt/${location.hash}`, '_blank');
+  if (!w) return false;
+  const h = (e: MessageEvent) => {
+    if (e.origin !== LOCAL_AI || e.source !== w || e.data?.type !== 'phloem-ready') return;
+    let session: unknown = null; try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { /* none */ }
+    w.postMessage({ type: 'phloem-session', session }, LOCAL_AI);
+    window.removeEventListener('message', h);
+  };
+  window.addEventListener('message', h);
+  setTimeout(() => window.removeEventListener('message', h), 60_000);
+  return true;
+}
+/** On the local copy, opened from the public site: take its session. Resolves true when one arrived. */
+export function receiveSession(): Promise<boolean> {
+  if (!isLocalCopy() || !window.opener) return Promise.resolve(false);
+  try { if (localStorage.getItem(SESSION_KEY)) return Promise.resolve(false); } catch { return Promise.resolve(false); }
+  return new Promise((ok) => {
+    const h = (e: MessageEvent) => {
+      if (!PUBLIC_SITES.includes(e.origin) || e.data?.type !== 'phloem-session') return;
+      window.removeEventListener('message', h);
+      if (e.data.session) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(e.data.session)); } catch { /* private mode */ } }
+      ok(!!e.data.session);
+    };
+    window.addEventListener('message', h);
+    try { window.opener.postMessage({ type: 'phloem-ready' }, '*'); } catch { /* opener gone */ }
+    setTimeout(() => { window.removeEventListener('message', h); ok(false); }, 5000);
+  });
+}

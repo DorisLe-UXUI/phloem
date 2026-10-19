@@ -16,6 +16,7 @@ if (get().app === 'mkt') startRouter(); // Phloem MKT: same bundle, routes in th
 ensureFonts(['Inter']);
 void assets.ready.then(async () => {
   set({ settings: get().settings }); // persist defaults so the landing page sees the relay URL
+  await (await import('./ai/local')).receiveSession(); // the copy served by the local AI bridge, opened from the public site
   await restoreSession();
   await refreshProjects();
   const params = new URLSearchParams(location.search);
