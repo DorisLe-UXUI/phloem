@@ -122,7 +122,7 @@ export function DesignHub({ client }: { client: Client }) {
             {SIZES.map((z) => <option key={z.id} value={z.id}>{z.label} · {z.w}×{z.h}</option>)}
           </select>
         </label>
-        <label class="mk-sizesel" title="Đẹp nhất: model vẽ xịn nhất của Google, trả phí (hết tiền thì tự dùng Cloudflare). Miễn phí trên web: Cloudflare FLUX.2, khoảng 15 giây một ảnh, có hạn mức mỗi ngày, ai dùng bản web cũng được. Miễn phí trên máy: chạy trên máy Mac này, chậm, không giới hạn."><Icon name="sparkle" size={13} /><span>Chất lượng ảnh AI</span>
+        <label class="mk-sizesel" title="Đẹp nhất: model vẽ xịn nhất của Google, trả phí; Google hết tiền thì dùng Cloudflare FLUX.2 dev. Miễn phí trên web: Cloudflare FLUX.2 klein 9B, vài giây một ảnh, khoảng 7 ảnh miễn phí mỗi ngày (làm mới 7 giờ sáng), ai dùng bản web cũng được. Miễn phí trên máy: chạy trên máy Mac này, chậm, không giới hạn."><Icon name="sparkle" size={13} /><span>Chất lượng ảnh AI</span>
           <select value={quality} onChange={(e) => { const q = (e.target as HTMLSelectElement).value as ImageQuality; setImageQuality(client.id, q); setQuality(q); }}>
             <option value="pro">Đẹp nhất · Google (trả phí)</option>
             <option value="lite">Miễn phí trên web · Cloudflare</option>

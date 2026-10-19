@@ -38,7 +38,7 @@ const CF_AI_TOKEN = process.env.CF_AI_TOKEN || '';
 // Pixabay API (free key): millions of vectors and illustrations usable commercially; searched through the relay so the key stays here.
 const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY || '';
 const CF_ACCOUNT = CF_AI_TOKEN ? cfAccountId() : '';
-const CF_IMAGE_MODEL = process.env.CF_IMAGE_MODEL || '@cf/black-forest-labs/flux-2-klein-4b';
+const CF_IMAGE_MODEL = process.env.CF_IMAGE_MODEL || '@cf/black-forest-labs/flux-2-klein-9b'; // ~7 free pictures a day, sharper than klein 4B
 /** Cloudflare image models a request may pick (the rest of the allowance math is in the docs): klein4 is the free workhorse
  *  (~60 a day), the others are sharper but use the daily allowance up in a few pictures. */
 const CF_MODELS = { klein4: '@cf/black-forest-labs/flux-2-klein-4b', klein9: '@cf/black-forest-labs/flux-2-klein-9b', dev: '@cf/black-forest-labs/flux-2-dev', lucid: '@cf/leonardo/lucid-origin', phoenix: '@cf/leonardo/phoenix-1.0' };
@@ -359,6 +359,7 @@ async function cloudflareImage(prompt, aspect, refs = [], model = CF_IMAGE_MODEL
   const msg = String(j?.errors?.[0]?.message || `HTTP ${r.status}`);
   if (r.status === 429 || /neuron|allocation|quota|limit/i.test(msg)) { cfResting = nextUtcMidnight(); console.log('[image] cloudflare free allowance used up until 00:00 UTC:', msg.slice(0, 160)); return { error: 'Hết lượt tạo ảnh miễn phí hôm nay (Cloudflare)', status: 429 }; }
   console.log('[image] cloudflare error:', r.status, msg.slice(0, 200));
+  if (/flagged/i.test(msg)) return { error: 'Cloudflare chặn ảnh này vì bộ lọc an toàn (thường do một vài từ trong mô tả). Bấm vẽ lại, hoặc đổi ý tưởng ảnh của bài.', status: 422, flagged: true };
   return { error: `Cloudflare: ${msg.slice(0, 200)}`, status: r.status === 400 ? 422 : 502 };
 }
 // ---------- AI video (Google Veo, cheapest model first) ----------
@@ -471,6 +472,8 @@ async function aiImage(p, res) {
         if (/prepayment credits are depleted|billing|insufficient.*(credit|fund)/i.test(msg)) {
           // Google is out of credit: the free Cloudflare allowance paints instead when it was skipped for a 'pro' request
           if (CF_ACCOUNT && cfResting <= Date.now() && pro) { const out = await cloudflareImage(prompt, aspect, refs, CF_BEST).catch((e) => ({ error: String(e?.message || e) })); if (out.b64) return json(res, 200, { ...out, provider: 'cloudflare', model: CF_BEST.split('/').pop() }); }
+          // Cloudflare already said why it could not paint: that reason helps more than Google's empty purse
+          if (cfError) return json(res, 422, { error: cfError, code: 'cf_failed' });
           return json(res, 402, { error: GOOGLE_BILLING, code: 'google_billing' });
         }
         if (r.status === 429 && /free_tier|limit: 0/.test(msg)) return json(res, 429, { error: 'Key Gemini đang ở gói miễn phí: Google không cho tạo ảnh ở gói này (hạn mức = 0). Vào Google AI Studio → Billing, bật thanh toán cho project của key (trả theo số ảnh), rồi thử lại. Hoặc dùng OPENAI_API_KEY.', code: 'image_billing' });
