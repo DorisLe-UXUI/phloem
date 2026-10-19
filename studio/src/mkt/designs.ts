@@ -684,7 +684,18 @@ export async function generateImage(clientId: string, prompt: string, aspect: As
   const r = await fetch(`${base}/ai/image`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, body: JSON.stringify({ prompt, aspect, refs, quality: imageQuality(clientId) }), signal: AbortSignal.timeout(170_000) });
   const j = await r.json().catch(() => ({}));
   if (r.status === 403 && j.code === 'ai_locked') { set({ modal: 'aicode' }); throw new Error(j.error || 'AI cần mã truy cập.'); }
-  if (!r.ok) throw new Error(j.error || `Tạo ảnh lỗi (HTTP ${r.status}).`);
+  if (!r.ok) {
+    // Google is out of credit: paint on this Mac instead when the local AI is running
+    if (j.code === 'google_billing') {
+      const { localHealth, localImage } = await import('../ai/local');
+      if ((await localHealth(true))?.image) {
+        toast('Google AI hết tiền: đang vẽ miễn phí trên máy (chậm hơn, khoảng 3 phút).', 'info');
+        const l = await localImage(prompt, aspect);
+        return (await assets.add(new Blob([Uint8Array.from(atob(l.b64), (ch) => ch.charCodeAt(0))], { type: l.mime }), `AI máy · ${prompt.slice(0, 40)}.png`, { src: { kind: 'ai' }, client: clientId, project: null })).id;
+      }
+    }
+    throw new Error(j.error || `Tạo ảnh lỗi (HTTP ${r.status}).`);
+  }
   const bytes = Uint8Array.from(atob(j.b64), (ch) => ch.charCodeAt(0));
   const a = await assets.add(new Blob([bytes], { type: j.mime || 'image/png' }), `AI · ${prompt.slice(0, 40)}.${(j.mime || '').includes('jpeg') ? 'jpg' : 'png'}`, { src: { kind: 'ai' }, client: clientId, project: null });
   return a.id;

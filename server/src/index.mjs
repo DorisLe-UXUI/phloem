@@ -315,6 +315,7 @@ const ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
  *  (Gemini Flash-Lite Image) only: the costlier Imagen / Flash Image models are never picked on their own. Cached; cleared on a 404. */
 let googleModel; // undefined = not looked up yet, null = none
 let googlePro = null; // the Pro image model, when the key has one
+const GOOGLE_BILLING = 'Tài khoản Google AI (Gemini) đã hết tiền trả trước. Nạp thêm tại ai.studio/projects → Billing, hoặc chọn "Miễn phí trên máy" ở Chất lượng ảnh AI.';
 async function googleImageModel() {
   if (googleModel !== undefined) return googleModel;
   if (process.env.IMAGEN_MODEL) return (googleModel = { name: `models/${process.env.IMAGEN_MODEL.replace(/^models\//, '')}`, method: /imagen/i.test(process.env.IMAGEN_MODEL) ? 'predict' : 'generateContent' });
@@ -391,6 +392,7 @@ async function aiVideoStart(p, res) {
       r = await start({ ...instance, image: { bytesBase64Encoded: instance.image.inlineData.data, mimeType: instance.image.inlineData.mimeType } });
       j = await r.json().catch(() => ({}));
     }
+    if (!r.ok && /prepayment credits are depleted|billing|insufficient.*(credit|fund)/i.test(String(j?.error?.message || ''))) return json(res, 402, { error: GOOGLE_BILLING, code: 'google_billing' });
     if (!r.ok) { if (r.status === 404) veoModel = undefined; return json(res, r.status === 429 ? 429 : 502, { error: `Google (${model.replace('models/', '')}): ${String(j?.error?.message || `HTTP ${r.status}`).slice(0, 300)}` }); }
     return json(res, 200, { op: j.name, model: model.replace('models/', ''), seconds });
   } catch (e) { return json(res, 502, { error: `Không tạo được video: ${e?.message || e}` }); }
@@ -455,6 +457,7 @@ async function aiImage(p, res) {
         if (r.status === 404) googleModel = undefined;
         const msg = String(j?.error?.message || `HTTP ${r.status}`);
         // free-tier keys get an image quota of 0: say what to do instead of Google's raw quota dump
+        if (/prepayment credits are depleted|billing|insufficient.*(credit|fund)/i.test(msg)) return json(res, 402, { error: GOOGLE_BILLING, code: 'google_billing' });
         if (r.status === 429 && /free_tier|limit: 0/.test(msg)) return json(res, 429, { error: 'Key Gemini đang ở gói miễn phí: Google không cho tạo ảnh ở gói này (hạn mức = 0). Vào Google AI Studio → Billing, bật thanh toán cho project của key (trả theo số ảnh), rồi thử lại. Hoặc dùng OPENAI_API_KEY.', code: 'image_billing' });
         return json(res, r.status === 429 ? 429 : 502, { error: `Google (${pick.name.replace('models/', '')}): ${msg.slice(0, 300)}` });
       }

@@ -280,6 +280,11 @@ export async function veoShot(prompt: string, seconds: 4 | 6 | 8, onStage: (m: s
   await wakeRelay(base, relayAuth());
   const r = await fetch(`${base}/ai/video`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...relayAuth() }, body: JSON.stringify({ prompt, aspect: '9:16', seconds, ...(image ? { image } : {}) }), signal });
   const j = await r.json().catch(() => ({}));
+  if (!r.ok && j.code === 'google_billing') {
+    // Google is out of credit: make the shot on this Mac when the local AI is running
+    const L = await import('../ai/local');
+    if ((await L.localHealth(true))?.video) { onStage('Google AI hết tiền: chuyển sang LTX-2 trên máy (miễn phí, chậm)…'); return L.localShot(prompt, seconds, onStage, signal, image); }
+  }
   if (!r.ok) throw new Error(j.error || `Tạo video lỗi (HTTP ${r.status}).`);
   const t0 = Date.now();
   for (;;) {
