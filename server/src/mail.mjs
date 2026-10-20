@@ -13,7 +13,7 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { encrypt, decrypt } from './db.mjs';
 import { s3Call } from './backup.mjs';
-import { detectSmtp, smtpSend, smtpVerify, SMTP_PRESETS } from './smtp.mjs';
+import { buildMessage, detectSmtp, smtpSend, smtpVerify, SMTP_PRESETS } from './smtp.mjs';
 
 const now = () => new Date().toISOString();
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
@@ -173,9 +173,14 @@ export function parseProviderEvents(provider, payload) {
   }
   return out;
 }
+/** Set by createMail when SMTP goes through the Cloudflare bridge (hosts that block SMTP ports, like Render free). */
+let smtpBridge = null;
 /** A mailbox over SMTP (Titan, Google Workspace with an app password, Zoho, Outlook / M365, Hostinger…). */
 async function sendSmtp(s, m) {
-  await smtpSend({ host: s.host, port: s.port, secure: s.secure, username: s.username || s.fromEmail, password: s.password }, { from: s.fromEmail, fromName: s.fromName, to: m.to, subject: m.subject, html: m.html, text: m.text, replyTo: s.replyTo, headers: m.headers });
+  const cfg = { host: s.host, port: s.port, secure: s.secure, username: s.username || s.fromEmail, password: s.password };
+  const msg = { from: s.fromEmail, fromName: s.fromName, to: m.to, subject: m.subject, html: m.html, text: m.text, replyTo: s.replyTo, headers: m.headers };
+  if (smtpBridge) { await smtpBridge(cfg, msg); return; }
+  await smtpSend(cfg, msg);
 }
 /** A provider call that never answers must not freeze the whole queue (the worker runs one send at a time). */
 const capped = (p, ms = 60_000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`không phản hồi sau ${Math.round(ms / 1000)} giây (máy chủ gửi bị chặn hoặc treo)`)), ms).unref?.())]);
@@ -223,6 +228,21 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     evPeople: q('SELECT email_hash AS h, kind, link, COUNT(*) AS n, MIN(at) AS first, MAX(at) AS last FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY email_hash, kind, link'),
   };
   const camp = (owner, id) => { const r = S.campGet.get(owner, id); return r ? JSON.parse(r.json) : null; };
+  // ---- SMTP through the Cloudflare Worker (tools/smtp-worker): one-time jobs the Worker fetches back from here ----
+  const BRIDGE = env.SMTP_BRIDGE_URL !== undefined ? String(env.SMTP_BRIDGE_URL) : env.RENDER ? 'https://phloem-smtp.vankhanh-le.workers.dev/send' : '';
+  const smtpJobs = new Map();
+  const viaBridge = async (cfg, msg) => {
+    const id = randomBytes(18).toString('base64url');
+    smtpJobs.set(id, { exp: Date.now() + 120e3, job: { host: cfg.host, port: Number(cfg.port) || 465, secure: cfg.secure === 'starttls' ? 'starttls' : 'ssl', username: cfg.username || '', password: cfg.password || '', from: msg?.from || '', to: msg?.to || '', raw: msg ? buildMessage(msg) : null } });
+    try {
+      const r = await fetch(BRIDGE, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ job: id }), signal: AbortSignal.timeout(55_000) });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) throw new Error(j.error || `SMTP qua Cloudflare: HTTP ${r.status}`);
+      return j;
+    } finally { smtpJobs.delete(id); }
+  };
+  smtpBridge = BRIDGE ? viaBridge : null;
+  const verifyMailbox = (cfg, opts) => (BRIDGE ? viaBridge(cfg, null) : smtpVerify(cfg, opts));
   // campaigns withdrawn after a wrong send: their links lead nowhere (env RECALLED_CAMPAIGNS, comma-separated, or the campaign's own flag)
   const recalled = new Set([...String(env.RECALLED_CAMPAIGNS || '').split(/[\s,]+/).filter(Boolean),
     'q_mvfgzb0i', 'q_mvfehw9t', 'q_mvanyhfi', 'q_mv9q8mow', // Intac emails withdrawn 2026-10-20 after a wrong send (Gmail sends, owner u_766f…)
@@ -319,11 +339,17 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
       try { const cid = hooks.onClickId?.(t, i, c); if (cid) { const [base, hash] = dest.split('#'); to = `${base}${base.includes('?') ? '&' : '?'}phl=${encodeURIComponent(cid)}${hash !== undefined ? `#${hash}` : ''}`; } } catch { /* plain redirect */ }
       res.statusCode = 302; res.setHeader('Location', to); res.setHeader('Cache-Control', 'no-store'); res.end(); return true;
     }
+    const sj = /^\/mail\/smtp-job\/([A-Za-z0-9_-]{20,64})$/.exec(p);
+    if (sj && m === 'GET') { // the Cloudflare SMTP Worker picks up a job (single use, 2 minutes)
+      const e = smtpJobs.get(sj[1]); smtpJobs.delete(sj[1]);
+      if (!e || e.exp < Date.now()) { json(res, 404, { error: 'not found' }); return true; }
+      res.setHeader('Cache-Control', 'no-store'); json(res, 200, e.job); return true;
+    }
     if (p === '/diag/smtp' && m === 'GET') { // can this host reach mailbox SMTP servers at all? (some clouds block the ports)
       if (throttled(`diag:${req.socket?.remoteAddress || ''}`, 10, 3600e3)) { json(res, 429, { error: 'busy' }); return true; }
       const probe = [['smtp.gmail.com', 465, 'ssl'], ['smtp.gmail.com', 587, 'starttls'], ['smtp.titan.email', 465, 'ssl'], ['smtp.office365.com', 587, 'starttls']];
-      const out = await Promise.all(probe.map(async ([host, port, secure]) => { const t0 = Date.now(); try { await smtpVerify({ host, port, secure }, { timeout: 8000 }); return { host, port, ok: true, ms: Date.now() - t0 }; } catch (e) { return { host, port, ok: false, error: String(e?.message || e).slice(0, 120) }; } }));
-      json(res, 200, { smtp: out }); return true;
+      const out = await Promise.all(probe.map(async ([host, port, secure]) => { const t0 = Date.now(); try { await verifyMailbox({ host, port, secure }, { timeout: 8000 }); return { host, port, ok: true, ms: Date.now() - t0 }; } catch (e) { return { host, port, ok: false, error: String(e?.message || e).slice(0, 120) }; } }));
+      json(res, 200, { via: BRIDGE ? 'cloudflare' : 'direct', smtp: out }); return true;
     }
     const hk = /^\/hooks\/(resend|brevo|ses)\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(p);
     if (hk && m === 'POST') {
@@ -438,7 +464,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const b = await body(req); const saved = b?.id ? senders(u.id).find((x) => x.id === String(b.id)) : null;
           const host = String(b?.host || saved?.host || '').trim().toLowerCase();
           if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) { json(res, 400, { error: 'Máy chủ SMTP không hợp lệ' }); return true; }
-          try { const r = await smtpVerify({ host, port: Number(b?.port || saved?.port) || 465, secure: ['ssl', 'starttls'].includes(b?.secure) ? b.secure : saved?.secure || 'ssl', username: String(b?.username || saved?.username || saved?.fromEmail || ''), password: b?.password ? String(b.password) : saved?.password }, { timeout: 15_000 }); json(res, 200, { ok: true, auth: r.auth }); }
+          try { const r = await verifyMailbox({ host, port: Number(b?.port || saved?.port) || 465, secure: ['ssl', 'starttls'].includes(b?.secure) ? b.secure : saved?.secure || 'ssl', username: String(b?.username || saved?.username || saved?.fromEmail || ''), password: b?.password ? String(b.password) : saved?.password }, { timeout: 15_000 }); json(res, 200, { ok: true, auth: r.auth }); }
           catch (e) { json(res, 200, { ok: false, error: String(e?.message || e) }); }
           return true;
         }

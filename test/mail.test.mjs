@@ -239,3 +239,33 @@ test('mailbox detection: consumer domains directly, company domains by MX (Googl
   const unknown = await detectSmtp('a@shop.vn', { mxLookup: mx(['mail.shop.vn']) }); assert.equal(unknown.preset, 'custom'); assert.equal(unknown.host, 'mail.shop.vn');
   assert.equal(await detectSmtp('not-an-email'), null);
 });
+
+test('SMTP through the Cloudflare bridge: a one-time job the bridge fetches back; never reusable; errors come back', async () => {
+  const { createServer } = await import('node:http');
+  const { createMail: cm } = await import('../server/src/mail.mjs');
+  const { openDb } = await import('../server/src/db.mjs');
+  const { mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const db = openDb(join(mkdtempSync(join(tmpdir(), 'phloem-bridge-')), 'p.db'));
+  const json = (res, code, obj) => { res.statusCode = code; res.obj = obj; res.end(JSON.stringify(obj)); };
+  let mail; const seen = [];
+  const call = async (method, path, { user = null, body } = {}) => { const res = { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(x) { this.text = String(x ?? ''); } }; await mail.handle(new URL(path, 'https://r.test'), { method, headers: {}, user, body }, res); return res; };
+  const bridge = createServer((req, res) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', async () => {
+    const id = JSON.parse(b).job; const j1 = await call('GET', `/mail/smtp-job/${id}`); const j2 = await call('GET', `/mail/smtp-job/${id}`);
+    seen.push({ first: j1.statusCode, again: j2.statusCode, job: j1.obj });
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify(j1.obj.password === 'right' ? { ok: true, id: '250 queued' } : { ok: false, error: 'SMTP: sai tài khoản hoặc mật khẩu (535)' }));
+  }); });
+  await new Promise((r) => bridge.listen(0, '127.0.0.1', r));
+  try {
+    mail = cm({ raw: db.raw, secret: 's', publicUrl: 'https://r.test', json, body: async (req) => req.body || {}, rawBody: async () => Buffer.alloc(0), requireUser: (req, res) => req.user || (json(res, 401, {}), null), throttled: () => false, env: { SMTP_BRIDGE_URL: `http://127.0.0.1:${bridge.address().port}/send` }, log: () => {} });
+    const u = { id: 'u1', email: 'me@x.co' };
+    const s = (await call('POST', '/mail/senders', { user: u, body: { provider: 'smtp', preset: 'titan', host: 'smtp.titan.email', port: 465, secure: 'ssl', fromEmail: 'hello@intac.co', fromName: 'Intac', password: 'right' } })).obj.sender;
+    const t = await call('POST', `/mail/senders/${s.id}/test`, { user: u, body: { to: 'khach@shop.vn' } });
+    assert.equal(t.statusCode, 200);
+    assert.equal(seen[0].first, 200); assert.equal(seen[0].again, 404, 'single use');
+    assert.equal(seen[0].job.host, 'smtp.titan.email'); assert.equal(seen[0].job.to, 'khach@shop.vn'); assert.match(seen[0].job.raw, /^From: Intac <hello@intac\.co>/m);
+    assert.equal((await call('GET', '/mail/smtp-job/AAAAAAAAAAAAAAAAAAAAAAAA')).statusCode, 404);
+    const v = await call('POST', '/mail/smtp/verify', { user: u, body: { host: 'smtp.titan.email', port: 465, secure: 'ssl', username: 'hello@intac.co', password: 'wrong' } });
+    assert.equal(v.obj.ok, false); assert.match(v.obj.error, /mật khẩu/); assert.equal(seen[1].job.raw, null, 'verify sends nothing');
+  } finally { bridge.close(); }
+});

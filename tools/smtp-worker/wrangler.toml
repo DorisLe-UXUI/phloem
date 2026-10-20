@@ -1,0 +1,6 @@
+name = "phloem-smtp"
+main = "worker.js"
+compatibility_date = "2025-10-01"
+workers_dev = true
+preview_urls = false
+account_id = "34883797cc17abd6dea67a2c32889aa4"
