@@ -117,7 +117,7 @@
   const slicePhone = document.getElementById('slicePhone');
   const sliceBadge = document.getElementById('sliceBadge');
   if (sliceTrack && sliceEmail) {
-    const IMG = 'landing/thumbs/generic-news.jpg?v=202610200753';
+    const IMG = 'landing/thumbs/generic-news.jpg?v=202610201207';
     const STRIPS = [0.085, 0.2, 0.14, 0.17, 0.17, 0.12, 0.115]; // row heights as fractions of the image (nav, hero, copy, products, quote, cta, footer)
     const labels = ['nav', 'hero · link', 'copy', 'r3c1 · link', 'quote', 'cta · link', 'footer'];
     let acc = 0;
