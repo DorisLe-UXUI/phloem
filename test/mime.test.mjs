@@ -36,3 +36,13 @@ test('uniqueCids: each repeated cid reference gets its own part (Gmail shows a c
   assert.deepEqual(r.parts.map((p) => p.cid), refs);
   assert.equal(r.parts[2].filename, 'a-r2.png');
 });
+
+test('mime: one-click unsubscribe header only with an https link (RFC 8058), Gmail tracked sends', () => {
+  const base = { html: '<p>x</p>', text: 'x', subject: 's', from: address('A', 'a@b.vn'), to: 'c@d.vn', parts: [], oneClick: true };
+  const live = buildMime({ ...base, listUnsubscribe: ['https://phloem-relay.onrender.com/u/tok', 'mailto:a@b.vn?subject=Unsubscribe'] });
+  assert.ok(live.includes('List-Unsubscribe: <https://phloem-relay.onrender.com/u/tok>, <mailto:a@b.vn?subject=Unsubscribe>'));
+  assert.ok(live.includes('List-Unsubscribe-Post: List-Unsubscribe=One-Click'));
+  const local = buildMime({ ...base, listUnsubscribe: ['http://localhost:8787/u/tok', 'mailto:a@b.vn'] });
+  assert.ok(local.includes('List-Unsubscribe: <http://localhost:8787/u/tok>'));
+  assert.ok(!local.includes('List-Unsubscribe-Post'), 'a plain-http link must not claim one-click');
+});

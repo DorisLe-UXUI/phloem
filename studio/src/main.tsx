@@ -46,6 +46,7 @@ import { animBlocks, makeMobile } from './model/ops';
 import { finalizeSlices } from '../../src/ui/imageops';
 import { exportProject, previewHtml } from './pipeline/exportFlow';
 import { explainLive } from './pipeline/liveText';
+import { devGmail, gmailAccounts, setActiveGmail } from './pipeline/mailSend';
 (window as unknown as { __phloemExportThumbs?: (base?: string) => Promise<string[]> }).__phloemExportThumbs = async (base = '') => {
   const out: string[] = [];
   for (const t of TEMPLATES) {
@@ -133,6 +134,8 @@ window.addEventListener('online', () => { void A.syncNow().catch(() => { /* repo
   /** HTML → layers (AI designer converter), for browser checks. */
   htmlToDoc: (html: string, width = 600) => htmlToDoc(html, { width, validIds: new Set(assets.all().map((a) => a.id)), temp: false }),
   get, set, A, assets,
+  /** fake connected Google accounts (localhost only) for send-loop checks */
+  gmail: { add: devGmail, accounts: gmailAccounts, setActive: setActiveGmail },
   /** The open project's email HTML as sent (slices as object URLs) + the export plan, for live-text / slice checks. */
   previewHtml: () => previewHtml(get().project!),
   explainLive: () => explainLive(get().project!.desktop, get().project!.brand),

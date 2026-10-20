@@ -154,6 +154,8 @@ export async function connectGmail(hint = '', pick = false): Promise<GmailAccoun
   gmails.set(acc.email.toLowerCase(), acc); remember(acc); setActiveGmail(acc.email);
   return acc;
 }
+/** Browser checks on localhost only: a connected account without the Google popup (the token is whatever the test mocks). */
+export function devGmail(acc: GmailAccount) { if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return; gmails.set(acc.email.toLowerCase(), acc); remember(acc); setActiveGmail(acc.email); }
 /** Disconnect one account (and forget it), or every account. */
 export function disconnectGmail(email = activeGmail) {
   const a = gmails.get(String(email).toLowerCase()); gmails.delete(String(email).toLowerCase());

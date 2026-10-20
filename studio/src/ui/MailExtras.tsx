@@ -1,6 +1,6 @@
 // The relay side of "Gửi bằng email thường": hosted images / tracking status, sending accounts + server queue
 // (Resend, Brevo, Amazon SES with schedule, daily cap and A/B subject), campaign stats, the suppression list.
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Project } from '../model/types';
 import { getSession } from '../auth/core';
 import { set, toast } from '../store';
@@ -303,7 +303,17 @@ export function CampaignStatsList({ projectId }: { projectId: string }) {
 function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: { id: string; subject: string; via: 'gmail' | 'server'; at: string; recipients: number; projectId: string; onForget: () => void }) {
   const [st, setSt] = useState<CampaignStats | null>(null);
   const [err, setErr] = useState('');
-  const load = async () => { try { setSt(await campaignStats(id)); setErr(''); } catch (e) { setErr((e as Error).message); } };
+  // a campaign started seconds ago is registered with the relay while its first mails go out: a 404 then means "not yet",
+  // not "lost", so wait and ask again instead of flagging it
+  const [pending, setPending] = useState(false); const retry = useRef(0);
+  const load = async () => {
+    try { setSt(await campaignStats(id)); setErr(''); setPending(false); retry.current = 0; }
+    catch (e) {
+      const msg = (e as Error).message;
+      if (/không có chiến dịch/i.test(msg) && Date.now() - Date.parse(at) < 120_000 && retry.current < 30) { retry.current++; setPending(true); setTimeout(() => void load(), 3000); return; }
+      setPending(false); setErr(msg);
+    }
+  };
   useEffect(() => { // a Gmail send from this browser: hand its recipient list to the relay so the report names people
     const q0 = via === 'gmail' ? loadQueue(projectId) : null;
     if (q0 && q0.id === id && q0.tracked && q0.recipients.length) void backfillRecipients(id, q0.recipients.slice(0, q0.cursor || q0.recipients.length), q0.createdAt).catch(() => {});
@@ -350,7 +360,7 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
           {send?.ab && <div class="dim">A/B: A {st.byVariant.A ? `${nf(st.byVariant.A.opens)} mở · ${nf(st.byVariant.A.clicks)} click` : '–'} | B {st.byVariant.B ? `${nf(st.byVariant.B.opens)} mở · ${nf(st.byVariant.B.clicks)} click` : '–'}{send.ab.winner ? ` → thắng: ${send.ab.winner === 'B' ? `B "${send.ab.subjectB}"` : 'A'}` : send.ab.phase === 'wait' ? ' · đang chờ kết quả' : ''}</div>}
           {st.links.length > 0 && <details><summary class="dim">Click theo link</summary>{st.links.sort((a, b) => b.clicks - a.clicks).map((l) => <div key={l.url} class="row dim"><span class="grow mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.url}</span><b>{nf(l.clicks)}</b></div>)}</details>}
         </>
-      ) : !err && <div class="dim">Đang tải…</div>}
+      ) : !err && <div class="dim">{pending ? 'Đang đăng ký theo dõi với máy chủ…' : 'Đang tải…'}</div>}
       <div class="row" style={{ gap: 6 }}>
         <Btn xs kind="ghost" onClick={() => void load()}>Làm mới</Btn>
         {via === 'server' && send && ['scheduled', 'sending', 'waiting'].includes(send.status) && <Btn xs onClick={() => void ctl('pause')}>Tạm dừng</Btn>}

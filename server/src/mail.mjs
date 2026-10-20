@@ -241,7 +241,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
   const smtpJobs = new Map();
   const viaBridge = async (cfg, msg) => {
     const id = randomBytes(18).toString('base64url');
-    smtpJobs.set(id, { exp: Date.now() + 120e3, job: { host: cfg.host, port: Number(cfg.port) || 465, secure: cfg.secure === 'starttls' ? 'starttls' : 'ssl', username: cfg.username || '', password: cfg.password || '', from: msg?.from || '', to: msg?.to || '', raw: msg ? buildMessage(msg) : null } });
+    smtpJobs.set(id, { exp: Date.now() + 120e3, job: { host: cfg.host, port: Number(cfg.port) || 465, secure: cfg.secure === 'starttls' ? 'starttls' : cfg.secure === 'none' && env.SMTP_ALLOW_PLAIN === '1' ? 'none' : 'ssl', username: cfg.username || '', password: cfg.password || '', from: msg?.from || '', to: msg?.to || '', raw: msg ? buildMessage(msg) : null } });
     try {
       const r = await fetch(BRIDGE, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ job: id }), signal: AbortSignal.timeout(55_000) });
       const j = await r.json().catch(() => ({}));
@@ -459,7 +459,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
             const prev = senders(u.id).find((s) => s.id === id) || {};
             const s = { provider: prov, label: String(b.label || (prov === 'smtp' ? SMTP_PRESETS[b.preset]?.label?.split(' (')[0] : '') || '').slice(0, 60), fromEmail: String(b.fromEmail).trim(), fromName: String(b.fromName || '').slice(0, 120), replyTo: String(b.replyTo || '').slice(0, 200), region: String(b.region || '').slice(0, 30), perDay: Math.max(1, Math.min(100000, Number(b.perDay) || PROV[prov].perDay)), apiKey: b.apiKey ? String(b.apiKey).trim() : prev.apiKey, accessKeyId: b.accessKeyId ? String(b.accessKeyId).trim() : prev.accessKeyId, secret: b.secret ? String(b.secret).trim() : prev.secret };
             if (prov === 'smtp') { // a mailbox: server, port, TLS mode, login (password encrypted at rest with the rest of the record)
-              Object.assign(s, { preset: String(b.preset || prev.preset || 'custom').slice(0, 20), host: String(b.host ?? prev.host ?? '').trim().toLowerCase().slice(0, 120), port: Math.max(1, Math.min(65535, Number(b.port ?? prev.port) || 465)), secure: ['ssl', 'starttls'].includes(b.secure) ? b.secure : prev.secure || 'ssl', username: String(b.username ?? prev.username ?? s.fromEmail).trim().slice(0, 200), password: b.password ? String(b.password) : prev.password });
+              Object.assign(s, { preset: String(b.preset || prev.preset || 'custom').slice(0, 20), host: String(b.host ?? prev.host ?? '').trim().toLowerCase().slice(0, 120), port: Math.max(1, Math.min(65535, Number(b.port ?? prev.port) || 465)), secure: ['ssl', 'starttls'].includes(b.secure) || (b.secure === 'none' && env.SMTP_ALLOW_PLAIN === '1') ? b.secure : prev.secure || 'ssl', username: String(b.username ?? prev.username ?? s.fromEmail).trim().slice(0, 200), password: b.password ? String(b.password) : prev.password });
               if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(s.host)) { json(res, 400, { error: 'Máy chủ SMTP không hợp lệ' }); return true; }
               if (!s.password) { json(res, 400, { error: 'Thiếu mật khẩu hộp mail' }); return true; }
             } else if (prov === 'ses' ? !(s.accessKeyId && s.secret) : !s.apiKey) { json(res, 400, { error: 'Thiếu khoá API' }); return true; }
@@ -476,7 +476,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const b = await body(req); const saved = b?.id ? senders(u.id).find((x) => x.id === String(b.id)) : null;
           const host = String(b?.host || saved?.host || '').trim().toLowerCase();
           if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) { json(res, 400, { error: 'Máy chủ SMTP không hợp lệ' }); return true; }
-          try { const r = await verifyMailbox({ host, port: Number(b?.port || saved?.port) || 465, secure: ['ssl', 'starttls'].includes(b?.secure) ? b.secure : saved?.secure || 'ssl', username: String(b?.username || saved?.username || saved?.fromEmail || ''), password: b?.password ? String(b.password) : saved?.password }, { timeout: 15_000 }); json(res, 200, { ok: true, auth: r.auth }); }
+          try { const r = await verifyMailbox({ host, port: Number(b?.port || saved?.port) || 465, secure: ['ssl', 'starttls'].includes(b?.secure) || (b?.secure === 'none' && env.SMTP_ALLOW_PLAIN === '1') ? b.secure : saved?.secure || 'ssl', username: String(b?.username || saved?.username || saved?.fromEmail || ''), password: b?.password ? String(b.password) : saved?.password }, { timeout: 15_000 }); json(res, 200, { ok: true, auth: r.auth }); }
           catch (e) { json(res, 200, { ok: false, error: String(e?.message || e) }); }
           return true;
         }

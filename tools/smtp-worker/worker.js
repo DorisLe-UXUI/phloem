@@ -19,14 +19,15 @@ export default {
     const jr = await fetch(`${env.RELAY || RELAY}/mail/smtp-job/${id}`, { headers: { 'user-agent': 'phloem-smtp' } });
     if (!jr.ok) return json({ ok: false, error: 'SMTP: phiếu gửi không còn (relay vừa khởi động lại?)' }, 404);
     const job = await jr.json();
-    try { return json({ ok: true, ...(await smtp(job)) }); }
+    try { return json({ ok: true, ...(await smtp(job, env)) }); }
     catch (e) { return json({ ok: false, error: String(e?.message || e).slice(0, 300) }); }
   },
 };
 
-async function smtp(job) {
+async function smtp(job, env = {}) {
   const host = String(job.host), port = Number(job.port) || 465;
-  let socket = connect({ hostname: host, port }, { secureTransport: job.secure === 'ssl' ? 'on' : 'starttls', allowHalfOpen: false });
+  const plain = job.secure === 'none' && env.ALLOW_PLAIN === '1'; // local tests against a fake server only
+  let socket = connect({ hostname: host, port }, { secureTransport: plain ? 'off' : job.secure === 'ssl' ? 'on' : 'starttls', allowHalfOpen: false });
   try { await Promise.race([socket.opened, later(15000, 'timeout')]); }
   catch (e) { throw new Error(`SMTP: không kết nối được ${host}:${port} (${String(e?.message || e).slice(0, 80)})`); }
   let reader = socket.readable.getReader(), writer = socket.writable.getWriter();
@@ -51,7 +52,7 @@ async function smtp(job) {
   try {
     const hello = await read(); if (hello.code !== 220) throw new Error(`SMTP: máy chủ từ chối (${hello.text.slice(0, 120)})`);
     let caps = (await cmd('EHLO phloem.email', [250])).text;
-    if (job.secure !== 'ssl') {
+    if (job.secure !== 'ssl' && !plain) {
       if (!/STARTTLS/i.test(caps)) throw new Error('SMTP: máy chủ không hỗ trợ STARTTLS');
       await cmd('STARTTLS', [220]);
       reader.releaseLock(); writer.releaseLock();
