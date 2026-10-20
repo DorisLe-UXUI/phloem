@@ -25,6 +25,7 @@ import { GoogleButton } from './GoogleButton';
 import { CatalogModal } from './CatalogModal';
 import { AiAdminModal, AiCodeModal } from './AiAccess';
 import { PeopleModal } from './CampaignPeople';
+import { ScheduleModal } from './SendSchedule';
 
 export function Modals() {
   const s = useStore();
@@ -43,6 +44,7 @@ export function Modals() {
     case 'aicode': return <AiCodeModal onClose={close} />;
     case 'aiadmin': return <AiAdminModal onClose={close} />;
     case 'people': return <PeopleModal onClose={() => set({ modal: null, peopleOf: null })} />;
+    case 'schedule': return <ScheduleModal onClose={close} />;
     default: return null;
   }
 }

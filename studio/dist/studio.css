@@ -9633,3 +9633,31 @@ tr.aud-click:hover td {
   color: var(--dim);
   font-family: var(--mono);
 }
+.sch-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.sch-row.st-sending {
+  border-color: var(--neon-line);
+  box-shadow: var(--glow);
+}
+.sch-row.st-error {
+  border-color: rgba(255, 92, 92, 0.45);
+}
+.sch-row.st-scheduled .sch-count,
+.sch-row.st-waiting .sch-count {
+  color: var(--neon);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.sch-subj {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

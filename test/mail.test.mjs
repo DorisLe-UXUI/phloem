@@ -312,3 +312,35 @@ test('resume with another channel: the campaign switches sender and undelivered 
   assert.ok(sent.every((x) => x[0] === 'hello@shop.vn'));
   await mail.tick(); assert.equal(mail.campaign('u1', 'c1').send.status, 'done');
 });
+
+test('a channel that failed with a bad key is marked broken: new sends and plain resumes are refused, the schedule shows it', async () => {
+  const { createMail: cm } = await import('../server/src/mail.mjs');
+  const { openDb } = await import('../server/src/db.mjs');
+  const { mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const db = openDb(join(mkdtempSync(join(tmpdir(), 'phloem-health-')), 'p.db'));
+  const json = (res, code, obj) => { res.statusCode = code; res.obj = obj; res.end(JSON.stringify(obj)); };
+  const providers = { resend: { label: 'Resend', perDay: 100, send: async () => { throw new Error('Resend 401: API key is invalid'); } } };
+  const mail = cm({ raw: db.raw, secret: 's', publicUrl: 'https://r.test', json, body: async (req) => req.body || {}, rawBody: async () => Buffer.alloc(0), requireUser: (req, res) => req.user || (json(res, 401, {}), null), throttled: () => false, env: {}, log: () => {}, providers, pace: 0 });
+  const u = { id: 'u1', email: 'me@x.co' };
+  const call = async (method, path, body) => { const res = { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(x) { this.text = String(x ?? ''); } }; await mail.handle(new URL(path, 'https://r.test'), { method, headers: {}, user: u, body }, res); return res; };
+  const bad = (await call('POST', '/mail/senders', { provider: 'resend', fromEmail: 'news@shop.vn', apiKey: 're_wrong' })).obj.sender;
+  await call('POST', '/mail/campaigns', { id: 'c1', subject: 'Hi', links: [] });
+  const later = new Date(Date.now() + 3600e3).toISOString();
+  await call('POST', '/mail/campaigns', { id: 'c0', subject: 'Later', links: [] });
+  await call('POST', '/mail/send', { campaign: 'c0', sender: bad.id, subject: 'Later', html: '<p>x</p>', recipients: ['z@b.co'], sendAt: later });
+  await call('POST', '/mail/send', { campaign: 'c1', sender: bad.id, subject: 'Hi', html: '<p>Hi</p>', recipients: ['a@b.co'] });
+  await mail.tick();
+  const list = (await call('GET', '/mail/senders')).obj.senders;
+  assert.equal(list[0].health.ok, false); assert.match(list[0].health.error, /401/);
+  await call('POST', '/mail/campaigns', { id: 'c2', subject: 'Again', links: [] });
+  const again = await call('POST', '/mail/send', { campaign: 'c2', sender: bad.id, subject: 'Again', html: '<p>x</p>', recipients: ['a@b.co'] });
+  assert.equal(again.statusCode, 409); assert.equal(again.obj.code, 'sender_broken');
+  assert.equal((await call('POST', '/mail/send/c1/resume', {})).statusCode, 409);
+  const sch = (await call('GET', '/mail/schedule')).obj;
+  const c0 = sch.items.find((x) => x.id === 'c0'), c1 = sch.items.find((x) => x.id === 'c1');
+  assert.equal(c0.status, 'scheduled'); assert.equal(c0.nextAt, later); assert.equal(c0.sender.fromEmail, 'news@shop.vn'); assert.equal(c0.total, 1);
+  assert.equal(c1.status, 'error'); assert.match(c1.lastError, /401/); assert.equal(c1.sender.health.ok, false);
+  // saving the channel again (new key) clears the mark
+  await call('POST', '/mail/senders', { id: bad.id, provider: 'resend', fromEmail: 'news@shop.vn', apiKey: 're_new' });
+  assert.equal((await call('GET', '/mail/senders')).obj.senders[0].health, null);
+});

@@ -207,6 +207,12 @@ export interface MailQueue {
   hosted?: boolean; tracked?: boolean; skipped?: number;
 }
 const qKey = (projectId: string) => `phloem.mailq.${projectId}`;
+/** Every Gmail queue kept in this browser (one per email), for the "Lịch gửi" board. */
+export function allQueues(): MailQueue[] {
+  const out: MailQueue[] = [];
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ''; if (!k.startsWith('phloem.mailq.')) continue; try { const q = JSON.parse(localStorage.getItem(k) || 'null'); if (q && Array.isArray(q.recipients)) out.push(q); } catch { /* skip */ } } } catch { /* storage blocked */ }
+  return out.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
 const dayKey = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD in local time
 export function loadQueue(projectId: string): MailQueue | null { try { const q = JSON.parse(localStorage.getItem(qKey(projectId)) || 'null'); return q && Array.isArray(q.recipients) ? q : null; } catch { return null; } }
 function saveQueue(q: MailQueue | null, projectId: string) {

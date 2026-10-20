@@ -30,6 +30,7 @@ CREATE INDEX IF NOT EXISTS mail_events_c ON mail_events(owner, campaign, kind);
 CREATE TABLE IF NOT EXISTS mail_senders (owner TEXT NOT NULL, id TEXT NOT NULL, enc BLOB NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (owner, id));
 CREATE TABLE IF NOT EXISTS mail_queue (owner TEXT NOT NULL, campaign TEXT NOT NULL, email TEXT NOT NULL, variant TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'queued', error TEXT NOT NULL DEFAULT '', sent_at TEXT, PRIMARY KEY (owner, campaign, email));
 CREATE INDEX IF NOT EXISTS mail_queue_s ON mail_queue(owner, campaign, status);
+CREATE TABLE IF NOT EXISTS mail_sender_health (owner TEXT NOT NULL, id TEXT NOT NULL, ok INTEGER NOT NULL, error TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, PRIMARY KEY (owner, id));
 CREATE TABLE IF NOT EXISTS mail_rcpt (owner TEXT NOT NULL, campaign TEXT NOT NULL, email TEXT NOT NULL, variant TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, PRIMARY KEY (owner, campaign, email));
 `;
 
@@ -219,6 +220,10 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     qSentToday: q("SELECT COUNT(*) AS n FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'sent' AND sent_at >= ?"),
     qCancel: q("UPDATE mail_queue SET status = 'cancelled' WHERE owner = ? AND campaign = ? AND status = 'queued'"),
     qSkipSup: q("UPDATE mail_queue SET status = 'skipped', error = 'đã huỷ đăng ký', sent_at = ? WHERE owner = ? AND campaign = ? AND status = 'queued' AND email IN (SELECT email FROM mail_suppressions WHERE owner = ?)"),
+    healthPut: q('INSERT INTO mail_sender_health (owner, id, ok, error, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner, id) DO UPDATE SET ok = excluded.ok, error = excluded.error, at = excluded.at'),
+    healthGet: q('SELECT ok, error, at FROM mail_sender_health WHERE owner = ? AND id = ?'),
+    healthDel: q('DELETE FROM mail_sender_health WHERE owner = ? AND id = ?'),
+    qSentSpan: q("SELECT MIN(sent_at) AS first, MAX(sent_at) AS last FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'sent'"),
     qRequeueBlocked: q("UPDATE mail_queue SET status = 'queued', error = '', sent_at = NULL WHERE owner = ? AND campaign = ? AND status = 'failed' AND (error LIKE '%không kết nối được%' OR error LIKE '%ETIMEDOUT%' OR error LIKE '%không phản hồi%' OR error LIKE '%hết thời gian kết nối%' OR error LIKE '%ECONNREFUSED%')"),
     // rows that never reached anyone (bad key / password, blocked or dead connection): sendable again after a fix
     qRequeueUndelivered: q("UPDATE mail_queue SET status = 'queued', error = '', sent_at = NULL WHERE owner = ? AND campaign = ? AND status = 'failed' AND (error LIKE '%401%' OR error LIKE '%403%' OR error LIKE '%nvalid%' OR error LIKE '%nauthor%' OR error LIKE '%sai tài khoản%' OR error LIKE '%mật khẩu%' OR error LIKE '%535%' OR error LIKE '%không kết nối được%' OR error LIKE '%ETIMEDOUT%' OR error LIKE '%không phản hồi%' OR error LIKE '%hết thời gian%' OR error LIKE '%ECONNREFUSED%' OR error LIKE '%Cloudflare%' OR error LIKE '%Kênh gửi%')"),
@@ -260,7 +265,11 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
   };
   const senders = (owner) => S.senderList.all(owner).map((r) => { try { const s = JSON.parse(decrypt(secret, r.enc)); return { ...s, id: r.id, updatedAt: r.updated_at }; } catch { return null; } }).filter(Boolean);
   const hookToken = (owner, sid) => b64u(createHmac('sha256', secret).update(`hook:${owner}:${sid}`).digest()).slice(0, 24);
-  const publicSender = (s, owner) => ({ webhook: owner && s.provider !== 'smtp' ? `${publicUrl}/hooks/${s.provider}/${owner}/${s.id}/${hookToken(owner, s.id)}` : undefined, domain: s.domain || null, id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret || s.password), ...(s.provider === 'smtp' ? { preset: s.preset || 'custom', host: s.host, port: s.port, secure: s.secure, username: s.username } : {}) });
+  const AUTH_ERR = /401|403|invalid|unauthor|sai tài khoản|mật khẩu|535/i;
+  /** A channel's last result: a bad key / password marks it broken until it sends again or is re-saved. */
+  const health = (owner, id, ok, error = '') => { try { S.healthPut.run(owner, id, ok ? 1 : 0, String(error).slice(0, 300), now()); } catch { /* stats only */ } };
+  const healthOf = (owner, id) => { const h = owner ? S.healthGet.get(owner, id) : null; return h ? { ok: !!h.ok, error: h.error, at: h.at } : null; };
+  const publicSender = (s, owner) => ({ health: healthOf(owner, s.id), webhook: owner && s.provider !== 'smtp' ? `${publicUrl}/hooks/${s.provider}/${owner}/${s.id}/${hookToken(owner, s.id)}` : undefined, domain: s.domain || null, id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret || s.password), ...(s.provider === 'smtp' ? { preset: s.preset || 'custom', host: s.host, port: s.port, secure: s.secure, username: s.username } : {}) });
 
   /** Every recipient of a campaign with what they did: opens, which links, unsubscribe/bounce, and orders matched to
    *  this email by the shop's order tag. Events are stored per hashed address, so they are named by hashing the
@@ -455,7 +464,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
               if (!s.password) { json(res, 400, { error: 'Thiếu mật khẩu hộp mail' }); return true; }
             } else if (prov === 'ses' ? !(s.accessKeyId && s.secret) : !s.apiKey) { json(res, 400, { error: 'Thiếu khoá API' }); return true; }
             if (prev.domain) s.domain = prev.domain;
-            S.senderPut.run(u.id, id, encrypt(secret, JSON.stringify(s)), now());
+            S.senderPut.run(u.id, id, encrypt(secret, JSON.stringify(s)), now()); S.healthDel.run(u.id, id); // new key / password: forget the old failure
             json(res, 200, { sender: publicSender({ ...s, id, updatedAt: now() }, u.id) }); return true;
           }
         }
@@ -477,7 +486,8 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
         if (stest && m === 'POST') {
           const s = senders(u.id).find((x) => x.id === decodeURIComponent(stest[1])); if (!s) { json(res, 404, { error: 'không có kênh gửi này' }); return true; }
           const b = await body(req); const to = String(b?.to || u.email);
-          await capped(PROV[s.provider].send(s, { to, subject: 'Phloem Email: kiểm tra kênh gửi', html: '<p>Kênh gửi hoạt động. Email này được gửi từ Phloem Email.</p>', text: 'Kênh gửi hoạt động.', headers: {} }), 45_000);
+          await capped(PROV[s.provider].send(s, { to, subject: 'Phloem Email: kiểm tra kênh gửi', html: '<p>Kênh gửi hoạt động. Email này được gửi từ Phloem Email.</p>', text: 'Kênh gửi hoạt động.', headers: {} }), 45_000).catch((e) => { if (AUTH_ERR.test(String(e?.message))) health(u.id, s.id, false, e.message); throw e; });
+          health(u.id, s.id, true);
           json(res, 200, { ok: true, to }); return true;
         }
         const sdom = /^\/mail\/senders\/([^/]+)\/domain$/.exec(p);
@@ -503,7 +513,9 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
         if (p === '/mail/send' && m === 'POST') {
           const b = await body(req); const id = String(b?.campaign || '').slice(0, 80);
           const c = camp(u.id, id); if (!c) { json(res, 404, { error: 'Đăng ký chiến dịch trước.' }); return true; }
-          const s = senders(u.id).find((x) => x.id === String(b?.sender || '')); if (!s) { json(res, 400, { error: 'Chọn kênh gửi (Resend / Brevo / Amazon SES).' }); return true; }
+          const s = senders(u.id).find((x) => x.id === String(b?.sender || '')); if (!s) { json(res, 400, { error: 'Chọn kênh gửi.' }); return true; }
+          const hs = healthOf(u.id, s.id);
+          if (hs && !hs.ok) { json(res, 409, { error: `Kênh ${s.fromEmail} đang lỗi (${hs.error.slice(0, 140)}). Chọn kênh khác, hoặc lưu lại khoá / mật khẩu mới cho kênh này.`, code: 'sender_broken' }); return true; }
           const htmlBody = String(b?.html || ''); if (!htmlBody || htmlBody.length > 600_000) { json(res, 400, { error: 'HTML trống hoặc quá lớn (ảnh phải lưu trên host).' }); return true; }
           if (/cid:/i.test(htmlBody)) { json(res, 400, { error: 'HTML còn ảnh đính kèm (cid:): bật lưu ảnh trên host trước.' }); return true; }
           // recipients: a pasted list, or a list/segment of the audience (resolved here, subscribed contacts only)
@@ -520,6 +532,19 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           saveCamp(u.id, id, c);
           json(res, 200, { ok: true, recipients: list.length, test: nTest, sendAt: c.send.sendAt }); return true;
         }
+        // every server send of this account, for the "Lịch gửi" board: when, from which mailbox, how far, what next
+        if (p === '/mail/schedule' && m === 'GET') {
+          const mine = senders(u.id); const utcMidnight = (() => { const d = new Date(); d.setUTCHours(24, 0, 0, 0); return d.toISOString(); })();
+          const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+          const items = S.campDue.all().filter((r) => r.owner === u.id).map((r) => ({ id: r.id, c: JSON.parse(r.json) })).filter((x) => x.c.send).map(({ id, c }) => {
+            const s0 = c.send; const counts = {}; for (const r of S.qCounts.all(u.id, id)) counts[r.status] = (counts[r.status] || 0) + r.n;
+            const span = S.qSentSpan.get(u.id, id); const sender = mine.find((x) => x.id === s0.sender);
+            const sentToday = Number(S.qSentToday.get(u.id, id, dayStart.toISOString()).n) || 0;
+            const nextAt = s0.status === 'scheduled' ? s0.sendAt : s0.status === 'sending' ? now() : s0.status === 'waiting' ? (s0.ab?.phase === 'wait' && s0.testSentAt ? new Date(Date.parse(s0.testSentAt) + s0.ab.waitHours * 3600e3).toISOString() : utcMidnight) : null;
+            return { id, project: c.project || '', subject: s0.subject || c.subject || '', status: s0.status, sendAt: s0.sendAt, createdAt: c.createdAt, lastError: s0.lastError || '', perDay: s0.perDay, sentToday, nextAt, firstSentAt: span?.first || null, lastSentAt: span?.last || null, counts, total: Object.values(counts).reduce((a, n) => a + n, 0), ab: s0.ab ? { phase: s0.ab.phase, winner: s0.ab.winner, waitHours: s0.ab.waitHours } : null, sender: sender ? { id: sender.id, label: sender.label || PROV[sender.provider]?.label || sender.provider, fromEmail: sender.fromEmail, provider: sender.provider, health: healthOf(u.id, sender.id) } : { id: s0.sender, label: 'kênh đã xoá', fromEmail: '', provider: '', health: null }, audience: c.audience ? { list: c.audience.listName || '', segment: c.audience.segmentName || '' } : null };
+          }).sort((a, b) => String(b.sendAt || b.createdAt).localeCompare(String(a.sendAt || a.createdAt))).slice(0, 200);
+          json(res, 200, { now: now(), dayResetAt: utcMidnight, items }); return true;
+        }
         const sc = /^\/mail\/send\/([^/]+)(?:\/(pause|resume|cancel))?$/.exec(p);
         if (sc) {
           const id = decodeURIComponent(sc[1]); const c = camp(u.id, id); if (!c?.send) { json(res, 404, { error: 'Chiến dịch chưa có lịch gửi.' }); return true; }
@@ -529,6 +554,8 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
               // optionally continue with another channel (the old one had a bad key / password); undelivered rows go again
               const b = await body(req).catch(() => ({}));
               if (b?.sender) { if (!senders(u.id).some((x) => x.id === String(b.sender))) { json(res, 404, { error: 'không có kênh gửi này' }); return true; } c.send.sender = String(b.sender); }
+              const hr = healthOf(u.id, c.send.sender);
+              if (hr && !hr.ok) { json(res, 409, { error: `Kênh gửi của chiến dịch đang lỗi (${hr.error.slice(0, 120)}). Bấm Đổi kênh để chọn hộp mail khác.`, code: 'sender_broken' }); return true; }
               S.qRequeueUndelivered.run(u.id, id); c.send.status = 'scheduled'; c.send.lastError = '';
             }
             if (sc[2] === 'cancel') { c.send.status = 'cancelled'; S.qCancel.run(u.id, id); }
@@ -583,12 +610,13 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const subject = mergeFields(r.variant === 'B' && s0.ab ? s0.ab.subjectB : s0.subject, fields, false);
           try {
             await capped(PROV[sender.provider].send(sender, { to: r.email, subject, html: per.html, text: s0.text ? `${mergeFields(s0.text, fields, false)}\n\nHuỷ đăng ký: ${per.unsub}` : '', headers: { 'List-Unsubscribe': `<${per.unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } }));
-            S.qMark.run('sent', '', now(), '', owner, id, r.email);
+            S.qMark.run('sent', '', now(), '', owner, id, r.email); health(owner, sender.id, true);
             try { hooks.onSent?.(owner, c, r.email); } catch { /* stats only */ }
           } catch (e) {
             const msg = String(e.message || e).slice(0, 300); S.qMark.run('failed', msg, now(), '', owner, id, r.email); s0.lastError = msg;
             log(`[mail] ${id} → ${sender.provider}: ${msg}`);
             // bad key / wrong password / blocked port: stop instead of failing every address
+            if (AUTH_ERR.test(msg)) health(owner, sender.id, false, msg);
             if (/401|403|invalid|unauthor|sai tài khoản|mật khẩu|535|không kết nối được|không phản hồi|hết thời gian kết nối/i.test(msg)) { s0.status = 'error'; break; }
           }
           await new Promise((rr) => setTimeout(rr, pace));

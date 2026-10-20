@@ -95,9 +95,12 @@ export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; 
         <>
           {senders.length > 0 && (
             <div class="row" style={{ gap: 6 }}>
-              <div class="grow"><Select value={sel} options={senders.map((x) => ({ v: x.id, label: `${x.label} · ${x.fromName ? `${x.fromName} <${x.fromEmail}>` : x.fromEmail}` }))} onChange={(v) => { setSel(v); keep('phloem.mail.sender', v); }} /></div>
+              <div class="grow"><Select value={sel} options={senders.map((x) => ({ v: x.id, label: `${x.health?.ok === false ? '⚠ LỖI · ' : ''}${x.label} · ${x.fromName ? `${x.fromName} <${x.fromEmail}>` : x.fromEmail}` }))} onChange={(v) => { setSel(v); keep('phloem.mail.sender', v); }} /></div>
               <Btn xs kind="ghost" icon="plus" onClick={() => setAdding(!adding)} title="Thêm kênh gửi" />
             </div>
+          )}
+          {s && !adding && s.health?.ok === false && (
+            <div class="check err"><span class="lv">KÊNH LỖI</span><span class="m">Lần gửi gần nhất bằng {s.fromEmail} báo: {s.health.error.slice(0, 160)}. {/401|invalid|API key/i.test(s.health.error) ? 'Khoá API sai hoặc đã bị thu hồi.' : 'Sai mật khẩu hộp mail.'} Chọn kênh khác, hoặc xoá kênh này rồi thêm lại với khoá / mật khẩu mới.</span></div>
           )}
           {s && !adding && (
             <div class="row small dim" style={{ gap: 6 }}>
@@ -127,7 +130,7 @@ export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; 
               <Seg block value={metric} options={[{ v: 'opens', label: 'Thắng theo lượt mở' }, { v: 'clicks', label: 'Thắng theo click' }]} onChange={setMetric} />
             </div>
           )}
-          <Btn sm kind="primary" icon="send" disabled={busy || !n || (abOn && !subjectB.trim())} onClick={() => void run(() => startServerQueue(p, s, to, skip, { sendAt: when || undefined, perDay: cap, ab: abOn ? { subjectB: subjectB.trim(), split: split / 100, metric, waitHours: wait } : null, audience }))}>
+          <Btn sm kind="primary" icon="send" disabled={busy || !n || (abOn && !subjectB.trim()) || s?.health?.ok === false} title={s?.health?.ok === false ? 'Kênh gửi đang lỗi: chọn kênh khác' : ''} onClick={() => void run(() => startServerQueue(p, s, to, skip, { sendAt: when || undefined, perDay: cap, ab: abOn ? { subjectB: subjectB.trim(), split: split / 100, metric, waitHours: wait } : null, audience }))}>
             {n ? `${when ? 'Hẹn gửi' : 'Gửi'} tới ${nf(n)} người${n > cap ? ` · ${Math.ceil(n / cap)} ngày` : ''}` : src === 'list' ? 'Danh sách chưa có ai đang nhận' : 'Thêm người nhận ở trên'}
           </Btn>
         </>
@@ -262,7 +265,7 @@ export function CampaignStatsList({ projectId }: { projectId: string }) {
   const unhide = (ids: string[]) => { unhideCampaigns(ids); force((x) => x + 1); };
   return (
     <details class="small" open>
-      <summary class="dim">Thống kê chiến dịch ({shown.length})</summary>
+      <summary class="dim">Thống kê chiến dịch ({shown.length}) · <a href="#" onClick={(e) => { e.preventDefault(); set({ modal: 'schedule' }); }}>Xem lịch gửi</a></summary>
       <div class="col" style={{ gap: 6, marginTop: 6 }}>
         {shown.slice(0, 8).map((c) => <CampaignRow key={c.id} id={c.id} subject={c.subject} via={c.via} at={c.at} recipients={c.recipients} projectId={projectId} onForget={() => { forgetCampaign(c.id); force((x) => x + 1); }} />)}
         {hid.length > 0 && (
@@ -322,7 +325,13 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
   return (
     <div class="card" style={{ background: 'var(--panel)', gap: 6 }}>
       <div class="row"><b class="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</b><span class="chip">{via === 'server' ? 'máy chủ' : 'Gmail'}</span>{send && <span class={`chip ${send.status === 'done' ? 'on' : send.status === 'error' ? 'warn' : ''}`}>{STATUS[send.status] || send.status}</span>}</div>
-      <div class="dim">{new Date(at).toLocaleString('vi-VN')}{send?.sendAt && send.status === 'scheduled' ? ` · gửi lúc ${new Date(send.sendAt).toLocaleString('vi-VN')}` : ''}</div>
+      {(() => {
+        const vnT = (iso: string) => new Date(iso).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+        const left = send?.sendAt ? Date.parse(send.sendAt) - Date.now() : 0;
+        return send?.status === 'scheduled'
+          ? <div class="row small" style={{ gap: 6 }}><b style={{ color: 'var(--neon)' }}>Hẹn gửi {vnT(send.sendAt)}</b><span class="dim">{left > 0 ? `còn ${left > 3600e3 ? `${Math.floor(left / 3600e3)} giờ ${Math.floor((left % 3600e3) / 60e3)} phút` : `${Math.max(1, Math.round(left / 60e3))} phút`}` : 'đến giờ, sắp bắt đầu'}</span><span class="grow" /><a href="#" onClick={(e) => { e.preventDefault(); set({ modal: 'schedule' }); }}>Lịch gửi</a></div>
+          : <div class="dim">Tạo {vnT(at)} (giờ VN){send?.sendAt ? ` · hẹn ${vnT(send.sendAt)}` : ''}</div>;
+      })()}
       {st ? (
         <>
           <div class="grid2" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>

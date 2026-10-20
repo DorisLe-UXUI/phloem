@@ -8,7 +8,7 @@ import { relayAuth } from '../ai/client';
 import { get } from '../store';
 
 export interface MailHealth { img: boolean; tracking: boolean; queue: boolean }
-export interface Sender { webhook?: string; domain?: { name: string; verified?: boolean; checkedAt?: string } | null; id: string; provider: 'resend' | 'brevo' | 'ses' | 'smtp'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean; preset?: string; host?: string; port?: number; secure?: 'ssl' | 'starttls'; username?: string }
+export interface Sender { webhook?: string; domain?: { name: string; verified?: boolean; checkedAt?: string } | null; id: string; provider: 'resend' | 'brevo' | 'ses' | 'smtp'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean; preset?: string; host?: string; port?: number; secure?: 'ssl' | 'starttls'; username?: string; health?: { ok: boolean; error: string; at: string } | null }
 export interface ProviderInfo { id: Sender['provider']; label: string; perDay: number }
 export interface SendInfo { sender: string; subject: string; sendAt: string; status: 'scheduled' | 'sending' | 'waiting' | 'paused' | 'cancelled' | 'done' | 'error'; perDay: number; lastError: string; testSentAt: string | null; ab: null | { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number; phase: 'test' | 'wait' | 'rest'; winner: 'A' | 'B' | null; scores?: { A: number; B: number } } }
 export interface CampaignStats { opens: number; clicks: number; unsubscribes: number; links: { url: string; clicks: number }[]; byVariant: Record<string, { opens: number; clicks: number }>; queue: Record<string, number>; send: SendInfo | null; orders?: number; revenue?: number; buyers?: number }
@@ -107,6 +107,13 @@ export const testSender = (id: string, to: string) => api<{ ok: true; to: string
 
 // ---------- server-side queue ----------
 export interface ServerSendInput { audience?: { client?: string; list: string; segment?: string; tags?: string[] }; campaign: string; sender: string; subject: string; html: string; text: string; recipients: string[]; sendAt?: string; perDay?: number; ab?: { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number } | null }
+export interface ScheduleItem {
+  id: string; project: string; subject: string; status: SendInfo['status']; sendAt: string; createdAt: string; lastError: string; perDay: number; sentToday: number; nextAt: string | null;
+  firstSentAt: string | null; lastSentAt: string | null; counts: Record<string, number>; total: number; ab: { phase: string; winner: string | null; waitHours: number } | null;
+  sender: { id: string; label: string; fromEmail: string; provider: string; health: Sender['health'] }; audience: { list: string; segment: string } | null;
+}
+/** Every server send of the account for the "Lịch gửi" board. */
+export const sendSchedule = () => api<{ now: string; dayResetAt: string; items: ScheduleItem[] }>('/mail/schedule');
 export const startServerSend = (b: ServerSendInput) => api<{ ok: true; recipients: number; test: number; sendAt: string }>('/mail/send', { body: b });
 export const serverSendStatus = (id: string) => api<{ send: SendInfo; counts: Record<string, number> }>(`/mail/send/${encodeURIComponent(id)}`);
 export const serverSendControl = (id: string, action: 'pause' | 'resume' | 'cancel', sender?: string) => api<{ ok: true; status: string }>(`/mail/send/${encodeURIComponent(id)}/${action}`, { body: sender ? { sender } : {} });

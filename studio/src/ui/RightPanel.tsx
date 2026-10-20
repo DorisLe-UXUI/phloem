@@ -642,7 +642,7 @@ function MailCard() {
                       onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v.startsWith('s:')) { keep('phloem.mail.sender', v.slice(2)); setVia('server'); keep('phloem.mail.via', 'server'); } else setActiveGmail(v.slice(2)); }}>
                       {!accounts.length && <option value="">Chọn hộp mail…</option>}
                       {accounts.length > 0 && <optgroup label="Google (Gmail, Workspace)">{accounts.map((a) => <option key={a.email} value={`g:${a.email}`}>{a.email}{a.live ? '' : ' · cần kết nối lại'}</option>)}</optgroup>}
-                      {boxes.length > 0 && <optgroup label="Hộp mail khác (gửi qua máy chủ)">{boxes.map((b) => <option key={b.id} value={`s:${b.id}`}>{b.fromEmail} · {b.label}</option>)}</optgroup>}
+                      {boxes.length > 0 && <optgroup label="Hộp mail khác (gửi qua máy chủ)">{boxes.map((b) => <option key={b.id} value={`s:${b.id}`}>{b.fromEmail} · {b.label}{b.health?.ok === false ? ' · ⚠ lỗi' : ''}</option>)}</optgroup>}
                     </select>
                     {accounts.length > 0 && (acc ? <Btn xs kind="ghost" onClick={() => disconnectGmail(cur)} title="Ngắt và quên tài khoản này">Ngắt</Btn>
                       : <Btn xs kind="primary" disabled={busy || art} onClick={() => void run(() => connectGmail(cur))}>Kết nối lại</Btn>)}
