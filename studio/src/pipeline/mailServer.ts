@@ -16,8 +16,10 @@ export interface PersonOrder { orderId: string; value: number; currency: string;
 export interface CampaignPerson { email: string; name: string; status: '' | 'sent' | 'queued' | 'failed' | 'skipped' | 'cancelled' | 'unknown'; sentAt: string | null; variant: string; error: string; opens: number; firstOpen: string | null; lastOpen: string | null; clicks: number; lastClick: string | null; links: { i: number; url: string; n: number; last: string }[]; orders: PersonOrder[]; unsubAt: string | null; bounced: '' | 'bounce' | 'complaint' }
 export interface CampaignPeople {
   campaign: { id: string; subject: string; from: string; via: 'gmail' | 'server'; at: string; links: string[]; labels: string[]; list: string; segment: string };
-  totals: { recipients: number; opened: number; clicked: number; buyers: number; orders: number; revenue: number; unsubscribed: number; bounced: number; failed: number; unknownOpens: number; unknownClicks: number };
+  totals: { totalOpens: number; totalClicks: number; recipients: number; opened: number; clicked: number; buyers: number; orders: number; revenue: number; unsubscribed: number; bounced: number; failed: number; unknownOpens: number; unknownClicks: number };
   lostOrders: PersonOrder[];
+  /** Activity by hour (Vietnam time, 'YYYY-MM-DDTHH'). */
+  timeline: { h: string; opens: number; openers: number; clicks: number; clickers: number }[];
   people: CampaignPerson[];
 }
 
@@ -95,6 +97,11 @@ export const removeSuppression = (email: string) => api<{ ok: true }>(`/mail/sup
 // ---------- sending accounts ----------
 export const listSenders = () => api<{ senders: Sender[]; providers: ProviderInfo[] }>('/mail/senders');
 export const saveSender = (s: Partial<Sender> & { apiKey?: string; accessKeyId?: string; secret?: string; password?: string }) => api<{ sender: Sender }>('/mail/senders', { body: s });
+export interface SmtpDetected { preset: string; label: string; host: string; port: number; secure: 'ssl' | 'starttls'; perDay: number; app?: boolean; domain: string; mx: string }
+/** SMTP settings from an address (consumer domains, else the domain's MX records). */
+export const detectSmtp = (email: string) => api<{ detected: SmtpDetected | null }>(`/mail/smtp/detect?email=${encodeURIComponent(email)}`);
+/** Log in to a mailbox without sending (settings + password check). */
+export const verifySmtp = (b: { id?: string; host?: string; port?: number; secure?: string; username?: string; password?: string }) => api<{ ok: boolean; error?: string; auth?: string }>('/mail/smtp/verify', { body: b });
 export const deleteSender = (id: string) => api<{ ok: true }>(`/mail/senders/${encodeURIComponent(id)}`, { method: 'DELETE' });
 export const testSender = (id: string, to: string) => api<{ ok: true; to: string }>(`/mail/senders/${encodeURIComponent(id)}/test`, { body: { to } });
 

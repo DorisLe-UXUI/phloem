@@ -226,3 +226,16 @@ test('SMTP mailbox sender (Titan & co.): EHLO, AUTH, MAIL/RCPT/DATA with a UTF-8
     assert.ok(!/\r\n\.\r\n/.test(buildMessage(msg).replace(/(^|\r\n)\./g, '$1..')), 'dot-stuffed');
   } finally { srv.close(); }
 });
+
+test('mailbox detection: consumer domains directly, company domains by MX (Google, Microsoft, Titan, cPanel fallback)', async () => {
+  const { detectSmtp } = await import('../server/src/smtp.mjs');
+  const mx = (rec) => async () => rec.map((exchange, i) => ({ exchange, priority: i }));
+  assert.equal((await detectSmtp('a@gmail.com')).host, 'smtp.gmail.com');
+  assert.equal((await detectSmtp('a@yahoo.com.vn')).preset, 'yahoo');
+  assert.equal((await detectSmtp('a@corp.vn', { mxLookup: mx(['aspmx.l.google.com']) })).preset, 'google');
+  assert.equal((await detectSmtp('a@corp.vn', { mxLookup: mx(['corp-vn.mail.protection.outlook.com']) })).preset, 'outlook');
+  assert.equal((await detectSmtp('a@corp.vn', { mxLookup: mx(['mx1.titan.email']) })).host, 'smtp.titan.email');
+  assert.equal((await detectSmtp('a@shop.vn', { mxLookup: mx(['mx1.matbao.net']) })).host, 'mail.shop.vn');
+  const unknown = await detectSmtp('a@shop.vn', { mxLookup: mx(['mail.shop.vn']) }); assert.equal(unknown.preset, 'custom'); assert.equal(unknown.host, 'mail.shop.vn');
+  assert.equal(await detectSmtp('not-an-email'), null);
+});

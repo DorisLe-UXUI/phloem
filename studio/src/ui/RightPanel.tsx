@@ -20,8 +20,8 @@ import { Btn, ColorInput, Eyebrow, Field, Num, Ring, Seg, Select, TextArea, Text
 import { Icon } from './icons';
 import { ask, isArtifact } from './confirm';
 import { AiPanel } from './AiPanel';
-import { CampaignStatsList, MailRelayBar, ServerSend, SuppressionList } from './MailExtras';
-import { mailSignedIn } from '../pipeline/mailServer';
+import { CampaignStatsList, MailRelayBar, SenderForm, ServerSend, SuppressionList } from './MailExtras';
+import { listSenders, mailSignedIn, type ProviderInfo, type Sender } from '../pipeline/mailServer';
 
 export function RightPanel() {
   const s = useStore();
@@ -584,6 +584,11 @@ function MailCard() {
   const [skip, setSkip] = useState(() => ls('phloem.mail.skip'));
   const [cap, setCap] = useState(0);
   const [via, setVia] = useState<'gmail' | 'server'>(() => (ls('phloem.mail.via') === 'server' ? 'server' : 'gmail'));
+  // mailboxes sent through the relay (Titan, Zoho, Outlook… over SMTP, or Resend/Brevo/SES): listed with the Google accounts
+  const [boxes, setBoxes] = useState<Sender[]>([]); const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [addingBox, setAddingBox] = useState(false);
+  const loadBoxes = () => listSenders().then((r) => { setBoxes(r.senders); setProviders(r.providers); }).catch(() => {});
+  useEffect(() => { if (mailSignedIn()) void loadBoxes(); }, [s.user?.id]);
   const [serverSrc, setServerSrc] = useState<'list' | 'paste'>('list');
   const [err, setErr] = useState('');
   const file = useRef<HTMLInputElement>(null);
@@ -630,18 +635,25 @@ function MailCard() {
             const accounts = gmailAccounts(); const cur = activeGmailEmail();
             return (
               <div class="col" style={{ gap: 6 }}>
-                {accounts.length > 0 && (
+                {(accounts.length > 0 || boxes.length > 0) && (
                   <div class="row small" style={{ gap: 6 }}>
                     <span class="dim">Gửi từ</span>
-                    <select class="in grow mono" style={{ height: 28, minWidth: 0 }} value={cur} onChange={(e) => setActiveGmail((e.target as HTMLSelectElement).value)} title="Mọi tài khoản Google đã kết nối (Gmail, Google Workspace)">
-                      {accounts.map((a) => <option key={a.email} value={a.email}>{a.email}{a.live ? '' : ' · cần kết nối lại'}</option>)}
+                    <select class="in grow mono" style={{ height: 28, minWidth: 0 }} value={accounts.length ? `g:${cur}` : ''} title="Tài khoản Google đã kết nối và các hộp mail gửi qua máy chủ"
+                      onChange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v.startsWith('s:')) { keep('phloem.mail.sender', v.slice(2)); setVia('server'); keep('phloem.mail.via', 'server'); } else setActiveGmail(v.slice(2)); }}>
+                      {!accounts.length && <option value="">Chọn hộp mail…</option>}
+                      {accounts.length > 0 && <optgroup label="Google (Gmail, Workspace)">{accounts.map((a) => <option key={a.email} value={`g:${a.email}`}>{a.email}{a.live ? '' : ' · cần kết nối lại'}</option>)}</optgroup>}
+                      {boxes.length > 0 && <optgroup label="Hộp mail khác (gửi qua máy chủ)">{boxes.map((b) => <option key={b.id} value={`s:${b.id}`}>{b.fromEmail} · {b.label}</option>)}</optgroup>}
                     </select>
-                    {acc ? <Btn xs kind="ghost" onClick={() => disconnectGmail(cur)} title="Ngắt và quên tài khoản này">Ngắt</Btn>
-                      : <Btn xs kind="primary" disabled={busy || art} onClick={() => void run(() => connectGmail(cur))}>Kết nối lại</Btn>}
+                    {accounts.length > 0 && (acc ? <Btn xs kind="ghost" onClick={() => disconnectGmail(cur)} title="Ngắt và quên tài khoản này">Ngắt</Btn>
+                      : <Btn xs kind="primary" disabled={busy || art} onClick={() => void run(() => connectGmail(cur))}>Kết nối lại</Btn>)}
                   </div>
                 )}
-                <Btn sm block icon={accounts.length ? 'plus' : 'mail'} disabled={busy || art} onClick={() => void run(() => connectGmail('', accounts.length > 0))} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : 'Kết nối thêm một tài khoản Google (Gmail hoặc Google Workspace)'}>{accounts.length ? 'Thêm tài khoản Google' : 'Kết nối Gmail'}</Btn>
-                <div class="dim small">Hộp mail Titan, Zoho, Outlook, Hostinger…: {signed ? 'chọn Máy chủ gửi → Thêm kênh gửi → Hộp mail (SMTP).' : 'đăng nhập tài khoản Phloem rồi thêm ở Máy chủ gửi → Hộp mail (SMTP).'}</div>
+                <div class="row" style={{ gap: 6 }}>
+                  <Btn sm icon={accounts.length ? 'plus' : 'mail'} disabled={busy || art} onClick={() => void run(() => connectGmail('', accounts.length > 0))} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : 'Kết nối một tài khoản Google (Gmail hoặc Google Workspace)'}>{accounts.length ? 'Thêm Google' : 'Kết nối Gmail'}</Btn>
+                  <Btn sm icon="plus" onClick={() => (signed ? setAddingBox(!addingBox) : set({ modal: 'auth', authTab: 'login' }))} title="Titan, Zoho, Outlook / Microsoft 365, Hostinger, Google Workspace qua SMTP: gửi bằng máy chủ Phloem">Thêm hộp mail Titan, Zoho…</Btn>
+                </div>
+                {!signed && <div class="dim small">Hộp mail Titan, Zoho, Outlook… gửi qua máy chủ Phloem nên cần đăng nhập tài khoản Phloem.</div>}
+                {addingBox && signed && <SenderForm providers={providers} onSaved={(x) => { setAddingBox(false); keep('phloem.mail.sender', x.id); setVia('server'); keep('phloem.mail.via', 'server'); void loadBoxes(); toast(`Đã thêm ${x.fromEmail}. Bấm "Gửi thử" để chắc đúng mật khẩu trước khi gửi cả danh sách.`, 'ok'); }} onCancel={() => setAddingBox(false)} />}
               </div>
             );
           })()}

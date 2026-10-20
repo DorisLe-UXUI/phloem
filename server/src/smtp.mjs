@@ -4,16 +4,43 @@
 import { connect as netConnect } from 'node:net';
 import { connect as tlsConnect } from 'node:tls';
 import { randomBytes } from 'node:crypto';
+import { resolveMx } from 'node:dns/promises';
 
-/** Known mailbox hosts: the form fills these in. */
+/** Known mailbox hosts: the form fills these in. `mx` = patterns of the domain's MX records that identify the host. */
 export const SMTP_PRESETS = {
-  titan: { label: 'Titan Mail', host: 'smtp.titan.email', port: 465, secure: 'ssl', perDay: 500 },
-  google: { label: 'Google Workspace / Gmail (mật khẩu ứng dụng)', host: 'smtp.gmail.com', port: 465, secure: 'ssl', perDay: 1800 },
-  zoho: { label: 'Zoho Mail', host: 'smtp.zoho.com', port: 465, secure: 'ssl', perDay: 500 },
-  outlook: { label: 'Outlook / Microsoft 365', host: 'smtp.office365.com', port: 587, secure: 'starttls', perDay: 1000 },
-  hostinger: { label: 'Hostinger Email', host: 'smtp.hostinger.com', port: 465, secure: 'ssl', perDay: 500 },
-  custom: { label: 'Hộp mail khác (SMTP)', host: '', port: 465, secure: 'ssl', perDay: 300 },
+  google: { label: 'Google Workspace / Gmail', host: 'smtp.gmail.com', port: 465, secure: 'ssl', perDay: 1800, app: true, mx: /google(mail)?\.com$|googlemail\.com$/ },
+  outlook: { label: 'Microsoft 365 / Outlook', host: 'smtp.office365.com', port: 587, secure: 'starttls', perDay: 1000, app: true, mx: /\.protection\.outlook\.com$|outlook\.com$|hotmail\.com$/ },
+  titan: { label: 'Titan Mail', host: 'smtp.titan.email', port: 465, secure: 'ssl', perDay: 500, mx: /titan\.email$/ },
+  zoho: { label: 'Zoho Mail', host: 'smtp.zoho.com', port: 465, secure: 'ssl', perDay: 500, mx: /zoho\.(com|eu|in|com\.au|jp)$|zohomail/ },
+  hostinger: { label: 'Hostinger Email', host: 'smtp.hostinger.com', port: 465, secure: 'ssl', perDay: 500, mx: /hostinger\.(com|io)$/ },
+  godaddy: { label: 'GoDaddy Email', host: 'smtpout.secureserver.net', port: 465, secure: 'ssl', perDay: 250, mx: /secureserver\.net$/ },
+  namecheap: { label: 'Namecheap Private Email', host: 'mail.privateemail.com', port: 465, secure: 'ssl', perDay: 500, mx: /privateemail\.com$|registrar-servers\.com$/ },
+  yahoo: { label: 'Yahoo Mail', host: 'smtp.mail.yahoo.com', port: 465, secure: 'ssl', perDay: 500, app: true, mx: /yahoodns\.net$|yahoo\.com$/ },
+  icloud: { label: 'iCloud Mail', host: 'smtp.mail.me.com', port: 587, secure: 'starttls', perDay: 1000, app: true, mx: /icloud\.com$|me\.com$/ },
+  yandex: { label: 'Yandex Mail', host: 'smtp.yandex.com', port: 465, secure: 'ssl', perDay: 500, app: true, mx: /yandex\.(net|ru|com)$/ },
+  aol: { label: 'AOL Mail', host: 'smtp.aol.com', port: 465, secure: 'ssl', perDay: 500, app: true, mx: /aol\.com$/ },
+  fastmail: { label: 'Fastmail', host: 'smtp.fastmail.com', port: 465, secure: 'ssl', perDay: 4000, app: true, mx: /messagingengine\.com$|fastmail\.com$/ },
+  workmail: { label: 'Amazon WorkMail', host: 'smtp.mail.us-east-1.awsapps.com', port: 465, secure: 'ssl', perDay: 1000, mx: /awsapps\.com$/ },
+  pavietnam: { label: 'Mắt Bão / PA Việt Nam / Nhân Hoà (cPanel)', host: '', port: 465, secure: 'ssl', perDay: 300, mx: /matbao\.(net|com)|pavietnam\.vn|nhanhoa\.com/ },
+  custom: { label: 'Hộp mail khác (cPanel, Plesk… SMTP)', host: '', port: 465, secure: 'ssl', perDay: 300 },
 };
+/** Consumer domains whose SMTP host is known without looking anything up. */
+const DOMAIN_PRESET = { 'gmail.com': 'google', 'googlemail.com': 'google', 'outlook.com': 'outlook', 'hotmail.com': 'outlook', 'live.com': 'outlook', 'msn.com': 'outlook', 'yahoo.com': 'yahoo', 'yahoo.com.vn': 'yahoo', 'ymail.com': 'yahoo', 'icloud.com': 'icloud', 'me.com': 'icloud', 'mac.com': 'icloud', 'yandex.com': 'yandex', 'yandex.ru': 'yandex', 'aol.com': 'aol', 'zoho.com': 'zoho', 'fastmail.com': 'fastmail' };
+const publicPreset = (key, extra = {}) => { const { mx: _m, ...p } = SMTP_PRESETS[key]; return { preset: key, ...p, ...extra }; };
+/** From an address to SMTP settings: consumer domains directly, company domains by their MX records. */
+export async function detectSmtp(email, { mxLookup = resolveMx } = {}) {
+  const domain = String(email || '').toLowerCase().split('@')[1] || '';
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return null;
+  if (DOMAIN_PRESET[domain]) return publicPreset(DOMAIN_PRESET[domain], { domain, mx: '' });
+  let mx = [];
+  try { mx = (await mxLookup(domain)).sort((a, b) => a.priority - b.priority).map((r) => String(r.exchange).toLowerCase()); } catch { /* no MX */ }
+  for (const host of mx) for (const [key, p] of Object.entries(SMTP_PRESETS)) if (p.mx && p.mx.test(host)) {
+    // cPanel-style hosts serve SMTP on mail.<domain>
+    return publicPreset(key, { domain, mx: host, ...(key === 'pavietnam' ? { host: `mail.${domain}` } : {}) });
+  }
+  // unknown host: cPanel/Plesk mailboxes answer on mail.<domain> (or the MX host itself)
+  return publicPreset('custom', { domain, mx: mx[0] || '', host: mx[0] && !/mx\d*\.|mail\.protection/.test(mx[0]) ? mx[0] : `mail.${domain}` });
+}
 
 const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64');
 const wrap76 = (s) => s.replace(/.{1,76}/g, '$&\r\n');
@@ -74,8 +101,11 @@ function session(socket, timeout) {
   return { read, cmd, upgrade, write: (s) => sock.write(s), end: () => { try { sock.end(); } catch { /* gone */ } } };
 }
 
+/** Connect and log in, then QUIT: checks a mailbox's settings and password without sending anything. */
+export async function smtpVerify(cfg, opts = {}) { return smtpSend(cfg, null, opts); }
+
 /**
- * Send one message. `cfg` = { host, port, secure: 'ssl' | 'starttls' | 'none' (tests only), username, password }.
+ * Send one message (msg = null: only connect and log in). `cfg` = { host, port, secure: 'ssl' | 'starttls' | 'none' (tests only), username, password }.
  * `msg` = { from, fromName, to, subject, html, text, replyTo, headers }.
  */
 export async function smtpSend(cfg, msg, { timeout = 30_000, ehlo = 'phloem.email' } = {}) {
@@ -103,6 +133,7 @@ export async function smtpSend(cfg, msg, { timeout = 30_000, ehlo = 'phloem.emai
         else { await c.cmd('AUTH LOGIN', [334], 'AUTH'); await c.cmd(b64(user), [334], 'AUTH'); await c.cmd(b64(pass), [235], 'AUTH'); }
       } catch (e) { throw new Error(`SMTP: sai tài khoản hoặc mật khẩu (${String(e.message).replace(/^SMTP AUTH: /, '').slice(0, 140)}). Google/Outlook cần mật khẩu ứng dụng.`); }
     }
+    if (!msg) { const auth = /AUTH[ =]([^\r\n]*)/i.exec(caps)?.[1] || ''; try { await c.cmd('QUIT', [221]); } catch { /* fine */ } return { ok: true, verified: !!cfg.username, tls: cfg.secure !== 'none', auth: auth.trim(), greeting: '' }; }
     await c.cmd(`MAIL FROM:<${msg.from}>`, [250], 'MAIL FROM');
     await c.cmd(`RCPT TO:<${msg.to}>`, [250, 251], 'RCPT TO');
     await c.cmd('DATA', [354]);

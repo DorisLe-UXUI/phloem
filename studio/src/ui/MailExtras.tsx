@@ -7,7 +7,7 @@ import { set, toast } from '../store';
 import { audLists, previewRules, segments as audSegments, type AudList, type Segment } from '../pipeline/audience';
 import { HOSTED_PREF, loadQueue, parseRecipients, startServerQueue } from '../pipeline/mailSend';
 import {
-  addSuppressions, campaignStats, deleteSender, forgetCampaign, hiddenCampaigns, listSenders, listSuppressions, mailHealth, mailHealthCached, mailSignedIn, myCampaigns,
+  addSuppressions, detectSmtp, verifySmtp, campaignStats, deleteSender, forgetCampaign, hiddenCampaigns, listSenders, listSuppressions, mailHealth, mailHealthCached, mailSignedIn, myCampaigns,
   backfillRecipients, registerCampaign, rememberCampaign, removeSuppression, saveSender, serverCampaigns, serverSendControl, testSender, unhideCampaigns, type CampaignRef, type CampaignStats, type ProviderInfo, type Sender,
 } from '../pipeline/mailServer';
 import { Btn, Field, Num, Seg, Select, TextArea, TextInput, Toggle, Progress } from './components';
@@ -137,14 +137,23 @@ export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; 
   );
 }
 
-/** Mailboxes over SMTP (mirrors server/src/smtp.mjs SMTP_PRESETS). */
-const SMTP: Record<string, { label: string; host: string; port: number; secure: 'ssl' | 'starttls'; perDay: number; how: string }> = {
+/** Mailboxes over SMTP (mirrors server/src/smtp.mjs SMTP_PRESETS). `app`: the provider wants an app password. */
+const SMTP: Record<string, { label: string; host: string; port: number; secure: 'ssl' | 'starttls'; perDay: number; app?: boolean; how: string }> = {
+  google: { label: 'Google Workspace / Gmail', host: 'smtp.gmail.com', port: 465, secure: 'ssl', perDay: 1800, app: true, how: 'Cần mật khẩu ứng dụng: bật Xác minh 2 bước → myaccount.google.com/apppasswords → tạo mật khẩu 16 ký tự. (Hoặc dùng nút Kết nối Gmail ở trên, không cần mật khẩu.)' },
+  outlook: { label: 'Microsoft 365 / Outlook', host: 'smtp.office365.com', port: 587, secure: 'starttls', perDay: 1000, app: true, how: 'Quản trị Microsoft 365 phải bật "Authenticated SMTP" cho hộp mail; có MFA thì dùng mật khẩu ứng dụng. Outlook.com cá nhân: smtp-mail.outlook.com, cổng 587.' },
   titan: { label: 'Titan Mail', host: 'smtp.titan.email', port: 465, secure: 'ssl', perDay: 500, how: 'Dùng mật khẩu đăng nhập hộp mail Titan (Hostinger → Emails, hoặc app.titan.email).' },
-  google: { label: 'Google Workspace / Gmail', host: 'smtp.gmail.com', port: 465, secure: 'ssl', perDay: 1800, how: 'Cần mật khẩu ứng dụng: bật Xác minh 2 bước → myaccount.google.com/apppasswords → tạo mật khẩu 16 ký tự (không dùng mật khẩu Google thường).' },
-  zoho: { label: 'Zoho Mail', host: 'smtp.zoho.com', port: 465, secure: 'ssl', perDay: 500, how: 'Bật 2FA thì tạo mật khẩu ứng dụng ở Zoho → Bảo mật. Tài khoản ở EU/India dùng smtp.zoho.eu / smtp.zoho.in.' },
-  outlook: { label: 'Outlook / Microsoft 365', host: 'smtp.office365.com', port: 587, secure: 'starttls', perDay: 1000, how: 'Quản trị M365 phải bật "Authenticated SMTP" cho hộp mail; có MFA thì dùng mật khẩu ứng dụng.' },
+  zoho: { label: 'Zoho Mail', host: 'smtp.zoho.com', port: 465, secure: 'ssl', perDay: 500, how: 'Bật 2FA thì tạo mật khẩu ứng dụng ở Zoho → Bảo mật. Tài khoản EU/India: smtp.zoho.eu / smtp.zoho.in.' },
   hostinger: { label: 'Hostinger Email', host: 'smtp.hostinger.com', port: 465, secure: 'ssl', perDay: 500, how: 'Dùng mật khẩu hộp mail Hostinger.' },
-  custom: { label: 'Hộp mail khác', host: '', port: 465, secure: 'ssl', perDay: 300, how: 'Lấy máy chủ SMTP, cổng và kiểu bảo mật trong hướng dẫn của nhà cung cấp email (cPanel, Yandex, GoDaddy…).' },
+  godaddy: { label: 'GoDaddy Email', host: 'smtpout.secureserver.net', port: 465, secure: 'ssl', perDay: 250, how: 'Dùng mật khẩu hộp mail GoDaddy (Workspace Email). Hộp mail GoDaddy chạy Microsoft 365 thì chọn Microsoft 365.' },
+  namecheap: { label: 'Namecheap Private Email', host: 'mail.privateemail.com', port: 465, secure: 'ssl', perDay: 500, how: 'Dùng mật khẩu hộp mail Private Email.' },
+  yahoo: { label: 'Yahoo Mail', host: 'smtp.mail.yahoo.com', port: 465, secure: 'ssl', perDay: 500, app: true, how: 'Yahoo → Bảo mật tài khoản → Tạo mật khẩu ứng dụng.' },
+  icloud: { label: 'iCloud Mail', host: 'smtp.mail.me.com', port: 587, secure: 'starttls', perDay: 1000, app: true, how: 'appleid.apple.com → Mật khẩu dành riêng cho ứng dụng. Tên đăng nhập là địa chỉ iCloud đầy đủ.' },
+  yandex: { label: 'Yandex Mail', host: 'smtp.yandex.com', port: 465, secure: 'ssl', perDay: 500, app: true, how: 'Yandex ID → Mật khẩu ứng dụng (Mail).' },
+  aol: { label: 'AOL Mail', host: 'smtp.aol.com', port: 465, secure: 'ssl', perDay: 500, app: true, how: 'AOL → Bảo mật tài khoản → Tạo mật khẩu ứng dụng.' },
+  fastmail: { label: 'Fastmail', host: 'smtp.fastmail.com', port: 465, secure: 'ssl', perDay: 4000, app: true, how: 'Fastmail → Settings → Privacy & Security → App passwords.' },
+  workmail: { label: 'Amazon WorkMail', host: 'smtp.mail.us-east-1.awsapps.com', port: 465, secure: 'ssl', perDay: 1000, how: 'Đổi us-east-1 thành vùng của tổ chức WorkMail nếu khác.' },
+  pavietnam: { label: 'Mắt Bão / PA Việt Nam / Nhân Hoà (cPanel)', host: '', port: 465, secure: 'ssl', perDay: 300, how: 'Máy chủ thường là mail.<tên miền của bạn>, cổng 465 SSL, đăng nhập bằng địa chỉ email và mật khẩu hộp mail.' },
+  custom: { label: 'Hộp mail khác (cPanel, Plesk…)', host: '', port: 465, secure: 'ssl', perDay: 300, how: 'Lấy máy chủ SMTP, cổng và kiểu bảo mật trong hướng dẫn của nhà cung cấp email (thường là mail.<tên miền>, 465 SSL).' },
 };
 const HELP: Record<string, { key: string; how: string }> = {
   smtp: { key: 'Mật khẩu', how: 'Gửi từ chính hộp mail công ty (Titan, Google Workspace, Zoho, Outlook…) qua SMTP. Mỗi hộp mail là một kênh gửi; thêm bao nhiêu cũng được rồi chọn khi gửi.' },
@@ -157,7 +166,19 @@ export function SenderForm({ providers, onSaved, onCancel }: { providers: Provid
   const [fromEmail, setFromEmail] = useState(''); const [fromName, setFromName] = useState('');
   const [preset, setPreset0] = useState('titan'); const [host, setHost] = useState(SMTP.titan.host); const [port, setPort] = useState(SMTP.titan.port); const [secure, setSecure] = useState<'ssl' | 'starttls'>('ssl');
   const [username, setUsername] = useState(''); const [password, setPassword] = useState('');
-  const setPreset = (k: string) => { const x = SMTP[k] || SMTP.custom; setPreset0(k); setHost(x.host); setPort(x.port); setSecure(x.secure); setPerDay(x.perDay); };
+  const [detected, setDetected] = useState(''); const [check, setCheck] = useState<{ ok: boolean; msg: string } | null>(null); const [checking, setChecking] = useState(false);
+  const setPreset = (k: string, h?: string) => { const x = SMTP[k] || SMTP.custom; setPreset0(k); setHost(h ?? x.host); setPort(x.port); setSecure(x.secure); setPerDay(x.perDay); setCheck(null); };
+  // type an address → Phloem looks up who hosts the mailbox (MX records) and fills the server in
+  useEffect(() => {
+    if (prov !== 'smtp' || !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(fromEmail.trim())) return;
+    const t = setTimeout(() => { void detectSmtp(fromEmail.trim()).then((r) => { const d = r.detected; if (!d) return; setPreset(SMTP[d.preset] ? d.preset : 'custom', d.host); setDetected(`${SMTP[d.preset]?.label || d.label}${d.mx ? ` (MX ${d.mx})` : ''}`); }).catch(() => {}); }, 500);
+    return () => clearTimeout(t);
+  }, [fromEmail, prov]);
+  const verify = async () => {
+    setChecking(true); setCheck(null);
+    try { const r = await verifySmtp({ host: host.trim(), port, secure, username: (username || fromEmail).trim(), password }); setCheck(r.ok ? { ok: true, msg: 'Đăng nhập được: máy chủ, cổng và mật khẩu đều đúng.' } : { ok: false, msg: r.error || 'Không đăng nhập được.' }); }
+    catch (e) { setCheck({ ok: false, msg: (e as Error).message }); } finally { setChecking(false); }
+  };
   const [apiKey, setApiKey] = useState(''); const [accessKeyId, setAccessKeyId] = useState(''); const [secret, setSecret] = useState(''); const [region, setRegion] = useState('ap-southeast-1');
   const [perDay, setPerDay] = useState(0);
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
@@ -178,7 +199,7 @@ export function SenderForm({ providers, onSaved, onCancel }: { providers: Provid
       </div>
       {prov === 'smtp' ? (
         <>
-          <Field label="Hộp mail"><Select value={preset} options={Object.entries(SMTP).map(([v, x]) => ({ v, label: x.label }))} onChange={setPreset} /></Field>
+          <Field label="Hộp mail" hint={detected ? `tự nhận diện: ${detected}` : 'gõ email ở trên, Phloem tự nhận diện'}><Select value={preset} options={Object.entries(SMTP).map(([v, x]) => ({ v, label: x.label }))} onChange={(k) => { setPreset(k); setDetected(''); }} /></Field>
           <div class="dim small">{SMTP[preset]?.how}</div>
           <div class="grid2">
             <Field label="Máy chủ SMTP"><TextInput mono value={host} onCommit={setHost} onInput={setHost} placeholder="smtp.tenmien.com" /></Field>
@@ -189,8 +210,10 @@ export function SenderForm({ providers, onSaved, onCancel }: { providers: Provid
           </div>
           <div class="grid2">
             <Field label="Tên đăng nhập" hint="thường là chính email"><TextInput mono value={username} onCommit={setUsername} onInput={setUsername} placeholder={fromEmail || 'ban@tenmien.com'} /></Field>
-            <Field label={preset === 'google' || preset === 'outlook' ? 'Mật khẩu ứng dụng' : 'Mật khẩu hộp mail'}><TextInput mono type="password" value={password} onCommit={setPassword} onInput={setPassword} /></Field>
+            <Field label={SMTP[preset]?.app ? 'Mật khẩu ứng dụng' : 'Mật khẩu hộp mail'}><TextInput mono type="password" value={password} onCommit={(v) => { setPassword(v); setCheck(null); }} onInput={(v) => { setPassword(v); setCheck(null); }} /></Field>
           </div>
+          <div class="row" style={{ gap: 6 }}><Btn sm icon="check" disabled={checking || !host.trim() || !password || !fromEmail.trim()} onClick={() => void verify()}>{checking ? 'Đang thử đăng nhập…' : 'Kiểm tra đăng nhập'}</Btn><span class="grow dim small">thử kết nối và đăng nhập, không gửi thư nào</span></div>
+          {check && <div class={`check ${check.ok ? 'ok' : 'err'}`}><span class="lv">{check.ok ? 'OK' : 'LỖI'}</span><span class="m">{check.msg}</span></div>}
         </>
       ) : prov === 'ses' ? (
         <>
@@ -309,6 +332,7 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
             <div class="grow"><div class="dim" style={{ fontSize: 11 }}>Đã mua</div><b>{nf(st.buyers || 0)}</b> <span class="dim">người · {nf(st.orders || 0)} đơn</span></div><b class={st.revenue ? 'neon' : 'dim'} style={{ fontSize: 15 }}>{st.revenue ? `${Math.round(st.revenue).toLocaleString('vi-VN')}₫` : '0₫'}</b>
           </div>
           <Btn sm kind="primary" icon="search" onClick={() => set({ modal: 'people', peopleOf: id })}>Ai mở · ai bấm · ai mua</Btn>
+          {send?.status === 'error' && <div class="check err"><span class="lv">LỖI GỬI</span><span class="m">{send.lastError || 'Máy chủ gửi báo lỗi.'}{/sai tài khoản|mật khẩu|AUTH|535/i.test(send.lastError || '') ? ' Kiểm tra lại mật khẩu hộp mail (Google/Outlook cần mật khẩu ứng dụng), sửa kênh gửi rồi bấm Tiếp tục.' : /kết nối|ECONN|timeout|hết thời gian/i.test(send.lastError || '') ? ' Máy chủ SMTP không trả lời: kiểm tra máy chủ, cổng và kiểu bảo mật.' : ''}</span></div>}
           {via === 'server' && total > 0 && <Progress done={(st.queue.sent || 0) + (st.queue.failed || 0) + (st.queue.skipped || 0)} total={total - (st.queue.cancelled || 0)} />}
           {via === 'server' && total > 0 && <div class="dim">{nf(st.queue.queued || 0)} chờ · {nf(st.queue.failed || 0)} lỗi · {nf(st.queue.skipped || 0)} bỏ qua (đã huỷ ĐK){send?.lastError ? ` · ${send.lastError}` : ''}</div>}
           {send?.ab && <div class="dim">A/B: A {st.byVariant.A ? `${nf(st.byVariant.A.opens)} mở · ${nf(st.byVariant.A.clicks)} click` : '–'} | B {st.byVariant.B ? `${nf(st.byVariant.B.opens)} mở · ${nf(st.byVariant.B.clicks)} click` : '–'}{send.ab.winner ? ` → thắng: ${send.ab.winner === 'B' ? `B "${send.ab.subjectB}"` : 'A'}` : send.ab.phase === 'wait' ? ' · đang chờ kết quả' : ''}</div>}

@@ -164,7 +164,7 @@ const server = createServer(async (req, res) => {
     // client review links: no account, no relay token, only the token in the link (it opens one item of one client)
     if (url.pathname.startsWith('/share/')) return await shareRoute(url, req, res);
     // Links inside sent emails (unsubscribe, open pixel, click): opened by recipients, so no relay token
-    if (/^\/([uoc]|hooks)\//.test(url.pathname) && await MAIL.handle(url, req, res)) return;
+    if ((/^\/([uoc]|hooks)\//.test(url.pathname) || url.pathname === '/diag/smtp') && await MAIL.handle(url, req, res)) return;
     // signup forms and the shop's order tag (public: the page visitor is not signed in)
     if (/^\/(f|t)\//.test(url.pathname) && await AUD.handle(url, req, res)) return;
     if (RELAY_TOKEN && req.headers['x-phloem-token'] !== RELAY_TOKEN) return json(res, 401, { error: 'relay token sai hoặc thiếu' });

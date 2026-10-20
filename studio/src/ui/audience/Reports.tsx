@@ -4,6 +4,8 @@ import { toast } from '../../store';
 import { createSite, orders as fetchOrders, reports, shopifyPixel, sites as fetchSites, tagSnippet, thankYouSnippet, type OrdersReport, type Report, type Site } from '../../pipeline/audience';
 import { connectGA, gaConnected, gaEmailOrders, gaProperties, gaPropertyInfo, type GaOrder, type GaProperty } from '../../pipeline/ga4';
 import { set } from '../../store';
+import { downloadBytes } from '../../../../src/ui/clipboard';
+import { campaignsCsv } from '../campaignReport';
 import { Btn, Seg } from '../components';
 import { fmtDate, pct, type AudCtx } from './AudiencePage';
 
@@ -42,6 +44,7 @@ export function ReportsTab({ ctx }: { ctx: AudCtx }) {
           <text x={W} y={H + 14} fill="var(--dim)" font-size="10" text-anchor="end">{fmtDate(r.growth[r.growth.length - 1]?.day)}</text>
         </svg>
       </div>
+      <div class="row"><b class="grow">Chiến dịch</b><span class="dim small">Bấm một dòng để xem ai mở, ai bấm, ai mua và in báo cáo.</span><Btn xs icon="download" disabled={!r.campaigns.length} onClick={() => void downloadBytes(`chien-dich-${days}-ngay.csv`, new TextEncoder().encode(campaignsCsv(r.campaigns)), 'text/csv')}>Tải CSV</Btn></div>
       <div class="adm-table aud-table">
         <table>
           <thead><tr><th>Chiến dịch</th><th>Gửi tới</th><th class="n">Đã gửi</th><th class="n">Mở</th><th class="n">Click</th><th class="n">Huỷ ĐK</th><th class="n">Người mua</th><th class="n">Đơn</th><th class="n">Doanh thu</th><th>Ngày</th><th /></tr></thead>

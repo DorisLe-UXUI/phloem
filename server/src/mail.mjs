@@ -13,7 +13,7 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { encrypt, decrypt } from './db.mjs';
 import { s3Call } from './backup.mjs';
-import { smtpSend, SMTP_PRESETS } from './smtp.mjs';
+import { detectSmtp, smtpSend, smtpVerify, SMTP_PRESETS } from './smtp.mjs';
 
 const now = () => new Date().toISOString();
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
@@ -177,6 +177,8 @@ export function parseProviderEvents(provider, payload) {
 async function sendSmtp(s, m) {
   await smtpSend({ host: s.host, port: s.port, secure: s.secure, username: s.username || s.fromEmail, password: s.password }, { from: s.fromEmail, fromName: s.fromName, to: m.to, subject: m.subject, html: m.html, text: m.text, replyTo: s.replyTo, headers: m.headers });
 }
+/** A provider call that never answers must not freeze the whole queue (the worker runs one send at a time). */
+const capped = (p, ms = 60_000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`không phản hồi sau ${Math.round(ms / 1000)} giây (máy chủ gửi bị chặn hoặc treo)`)), ms).unref?.())]);
 const PROVIDERS = { resend: { send: sendResend, perDay: 100, label: 'Resend' }, brevo: { send: sendBrevo, perDay: 300, label: 'Brevo' }, ses: { send: sendSes, perDay: 50000, label: 'Amazon SES' }, smtp: { send: sendSmtp, perDay: 300, label: 'Hộp mail (SMTP: Titan, Google Workspace, Zoho, Outlook…)' } };
 export { SMTP_PRESETS };
 
@@ -217,6 +219,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     rcptAdd: q('INSERT INTO mail_rcpt (owner, campaign, email, variant, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner, campaign, email) DO NOTHING'),
     rcptAll: q('SELECT email, variant, at FROM mail_rcpt WHERE owner = ? AND campaign = ? LIMIT 100000'),
     rcptCount: q('SELECT COUNT(*) AS n FROM mail_rcpt WHERE owner = ? AND campaign = ?'),
+    evHourly: q("SELECT strftime('%Y-%m-%dT%H', at, '+7 hours') AS h, kind, COUNT(*) AS n, COUNT(DISTINCT email_hash) AS u FROM mail_events WHERE owner = ? AND campaign = ? AND kind IN ('open', 'click') GROUP BY h, kind ORDER BY h"),
     evPeople: q('SELECT email_hash AS h, kind, link, COUNT(*) AS n, MIN(at) AS first, MAX(at) AS last FROM mail_events WHERE owner = ? AND campaign = ? GROUP BY email_hash, kind, link'),
   };
   const camp = (owner, id) => { const r = S.campGet.get(owner, id); return r ? JSON.parse(r.json) : null; };
@@ -272,8 +275,10 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     const send = c.send || {};
     return {
       campaign: { id, subject: send.subject || c.subject || '', from: c.fromName || c.from || '', via: c.send ? 'server' : c.via || 'gmail', at: send.sendAt || c.createdAt, links: c.links || [], labels: c.labels || [], list: c.audience?.listName || '', segment: c.audience?.segmentName || '' },
-      totals: { recipients: got.length, opened: opened.length, clicked: clicked.length, buyers: bought.length, orders, revenue, unsubscribed: list.filter((x) => x.unsubAt).length, bounced: list.filter((x) => x.bounced).length, failed: list.filter((x) => x.status === 'failed').length, unknownOpens: unknown.open.size, unknownClicks: unknown.click.size },
+      totals: { totalOpens: list.reduce((a, x) => a + x.opens, 0), totalClicks: list.reduce((a, x) => a + x.clicks, 0), recipients: got.length, opened: opened.length, clicked: clicked.length, buyers: bought.length, orders, revenue, unsubscribed: list.filter((x) => x.unsubAt).length, bounced: list.filter((x) => x.bounced).length, failed: list.filter((x) => x.status === 'failed').length, unknownOpens: unknown.open.size, unknownClicks: unknown.click.size },
       lostOrders: lost, // matched to this email by click id but the buyer's address is not known
+      // activity by hour, Vietnam time: opens/clicks (all events) and people (unique in that hour)
+      timeline: (() => { const by = new Map(); for (const r of S.evHourly.all(owner, id)) { const t = by.get(r.h) || { h: r.h, opens: 0, openers: 0, clicks: 0, clickers: 0 }; if (r.kind === 'open') { t.opens = r.n; t.openers = r.u; } else { t.clicks = r.n; t.clickers = r.u; } by.set(r.h, t); } return [...by.values()]; })(),
       people: list,
     };
   }
@@ -313,6 +318,12 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
       let to = dest;
       try { const cid = hooks.onClickId?.(t, i, c); if (cid) { const [base, hash] = dest.split('#'); to = `${base}${base.includes('?') ? '&' : '?'}phl=${encodeURIComponent(cid)}${hash !== undefined ? `#${hash}` : ''}`; } } catch { /* plain redirect */ }
       res.statusCode = 302; res.setHeader('Location', to); res.setHeader('Cache-Control', 'no-store'); res.end(); return true;
+    }
+    if (p === '/diag/smtp' && m === 'GET') { // can this host reach mailbox SMTP servers at all? (some clouds block the ports)
+      if (throttled(`diag:${req.socket?.remoteAddress || ''}`, 10, 3600e3)) { json(res, 429, { error: 'busy' }); return true; }
+      const probe = [['smtp.gmail.com', 465, 'ssl'], ['smtp.gmail.com', 587, 'starttls'], ['smtp.titan.email', 465, 'ssl'], ['smtp.office365.com', 587, 'starttls']];
+      const out = await Promise.all(probe.map(async ([host, port, secure]) => { const t0 = Date.now(); try { await smtpVerify({ host, port, secure }, { timeout: 8000 }); return { host, port, ok: true, ms: Date.now() - t0 }; } catch (e) { return { host, port, ok: false, error: String(e?.message || e).slice(0, 120) }; } }));
+      json(res, 200, { smtp: out }); return true;
     }
     const hk = /^\/hooks\/(resend|brevo|ses)\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(p);
     if (hk && m === 'POST') {
@@ -402,7 +413,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
         if (sd && m === 'DELETE') { S.supDel.run(u.id, decodeURIComponent(sd[1]).toLowerCase()); json(res, 200, { ok: true }); return true; }
         // ---------- sending accounts ----------
         if (p === '/mail/senders') {
-          if (m === 'GET') { json(res, 200, { senders: senders(u.id).map((x) => publicSender(x, u.id)), providers: Object.entries(PROV).map(([k, v]) => ({ id: k, label: v.label, perDay: v.perDay })), smtpPresets: SMTP_PRESETS }); return true; }
+          if (m === 'GET') { json(res, 200, { senders: senders(u.id).map((x) => publicSender(x, u.id)), providers: Object.entries(PROV).map(([k, v]) => ({ id: k, label: v.label, perDay: v.perDay })), smtpPresets: Object.fromEntries(Object.entries(SMTP_PRESETS).map(([k, { mx: _m, ...v }]) => [k, v])) }); return true; }
           if (m === 'POST') {
             const b = await body(req); const prov = String(b?.provider || ''); if (!PROV[prov]) { json(res, 400, { error: 'nhà cung cấp không hỗ trợ' }); return true; }
             if (!EMAIL_RE.test(String(b?.fromEmail || ''))) { json(res, 400, { error: 'Email người gửi không hợp lệ' }); return true; }
@@ -419,13 +430,25 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
             json(res, 200, { sender: publicSender({ ...s, id, updatedAt: now() }, u.id) }); return true;
           }
         }
+        // a mailbox from its address: SMTP settings by domain / MX records
+        if (p === '/mail/smtp/detect' && m === 'GET') { json(res, 200, { detected: await detectSmtp(url.searchParams.get('email') || '') }); return true; }
+        // log in without sending (the form's "Kiểm tra đăng nhập"); a saved sender is checked with its stored password
+        if (p === '/mail/smtp/verify' && m === 'POST') {
+          if (throttled(`smtpv:${u.id}`, 20, 3600e3)) { json(res, 429, { error: 'Thử quá nhiều lần, đợi một lúc.' }); return true; }
+          const b = await body(req); const saved = b?.id ? senders(u.id).find((x) => x.id === String(b.id)) : null;
+          const host = String(b?.host || saved?.host || '').trim().toLowerCase();
+          if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) { json(res, 400, { error: 'Máy chủ SMTP không hợp lệ' }); return true; }
+          try { const r = await smtpVerify({ host, port: Number(b?.port || saved?.port) || 465, secure: ['ssl', 'starttls'].includes(b?.secure) ? b.secure : saved?.secure || 'ssl', username: String(b?.username || saved?.username || saved?.fromEmail || ''), password: b?.password ? String(b.password) : saved?.password }, { timeout: 15_000 }); json(res, 200, { ok: true, auth: r.auth }); }
+          catch (e) { json(res, 200, { ok: false, error: String(e?.message || e) }); }
+          return true;
+        }
         const sdel = /^\/mail\/senders\/([^/]+)$/.exec(p);
         if (sdel && m === 'DELETE') { S.senderDel.run(u.id, decodeURIComponent(sdel[1])); json(res, 200, { ok: true }); return true; }
         const stest = /^\/mail\/senders\/([^/]+)\/test$/.exec(p);
         if (stest && m === 'POST') {
           const s = senders(u.id).find((x) => x.id === decodeURIComponent(stest[1])); if (!s) { json(res, 404, { error: 'không có kênh gửi này' }); return true; }
           const b = await body(req); const to = String(b?.to || u.email);
-          await PROV[s.provider].send(s, { to, subject: 'Phloem Email: kiểm tra kênh gửi', html: '<p>Kênh gửi hoạt động. Email này được gửi từ Phloem Email.</p>', text: 'Kênh gửi hoạt động.', headers: {} });
+          await capped(PROV[s.provider].send(s, { to, subject: 'Phloem Email: kiểm tra kênh gửi', html: '<p>Kênh gửi hoạt động. Email này được gửi từ Phloem Email.</p>', text: 'Kênh gửi hoạt động.', headers: {} }), 45_000);
           json(res, 200, { ok: true, to }); return true;
         }
         const sdom = /^\/mail\/senders\/([^/]+)\/domain$/.exec(p);
@@ -516,6 +539,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           if (s0.ab && s0.ab.phase === 'test') { s0.ab.phase = 'wait'; s0.testSentAt = now(); s0.status = 'waiting'; saveCamp(owner, id, c); continue; }
           s0.status = 'done'; saveCamp(owner, id, c); log(`[mail] ${id} done`); continue;
         }
+        if (s0.status !== 'sending') log(`[mail] ${id} sending via ${sender.provider} (${batch.length} in this batch)`);
         s0.status = 'sending';
         for (const r of batch) {
           if (S.supHas.get(owner, r.email)) { S.qMark.run('skipped', 'đã huỷ đăng ký', now(), '', owner, id, r.email); continue; }
@@ -524,12 +548,14 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const per = personalize(s0.html, publicUrl, token, fields);
           const subject = mergeFields(r.variant === 'B' && s0.ab ? s0.ab.subjectB : s0.subject, fields, false);
           try {
-            await PROV[sender.provider].send(sender, { to: r.email, subject, html: per.html, text: s0.text ? `${mergeFields(s0.text, fields, false)}\n\nHuỷ đăng ký: ${per.unsub}` : '', headers: { 'List-Unsubscribe': `<${per.unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
+            await capped(PROV[sender.provider].send(sender, { to: r.email, subject, html: per.html, text: s0.text ? `${mergeFields(s0.text, fields, false)}\n\nHuỷ đăng ký: ${per.unsub}` : '', headers: { 'List-Unsubscribe': `<${per.unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } }));
             S.qMark.run('sent', '', now(), '', owner, id, r.email);
             try { hooks.onSent?.(owner, c, r.email); } catch { /* stats only */ }
           } catch (e) {
             const msg = String(e.message || e).slice(0, 300); S.qMark.run('failed', msg, now(), '', owner, id, r.email); s0.lastError = msg;
-            if (/401|403|invalid|unauthor/i.test(msg)) { s0.status = 'error'; break; } // bad key: stop instead of failing every address
+            log(`[mail] ${id} → ${sender.provider}: ${msg}`);
+            // bad key / wrong password / blocked port: stop instead of failing every address
+            if (/401|403|invalid|unauthor|sai tài khoản|mật khẩu|535|không kết nối được|không phản hồi|hết thời gian kết nối/i.test(msg)) { s0.status = 'error'; break; }
           }
           await new Promise((rr) => setTimeout(rr, pace));
         }
@@ -545,7 +571,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     const f = { ...fields, email: to };
     let h = mergeFields(html, f), unsub = '';
     if (tracked) { const per = personalize(html, publicUrl, makeToken(secret, owner, campaign, to, variant), f); h = per.html; unsub = per.unsub; }
-    await PROV[sender.provider].send(sender, { to, subject: mergeFields(subject, f, false), html: h, text: text ? mergeFields(text, f, false) + (unsub ? `\n\nHuỷ đăng ký: ${unsub}` : '') : '', headers: unsub ? { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : {} });
+    await capped(PROV[sender.provider].send(sender, { to, subject: mergeFields(subject, f, false), html: h, text: text ? mergeFields(text, f, false) + (unsub ? `\n\nHuỷ đăng ký: ${unsub}` : '') : '', headers: unsub ? { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : {} }));
     if (tracked) S.rcptAdd.run(owner, campaign, String(to).toLowerCase(), variant, now()); // automation emails get a per-person report too
   }
   return {

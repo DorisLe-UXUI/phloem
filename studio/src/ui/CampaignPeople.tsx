@@ -6,6 +6,8 @@ import { set, useStore } from '../store';
 import { campaignPeople, type CampaignPeople, type CampaignPerson, type PersonOrder } from '../pipeline/mailServer';
 import { downloadBytes } from '../../../src/ui/clipboard';
 import { Btn, Modal, Seg } from './components';
+import { peopleCsv, reportHtml, type CsvKind } from './campaignReport';
+import { Icon } from './icons';
 
 type Filter = 'all' | 'bought' | 'clicked' | 'opened' | 'unopened' | 'out';
 const nf = (n: number) => n.toLocaleString('vi-VN');
@@ -59,13 +61,20 @@ export function PeopleModal({ onClose }: { onClose: () => void }) {
     return [...m.values()].sort((a, b) => b.revenue - a.revenue || b.people - a.people);
   }, [d]);
 
-  const csv = async () => {
+  const fileBase = () => (d ? (d.campaign.subject || d.campaign.id).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'chien-dich' : 'chien-dich');
+  /** CSV for Excel / Google Sheets: openers, clickers (a column per link: how many times each person clicked it), everyone, or what is filtered now. */
+  const csv = async (kind: CsvKind) => {
     if (!d) return;
-    const cell = (v: unknown) => { const x = String(v ?? ''); return /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
-    const head = ['Email', 'Tên', 'Trạng thái', 'Số lần mở', 'Mở lần cuối (giờ VN)', 'Số click', 'Link đã bấm', 'Số đơn', 'Đã chi (VND)', 'Mua gì', 'Loại'];
-    const body = rows.map((x) => [x.email, x.name, statusText(x), x.opens, vn(x.lastOpen, true), x.clicks, x.links.map((l) => lab(l.i, l.url)).join(' | '), x.orders.length, spent(x), x.orders.map((o) => o.items || o.orderId).join(' | '), [...new Set(x.orders.map((o) => KIND[o.kind]))].join(', ')]);
-    const text = '﻿' + [head, ...body].map((r) => r.map(cell).join(',')).join('\r\n'); // BOM: Excel reads Vietnamese correctly
-    await downloadBytes(`${(d.campaign.subject || d.campaign.id).replace(/[^\p{L}\p{N}.-]+/gu, '-').slice(0, 60)}-nguoi-nhan.csv`, new TextEncoder().encode(text), 'text/csv');
+    const name = { opened: 'nguoi-mo', clicked: 'nguoi-bam', all: 'tat-ca', rows: 'dang-loc' }[kind];
+    await downloadBytes(`${fileBase()}-${name}.csv`, new TextEncoder().encode(peopleCsv(d, kind, rows)), 'text/csv');
+  };
+  /** The campaign report: a print-ready page (Save as PDF) opened in a new tab; downloaded as a file where tabs are blocked. */
+  const report = async () => {
+    if (!d) return;
+    const html = reportHtml(d, s.user?.brand || 'Phloem Email');
+    const w = window.open('', '_blank');
+    if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+    else await downloadBytes(`${fileBase()}-bao-cao.html`, new TextEncoder().encode(html), 'text/html');
   };
   const toReports = () => { try { const k = 'phloem.aud.ui'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), tab: 'reports' })); } catch { /* ignore */ } set({ modal: null, peopleOf: null, route: { name: 'audience' } }); };
 
@@ -78,7 +87,14 @@ export function PeopleModal({ onClose }: { onClose: () => void }) {
   ] : [];
   return (
     <Modal wide icon="mail" title="Ai mở · ai bấm · ai mua" onClose={onClose}
-      footer={<><span class="dim small grow">Tỉ lệ mở là ước tính (Apple Mail tải ảnh trước); click và đơn hàng là số thật. Giờ Việt Nam.</span><Btn sm kind="ghost" onClick={() => void load()}>Làm mới</Btn><Btn sm icon="download" disabled={!d} onClick={() => void csv()}>Tải CSV</Btn></>}>
+      footer={<><span class="dim small grow">Số mở là ước tính (Apple Mail tải ảnh trước); bấm và đơn hàng là số thật. Giờ Việt Nam.</span><Btn sm kind="ghost" onClick={() => void load()}>Làm mới</Btn>
+        <details class="ppl-csv"><summary class="btn sm"><Icon name="download" size={14} /> Tải CSV</summary><div class="ppl-csv-menu">
+          <button onClick={() => void csv('opened')}>Người mở <i>{d ? d.totals.opened : ''}</i></button>
+          <button onClick={() => void csv('clicked')}>Người bấm + số lần bấm từng link <i>{d ? d.totals.clicked : ''}</i></button>
+          <button onClick={() => void csv('all')}>Tất cả người nhận <i>{d ? d.people.length : ''}</i></button>
+          <button onClick={() => void csv('rows')}>Đang lọc ở bảng <i>{rows.length}</i></button>
+        </div></details>
+        <Btn sm kind="primary" icon="external" disabled={!d} onClick={() => void report()} title="Trang báo cáo đầy đủ: in hoặc lưu PDF để gửi khách">Báo cáo (PDF)</Btn></>}>
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
       {!d ? !err && <div class="progress"><i class="indet" /></div> : (
         <div class="col ppl" style={{ gap: 14 }}>

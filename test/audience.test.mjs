@@ -282,7 +282,10 @@ test('per-person campaign report: who opened, which link, what they bought; brow
   await beacon({ order_id: 'B2', value: 120000, email: 'MUA@x.co', kind: 'hàng', items: 'Kem dưỡng' });
   const r = (await call('GET', '/mail/campaigns/sale10/people')).obj;
   assert.equal(r.campaign.subject, 'Sale'); assert.equal(r.campaign.via, 'server');
-  assert.deepEqual({ ...r.totals, unknownOpens: 0, unknownClicks: 0 }, { recipients: 3, opened: 2, clicked: 1, buyers: 1, orders: 2, revenue: 710000, unsubscribed: 0, bounced: 0, failed: 0, unknownOpens: 0, unknownClicks: 0 });
+  assert.equal(r.totals.totalOpens, 2); assert.equal(r.totals.totalClicks, 1);
+  assert.ok(r.timeline.length >= 1 && r.timeline.every((t) => /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(t.h)));
+  assert.equal(r.timeline.reduce((a, t) => a + t.openers, 0), 2); assert.equal(r.timeline.reduce((a, t) => a + t.clicks, 0), 1);
+  assert.deepEqual({ ...r.totals, unknownOpens: 0, unknownClicks: 0, totalOpens: 0, totalClicks: 0 }, { totalOpens: 0, totalClicks: 0, recipients: 3, opened: 2, clicked: 1, buyers: 1, orders: 2, revenue: 710000, unsubscribed: 0, bounced: 0, failed: 0, unknownOpens: 0, unknownClicks: 0 });
   const by = Object.fromEntries(r.people.map((x) => [x.email, x]));
   assert.equal(by['mua@x.co'].name, 'Mua Lê'); assert.equal(by['mua@x.co'].opens, 1); assert.equal(by['mua@x.co'].links[0].url, 'https://shop.vn/spa?utm_content=dat-lich');
   assert.deepEqual(by['mua@x.co'].orders.map((o) => [o.orderId, o.kind, o.items, o.value]).sort(), [['B1', 'service', 'Gói spa 60 phút', 590000], ['B2', 'product', 'Kem dưỡng', 120000]]);
