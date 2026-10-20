@@ -206,6 +206,8 @@ export interface Project {
   /** Free-form AI design source: the HTML the layers were converted from, and a hash of the converted desktop doc
    *  (unchanged doc → "AI tự chỉnh" can revise the HTML and convert again without losing hand edits). */
   design?: { html: string; hash: string; name?: string; at: string; /** the art direction (design.ts Direction) */ dir?: unknown } | null;
+  /** An AI option kept for later (Dựng bằng AI → Để dành): saved without being opened. */
+  stash?: { at: string; option: number } | null;
   /** Saved as a template (Ứng dụng → Mẫu): offered to start other designs from. */
   template?: boolean;
 }

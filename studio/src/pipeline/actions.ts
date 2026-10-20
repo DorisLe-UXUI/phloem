@@ -87,6 +87,16 @@ function scheduleSave() {
   saveTimer = window.setTimeout(() => { void saveProject(); }, 900);
 }
 
+/** Save a finished project in the background without opening it (AI options kept for later). */
+export async function stashProject(p: Project): Promise<void> {
+  let thumb: string | undefined;
+  try { thumb = thumbnail(p.desktop, p.brand, assets, 320); } catch { /* fonts still loading: Home draws it later */ }
+  const stored = { ...p, thumb, owner: ownerId() };
+  await db.putProject(stored);
+  cloud.pushProjectSoon(stored);
+  await refreshProjects();
+}
+
 export async function saveProject(): Promise<void> {
   const s = get();
   if (!s.project) return;

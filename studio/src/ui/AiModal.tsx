@@ -1,6 +1,6 @@
 // "Dựng bằng AI": images + copy in, three rendered variants out, pick one.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { BRAND_PRESETS, DEFAULT_BRAND, type Brand } from '../model/types';
+import { BRAND_PRESETS, DEFAULT_BRAND, uid, type Brand, type Project } from '../model/types';
 import { renderToCanvas, thumbnail } from '../render/renderer';
 import { makeMobile } from '../model/ops';
 import { assets } from '../storage/assets';
@@ -44,6 +44,10 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
   const pickMode = (m: 'design' | 'blocks') => { setMode(m); try { localStorage.setItem('phloem.ai.mode', m); } catch { /* ignore */ } };
   const [review, setReview] = useState(true);
   const [designs, setDesigns0] = useState<DesignVariant[]>(() => keptDesigns);
+  // options kept for later (saved as emails in the list, on the client's board): which ones of this run, and the auto switch
+  const [stashed, setStashed] = useState<number[]>([]);
+  const [autoStash, setAutoStash0] = useState(() => { try { return localStorage.getItem('phloem.ai.autostash') !== '0'; } catch { return true; } });
+  const setAutoStash = (v: boolean) => { setAutoStash0(v); try { localStorage.setItem('phloem.ai.autostash', v ? '1' : '0'); } catch { /* ignore */ } };
   const setDesigns = (v: DesignVariant[]) => { keptDesigns = v; setDesigns0(v); };
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
@@ -165,7 +169,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
   const toggleImg = (id: string) => upd({ imageIds: form.imageIds.includes(id) ? form.imageIds.filter((x) => x !== id) : [...form.imageIds, id] });
 
   const run = async () => {
-    setBusy(true); setErr(''); setVariants([]); setThumbs([]); setDesigns([]); showResults();
+    setBusy(true); setErr(''); setVariants([]); setThumbs([]); setDesigns([]); setStashed([]); showResults();
     abort.current?.abort(); const ac = new AbortController(); abort.current = ac;
     try {
       let input = form;
@@ -220,9 +224,33 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
     }
   };
 
+  /** Keep one option for later: saved as its own email (with its pictures and HTML) without opening it. */
+  const stashDesign = async (v: DesignVariant, i: number, quiet = false): Promise<boolean> => {
+    if (!v.doc || !v.brand || stashed.includes(i)) return false;
+    const now = new Date().toISOString(); const id = uid('p');
+    const used = [...new Set([...ops.flat(v.doc.nodes), ...(v.mobile ? ops.flat(v.mobile.nodes) : [])].filter((n) => n.type === 'image' && n.assetId).map((n) => (n as { assetId: string }).assetId))];
+    const p: Project = { id, name: `${v.dir.fields.campaignName || v.dir.name} · phương án ${i + 1}`.slice(0, 90), createdAt: now, updatedAt: now, brand: v.brand, fields: v.dir.fields, desktop: v.doc, mobile: v.mobile ?? null, drafts: {}, clientId: A.currentClientId(), design: { html: v.html, hash: docHash(v.doc), name: v.dir.name, at: now, dir: v.dir }, stash: { at: now, option: i + 1 } };
+    try {
+      await assets.persist(used, id); tagForProject(id);
+      await A.stashProject(p);
+      setStashed((x) => [...x, i]);
+      if (!quiet) toast(`Đã để dành "${p.name}" trong danh sách email${p.clientId ? ' của khách' : ''}. Mở lúc nào cũng được.`, 'ok');
+      return true;
+    } catch (e) { toast(`Không để dành được: ${(e as Error).message}`, 'err'); return false; }
+  };
+  /** Using one option: the other finished ones are kept (unless the switch is off), so nothing the AI drew is lost. */
+  const stashOthers = async (chosen: DesignVariant) => {
+    if (!autoStash) return 0;
+    let n = 0;
+    for (const [i, x] of designs.entries()) if (x !== chosen && x.stage === 'ready' && x.doc && !stashed.includes(i) && (await stashDesign(x, i, true))) n++;
+    return n;
+  };
+
   /** A free-form design lands as layers; its HTML rides along so "AI tự chỉnh" can revise it while untouched. */
   const useDesign = async (v: DesignVariant) => {
     if (!v.doc || !v.brand) return;
+    const kept = await stashOthers(v);
+    if (kept) toast(`Đã để dành ${kept} phương án còn lại trong danh sách email.`, 'ok');
     const brand = v.brand;
     ensureFonts([brand.headingFamily, brand.fontFamily]);
     await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 2500))]);
@@ -398,7 +426,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
       {busy && mode === 'design' && !designs.length && <div class="card"><div class="row"><Icon name="bolt" style={{ color: 'var(--neon)' }} /><b class="grow">{stage || 'Đang bắt đầu…'}</b></div><div class="progress"><i class="indet" /></div><div class="dim small">Bước lên ý tưởng mất khoảng 20–40 giây, sau đó 3 email được vẽ cùng lúc, bạn xem trực tiếp bên dưới.</div></div>}
       {designs.length > 0 && (
         <>
-          <Eyebrow>{designs.filter((d) => d.stage === 'ready').length}/{designs.length} thiết kế xong</Eyebrow>
+          <div class="row"><Eyebrow>{designs.filter((d) => d.stage === 'ready').length}/{designs.length} thiết kế xong</Eyebrow><span class="grow" /><label class="row small" style={{ gap: 6, cursor: 'pointer' }} title="Khi bấm Dùng một phương án, các phương án đã vẽ xong còn lại được lưu thành email trong danh sách"><input type="checkbox" checked={autoStash} onChange={(e) => setAutoStash((e.target as HTMLInputElement).checked)} />Tự để dành các phương án còn lại</label></div>
           <div class="tpl-grid ai-variants">
             {designs.map((v, i) => (
               <div key={i} class={`tpl design-card st-${v.stage}`}>
@@ -412,7 +440,7 @@ export function AiModal({ onClose: close0 }: { onClose: () => void }) {
                   <div class="ds">{v.dir.why}</div>
                   {v.error && <div class="check err"><span class="lv">LỖI</span><span class="m">{v.error}</span><Btn sm kind="primary" icon="sparkle" disabled={redrawing !== null || busy} onClick={() => void redraw(i)}>{redrawing === i ? 'Đang vẽ lại…' : 'Vẽ lại phương án này'}</Btn></div>}
                   {v.warnings && v.warnings.length > 0 && <div class="ds muted">{v.warnings.slice(0, 2).join(' · ')}</div>}
-                  <div class="row" style={{ marginTop: 8 }}><Btn sm icon="eye" disabled={!v.doc} onClick={() => { setPvMode('desktop'); setPreview(i); }}>Xem thử</Btn><Btn sm kind="primary" block disabled={!v.doc} onClick={() => void useDesign(v)}>{!v.doc ? 'Đang vẽ…' : s.project ? 'Dùng, thay nội dung hiện tại' : 'Tạo project từ thiết kế này'}</Btn></div>
+                  <div class="row" style={{ marginTop: 8 }}><Btn sm icon="eye" disabled={!v.doc} onClick={() => { setPvMode('desktop'); setPreview(i); }}>Xem thử</Btn><Btn sm icon={stashed.includes(i) ? 'check' : 'download'} disabled={!v.doc || stashed.includes(i)} onClick={() => void stashDesign(v, i)} title="Lưu phương án này thành một email trong danh sách, dùng sau">{stashed.includes(i) ? 'Đã để dành' : 'Để dành'}</Btn><Btn sm kind="primary" block disabled={!v.doc} onClick={() => void useDesign(v)}>{!v.doc ? 'Đang vẽ…' : s.project ? 'Dùng, thay nội dung hiện tại' : 'Tạo project từ thiết kế này'}</Btn></div>
                 </div>
               </div>
             ))}
