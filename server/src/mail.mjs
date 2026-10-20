@@ -13,6 +13,7 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { encrypt, decrypt } from './db.mjs';
 import { s3Call } from './backup.mjs';
+import { smtpSend, SMTP_PRESETS } from './smtp.mjs';
 
 const now = () => new Date().toISOString();
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
@@ -172,7 +173,12 @@ export function parseProviderEvents(provider, payload) {
   }
   return out;
 }
-const PROVIDERS = { resend: { send: sendResend, perDay: 100, label: 'Resend' }, brevo: { send: sendBrevo, perDay: 300, label: 'Brevo' }, ses: { send: sendSes, perDay: 50000, label: 'Amazon SES' } };
+/** A mailbox over SMTP (Titan, Google Workspace with an app password, Zoho, Outlook / M365, Hostinger…). */
+async function sendSmtp(s, m) {
+  await smtpSend({ host: s.host, port: s.port, secure: s.secure, username: s.username || s.fromEmail, password: s.password }, { from: s.fromEmail, fromName: s.fromName, to: m.to, subject: m.subject, html: m.html, text: m.text, replyTo: s.replyTo, headers: m.headers });
+}
+const PROVIDERS = { resend: { send: sendResend, perDay: 100, label: 'Resend' }, brevo: { send: sendBrevo, perDay: 300, label: 'Brevo' }, ses: { send: sendSes, perDay: 50000, label: 'Amazon SES' }, smtp: { send: sendSmtp, perDay: 300, label: 'Hộp mail (SMTP: Titan, Google Workspace, Zoho, Outlook…)' } };
+export { SMTP_PRESETS };
 
 /** Mount the mail routes on the relay. Returns { handle(url, req, res) → true when handled, health(), start() }. */
 export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, requireUser, throttled, env = process.env, log = console.log, providers = PROVIDERS, pace = 150, hooks = {}, domains = DOMAINS }) {
@@ -228,7 +234,7 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
   };
   const senders = (owner) => S.senderList.all(owner).map((r) => { try { const s = JSON.parse(decrypt(secret, r.enc)); return { ...s, id: r.id, updatedAt: r.updated_at }; } catch { return null; } }).filter(Boolean);
   const hookToken = (owner, sid) => b64u(createHmac('sha256', secret).update(`hook:${owner}:${sid}`).digest()).slice(0, 24);
-  const publicSender = (s, owner) => ({ webhook: owner ? `${publicUrl}/hooks/${s.provider}/${owner}/${s.id}/${hookToken(owner, s.id)}` : undefined, domain: s.domain || null, id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret) });
+  const publicSender = (s, owner) => ({ webhook: owner && s.provider !== 'smtp' ? `${publicUrl}/hooks/${s.provider}/${owner}/${s.id}/${hookToken(owner, s.id)}` : undefined, domain: s.domain || null, id: s.id, provider: s.provider, label: s.label || PROV[s.provider]?.label || s.provider, fromEmail: s.fromEmail, fromName: s.fromName || '', replyTo: s.replyTo || '', region: s.region || '', perDay: s.perDay || PROV[s.provider]?.perDay || 100, updatedAt: s.updatedAt, hasKey: !!(s.apiKey || s.secret || s.password), ...(s.provider === 'smtp' ? { preset: s.preset || 'custom', host: s.host, port: s.port, secure: s.secure, username: s.username } : {}) });
 
   /** Every recipient of a campaign with what they did: opens, which links, unsubscribe/bounce, and orders matched to
    *  this email by the shop's order tag. Events are stored per hashed address, so they are named by hashing the
@@ -396,14 +402,18 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
         if (sd && m === 'DELETE') { S.supDel.run(u.id, decodeURIComponent(sd[1]).toLowerCase()); json(res, 200, { ok: true }); return true; }
         // ---------- sending accounts ----------
         if (p === '/mail/senders') {
-          if (m === 'GET') { json(res, 200, { senders: senders(u.id).map((x) => publicSender(x, u.id)), providers: Object.entries(PROV).map(([k, v]) => ({ id: k, label: v.label, perDay: v.perDay })) }); return true; }
+          if (m === 'GET') { json(res, 200, { senders: senders(u.id).map((x) => publicSender(x, u.id)), providers: Object.entries(PROV).map(([k, v]) => ({ id: k, label: v.label, perDay: v.perDay })), smtpPresets: SMTP_PRESETS }); return true; }
           if (m === 'POST') {
             const b = await body(req); const prov = String(b?.provider || ''); if (!PROV[prov]) { json(res, 400, { error: 'nhà cung cấp không hỗ trợ' }); return true; }
             if (!EMAIL_RE.test(String(b?.fromEmail || ''))) { json(res, 400, { error: 'Email người gửi không hợp lệ' }); return true; }
             const id = String(b?.id || `s_${randomBytes(5).toString('hex')}`).slice(0, 40);
             const prev = senders(u.id).find((s) => s.id === id) || {};
-            const s = { provider: prov, label: String(b.label || '').slice(0, 60), fromEmail: String(b.fromEmail).trim(), fromName: String(b.fromName || '').slice(0, 120), replyTo: String(b.replyTo || '').slice(0, 200), region: String(b.region || '').slice(0, 30), perDay: Math.max(1, Math.min(100000, Number(b.perDay) || PROV[prov].perDay)), apiKey: b.apiKey ? String(b.apiKey).trim() : prev.apiKey, accessKeyId: b.accessKeyId ? String(b.accessKeyId).trim() : prev.accessKeyId, secret: b.secret ? String(b.secret).trim() : prev.secret };
-            if (prov === 'ses' ? !(s.accessKeyId && s.secret) : !s.apiKey) { json(res, 400, { error: 'Thiếu khoá API' }); return true; }
+            const s = { provider: prov, label: String(b.label || (prov === 'smtp' ? SMTP_PRESETS[b.preset]?.label?.split(' (')[0] : '') || '').slice(0, 60), fromEmail: String(b.fromEmail).trim(), fromName: String(b.fromName || '').slice(0, 120), replyTo: String(b.replyTo || '').slice(0, 200), region: String(b.region || '').slice(0, 30), perDay: Math.max(1, Math.min(100000, Number(b.perDay) || PROV[prov].perDay)), apiKey: b.apiKey ? String(b.apiKey).trim() : prev.apiKey, accessKeyId: b.accessKeyId ? String(b.accessKeyId).trim() : prev.accessKeyId, secret: b.secret ? String(b.secret).trim() : prev.secret };
+            if (prov === 'smtp') { // a mailbox: server, port, TLS mode, login (password encrypted at rest with the rest of the record)
+              Object.assign(s, { preset: String(b.preset || prev.preset || 'custom').slice(0, 20), host: String(b.host ?? prev.host ?? '').trim().toLowerCase().slice(0, 120), port: Math.max(1, Math.min(65535, Number(b.port ?? prev.port) || 465)), secure: ['ssl', 'starttls'].includes(b.secure) ? b.secure : prev.secure || 'ssl', username: String(b.username ?? prev.username ?? s.fromEmail).trim().slice(0, 200), password: b.password ? String(b.password) : prev.password });
+              if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(s.host)) { json(res, 400, { error: 'Máy chủ SMTP không hợp lệ' }); return true; }
+              if (!s.password) { json(res, 400, { error: 'Thiếu mật khẩu hộp mail' }); return true; }
+            } else if (prov === 'ses' ? !(s.accessKeyId && s.secret) : !s.apiKey) { json(res, 400, { error: 'Thiếu khoá API' }); return true; }
             if (prev.domain) s.domain = prev.domain;
             S.senderPut.run(u.id, id, encrypt(secret, JSON.stringify(s)), now());
             json(res, 200, { sender: publicSender({ ...s, id, updatedAt: now() }, u.id) }); return true;

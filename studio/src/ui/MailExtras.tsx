@@ -80,7 +80,7 @@ export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; 
   const cap = Math.min(perDay || s?.perDay || 100, s?.perDay || 100);
   return (
     <div class="col" style={{ gap: 8 }}>
-      <div class="small muted">Máy chủ gửi thay bạn qua Resend, Brevo hoặc Amazon SES: hẹn giờ, chia theo hạn mức mỗi ngày, A/B tiêu đề. Đóng tab vẫn chạy.</div>
+      <div class="small muted">Máy chủ gửi thay bạn qua hộp mail công ty (Titan, Google Workspace, Zoho, Outlook…), Resend, Brevo hoặc Amazon SES: hẹn giờ, chia theo hạn mức mỗi ngày, A/B tiêu đề. Đóng tab vẫn chạy.</div>
       <Seg block value={src} options={[{ v: 'list', label: 'Danh sách Khán giả' }, { v: 'paste', label: 'Dán email' }]} onChange={(v) => { setSrc(v); keep('phloem.mail.src', v); }} />
       {src === 'list' && (aud === null ? <div class="dim small">Đang tải danh sách…</div> : !aud.lists.length ? (
         <div class="dim small">Chưa có danh sách{client ? ' cho khách hàng này' : ''}. <a href="#" onClick={(e) => { e.preventDefault(); set({ route: { name: 'audience' }, clientFilter: client }); }}>Mở Khán giả</a> để nhập CSV hoặc tạo form đăng ký.</div>
@@ -137,33 +137,62 @@ export function ServerSend({ p, to, skip, onSource }: { p: Project; to: string; 
   );
 }
 
+/** Mailboxes over SMTP (mirrors server/src/smtp.mjs SMTP_PRESETS). */
+const SMTP: Record<string, { label: string; host: string; port: number; secure: 'ssl' | 'starttls'; perDay: number; how: string }> = {
+  titan: { label: 'Titan Mail', host: 'smtp.titan.email', port: 465, secure: 'ssl', perDay: 500, how: 'Dùng mật khẩu đăng nhập hộp mail Titan (Hostinger → Emails, hoặc app.titan.email).' },
+  google: { label: 'Google Workspace / Gmail', host: 'smtp.gmail.com', port: 465, secure: 'ssl', perDay: 1800, how: 'Cần mật khẩu ứng dụng: bật Xác minh 2 bước → myaccount.google.com/apppasswords → tạo mật khẩu 16 ký tự (không dùng mật khẩu Google thường).' },
+  zoho: { label: 'Zoho Mail', host: 'smtp.zoho.com', port: 465, secure: 'ssl', perDay: 500, how: 'Bật 2FA thì tạo mật khẩu ứng dụng ở Zoho → Bảo mật. Tài khoản ở EU/India dùng smtp.zoho.eu / smtp.zoho.in.' },
+  outlook: { label: 'Outlook / Microsoft 365', host: 'smtp.office365.com', port: 587, secure: 'starttls', perDay: 1000, how: 'Quản trị M365 phải bật "Authenticated SMTP" cho hộp mail; có MFA thì dùng mật khẩu ứng dụng.' },
+  hostinger: { label: 'Hostinger Email', host: 'smtp.hostinger.com', port: 465, secure: 'ssl', perDay: 500, how: 'Dùng mật khẩu hộp mail Hostinger.' },
+  custom: { label: 'Hộp mail khác', host: '', port: 465, secure: 'ssl', perDay: 300, how: 'Lấy máy chủ SMTP, cổng và kiểu bảo mật trong hướng dẫn của nhà cung cấp email (cPanel, Yandex, GoDaddy…).' },
+};
 const HELP: Record<string, { key: string; how: string }> = {
+  smtp: { key: 'Mật khẩu', how: 'Gửi từ chính hộp mail công ty (Titan, Google Workspace, Zoho, Outlook…) qua SMTP. Mỗi hộp mail là một kênh gửi; thêm bao nhiêu cũng được rồi chọn khi gửi.' },
   resend: { key: 'API key (re_…)', how: 'resend.com → Domains: thêm tên miền gửi (3 bản ghi DNS) → API Keys: tạo key quyền Sending.' },
   brevo: { key: 'API key (xkeysib-…)', how: 'brevo.com → Senders & Domains: xác thực tên miền → SMTP & API → API Keys: tạo key.' },
   ses: { key: '', how: 'AWS → SES: xác thực tên miền (DKIM) và xin thoát sandbox → IAM: user chỉ quyền ses:SendEmail → Access key.' },
 };
 export function SenderForm({ providers, onSaved, onCancel }: { providers: ProviderInfo[]; onSaved: (s: Sender) => void; onCancel?: () => void }) {
-  const [prov, setProv] = useState<Sender['provider']>('resend');
+  const [prov, setProv] = useState<Sender['provider']>('smtp');
   const [fromEmail, setFromEmail] = useState(''); const [fromName, setFromName] = useState('');
+  const [preset, setPreset0] = useState('titan'); const [host, setHost] = useState(SMTP.titan.host); const [port, setPort] = useState(SMTP.titan.port); const [secure, setSecure] = useState<'ssl' | 'starttls'>('ssl');
+  const [username, setUsername] = useState(''); const [password, setPassword] = useState('');
+  const setPreset = (k: string) => { const x = SMTP[k] || SMTP.custom; setPreset0(k); setHost(x.host); setPort(x.port); setSecure(x.secure); setPerDay(x.perDay); };
   const [apiKey, setApiKey] = useState(''); const [accessKeyId, setAccessKeyId] = useState(''); const [secret, setSecret] = useState(''); const [region, setRegion] = useState('ap-southeast-1');
   const [perDay, setPerDay] = useState(0);
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const info = providers.find((x) => x.id === prov);
   const save = async () => {
     setErr(''); setBusy(true);
-    try { const r = await saveSender({ provider: prov, fromEmail: fromEmail.trim(), fromName: fromName.trim(), perDay: perDay || info?.perDay, ...(prov === 'ses' ? { accessKeyId, secret, region } : { apiKey }) }); toast('Đã lưu kênh gửi (khoá được mã hoá trên relay).', 'ok'); onSaved(r.sender); }
+    try { const r = await saveSender({ provider: prov, fromEmail: fromEmail.trim(), fromName: fromName.trim(), perDay: perDay || (prov === 'smtp' ? SMTP[preset]?.perDay : info?.perDay), ...(prov === 'smtp' ? { preset, host: host.trim(), port, secure, username: (username || fromEmail).trim(), password } : prov === 'ses' ? { accessKeyId, secret, region } : { apiKey }) }); toast('Đã lưu kênh gửi (khoá được mã hoá trên relay).', 'ok'); onSaved(r.sender); }
     catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   return (
     <div class="card" style={{ background: 'var(--panel)', gap: 8 }}>
       <div class="row small"><b class="grow">Thêm kênh gửi</b>{onCancel && <Btn xs kind="ghost" onClick={onCancel}>Đóng</Btn>}</div>
-      <Seg block value={prov} options={(providers.length ? providers : [{ id: 'resend', label: 'Resend' }, { id: 'brevo', label: 'Brevo' }, { id: 'ses', label: 'Amazon SES' }] as ProviderInfo[]).map((x) => ({ v: x.id, label: x.label }))} onChange={(v) => setProv(v)} />
+      <Seg block value={prov} options={(['smtp', 'resend', 'brevo', 'ses'] as Sender['provider'][]).filter((id) => !providers.length || providers.some((x) => x.id === id)).map((id) => ({ v: id, label: ({ smtp: 'Hộp mail (SMTP)', resend: 'Resend', brevo: 'Brevo', ses: 'Amazon SES' } as Record<string, string>)[id] }))} onChange={(v) => setProv(v)} />
       <div class="dim small">{HELP[prov].how}</div>
       <div class="grid2">
         <Field label="Email gửi"><TextInput value={fromEmail} onCommit={setFromEmail} onInput={setFromEmail} placeholder="news@tenmien.vn" /></Field>
         <Field label="Tên hiển thị"><TextInput value={fromName} onCommit={setFromName} onInput={setFromName} placeholder="HappyTown" /></Field>
       </div>
-      {prov === 'ses' ? (
+      {prov === 'smtp' ? (
+        <>
+          <Field label="Hộp mail"><Select value={preset} options={Object.entries(SMTP).map(([v, x]) => ({ v, label: x.label }))} onChange={setPreset} /></Field>
+          <div class="dim small">{SMTP[preset]?.how}</div>
+          <div class="grid2">
+            <Field label="Máy chủ SMTP"><TextInput mono value={host} onCommit={setHost} onInput={setHost} placeholder="smtp.tenmien.com" /></Field>
+            <div class="grid2">
+              <Num label="Cổng" value={port} min={1} max={65535} onChange={(v) => setPort(Math.round(v))} />
+              <Field label="Bảo mật"><Select value={secure} options={[{ v: 'ssl', label: 'SSL (465)' }, { v: 'starttls', label: 'STARTTLS (587)' }]} onChange={(v) => setSecure(v as 'ssl' | 'starttls')} /></Field>
+            </div>
+          </div>
+          <div class="grid2">
+            <Field label="Tên đăng nhập" hint="thường là chính email"><TextInput mono value={username} onCommit={setUsername} onInput={setUsername} placeholder={fromEmail || 'ban@tenmien.com'} /></Field>
+            <Field label={preset === 'google' || preset === 'outlook' ? 'Mật khẩu ứng dụng' : 'Mật khẩu hộp mail'}><TextInput mono type="password" value={password} onCommit={setPassword} onInput={setPassword} /></Field>
+          </div>
+        </>
+      ) : prov === 'ses' ? (
         <>
           <div class="grid2">
             <Field label="Access key ID"><TextInput mono value={accessKeyId} onCommit={setAccessKeyId} onInput={setAccessKeyId} /></Field>
@@ -172,9 +201,9 @@ export function SenderForm({ providers, onSaved, onCancel }: { providers: Provid
           <Field label="Secret access key"><TextInput mono type="password" value={secret} onCommit={setSecret} onInput={setSecret} /></Field>
         </>
       ) : <Field label={HELP[prov].key}><TextInput mono type="password" value={apiKey} onCommit={setApiKey} onInput={setApiKey} /></Field>}
-      <Num label="Thư tối đa mỗi ngày" value={perDay || info?.perDay || 100} min={1} max={100000} onChange={(v) => setPerDay(Math.round(v))} />
-      <div class="dim small">Khoá được mã hoá trên relay và không bao giờ gửi ngược lại trình duyệt. Email gửi phải thuộc tên miền đã xác thực ở nhà cung cấp.</div>
-      <Btn sm kind="primary" disabled={busy || !fromEmail.trim() || (prov === 'ses' ? !(accessKeyId && secret) : !apiKey)} onClick={() => void save()}>Lưu kênh gửi</Btn>
+      <Num label="Thư tối đa mỗi ngày" value={perDay || (prov === 'smtp' ? SMTP[preset]?.perDay : info?.perDay) || 100} min={1} max={100000} onChange={(v) => setPerDay(Math.round(v))} />
+      <div class="dim small">{prov === 'smtp' ? 'Mật khẩu được mã hoá trên relay và không bao giờ gửi ngược lại trình duyệt. Mỗi nhà cung cấp có hạn mức riêng (Titan, Zoho ~500/ngày; Google Workspace ~2.000/ngày): đặt thấp hơn để khỏi bị khoá hộp mail.' : 'Khoá được mã hoá trên relay và không bao giờ gửi ngược lại trình duyệt. Email gửi phải thuộc tên miền đã xác thực ở nhà cung cấp.'}</div>
+      <Btn sm kind="primary" disabled={busy || !fromEmail.trim() || (prov === 'smtp' ? !(host.trim() && password) : prov === 'ses' ? !(accessKeyId && secret) : !apiKey)} onClick={() => void save()}>Lưu kênh gửi</Btn>
       {err && <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>}
     </div>
   );

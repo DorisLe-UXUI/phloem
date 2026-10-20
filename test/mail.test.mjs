@@ -185,3 +185,44 @@ test('recall: a withdrawn campaign\'s links show an apology instead of the desti
   await call('POST', '/mail/campaigns/c1/recall', { body: { on: false } });
   assert.equal((await call('GET', `/c/${mk('s', 'u', 'c1', 'a@b.co', '')}/0`, { user: null })).statusCode, 302, 'reversible');
 });
+
+test('SMTP mailbox sender (Titan & co.): EHLO, AUTH, MAIL/RCPT/DATA with a UTF-8 MIME message; wrong password says so', async () => {
+  const { createServer } = await import('node:net');
+  const { smtpSend, buildMessage } = await import('../server/src/smtp.mjs');
+  const got = [];
+  const srv = createServer((sock) => {
+    let buf = '', data = false, msg = '';
+    sock.write('220 fake.smtp ready\r\n');
+    sock.on('data', (d) => {
+      buf += d.toString();
+      let i;
+      while ((i = buf.indexOf('\r\n')) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (data) { if (line === '.') { data = false; got.push({ msg }); sock.write('250 2.0.0 queued as X1\r\n'); } else msg += `${line}\r\n`; continue; }
+        if (/^EHLO/.test(line)) sock.write('250-fake.smtp\r\n250-AUTH LOGIN PLAIN\r\n250 8BITMIME\r\n');
+        else if (/^AUTH PLAIN /.test(line)) { const [, u, p] = Buffer.from(line.slice(11), 'base64').toString().split('\0'); got.push({ auth: [u, p] }); sock.write(p === 'right' ? '235 ok\r\n' : '535 5.7.8 bad credentials\r\n'); }
+        else if (/^MAIL FROM/.test(line)) { got.push({ from: line }); sock.write('250 ok\r\n'); }
+        else if (/^RCPT TO/.test(line)) { got.push({ to: line }); sock.write('250 ok\r\n'); }
+        else if (line === 'DATA') { data = true; sock.write('354 go\r\n'); }
+        else if (line === 'QUIT') { sock.write('221 bye\r\n'); sock.end(); }
+        else sock.write('500 ?\r\n');
+      }
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const cfg = { host: '127.0.0.1', port: srv.address().port, secure: 'none', username: 'doris@intac.co', password: 'right' };
+  const msg = { from: 'doris@intac.co', fromName: 'Doris · Intac', to: 'khach@shop.vn', subject: 'Ưu đãi tháng 10', html: '<p>Xin chào</p>\n.dot line', text: 'Xin chào', headers: { 'List-Unsubscribe': '<https://r.test/u/x>' } };
+  try {
+    const r = await smtpSend(cfg, msg);
+    assert.equal(r.ok, true);
+    assert.deepEqual(got.find((x) => x.auth).auth, ['doris@intac.co', 'right']);
+    assert.match(got.find((x) => x.from).from, /<doris@intac\.co>/); assert.match(got.find((x) => x.to).to, /<khach@shop\.vn>/);
+    const body = got.find((x) => x.msg).msg;
+    assert.match(body, /Subject: =\?UTF-8\?B\?/); assert.match(body, /From: =\?UTF-8\?B\?.+\?= <doris@intac\.co>/); assert.match(body, /List-Unsubscribe: <https:\/\/r\.test\/u\/x>/);
+    assert.match(body, /multipart\/alternative/);
+    const html64 = body.split('text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n')[1].split('\r\n--')[0].replace(/\r\n/g, '');
+    assert.equal(Buffer.from(html64, 'base64').toString(), '<p>Xin chào</p>\n.dot line');
+    await assert.rejects(smtpSend({ ...cfg, password: 'wrong' }, msg), /sai tài khoản hoặc mật khẩu/);
+    assert.ok(!/\r\n\.\r\n/.test(buildMessage(msg).replace(/(^|\r\n)\./g, '$1..')), 'dot-stuffed');
+  } finally { srv.close(); }
+});

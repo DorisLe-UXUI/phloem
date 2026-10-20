@@ -8,7 +8,7 @@ import { relayAuth } from '../ai/client';
 import { get } from '../store';
 
 export interface MailHealth { img: boolean; tracking: boolean; queue: boolean }
-export interface Sender { webhook?: string; domain?: { name: string; verified?: boolean; checkedAt?: string } | null; id: string; provider: 'resend' | 'brevo' | 'ses'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean }
+export interface Sender { webhook?: string; domain?: { name: string; verified?: boolean; checkedAt?: string } | null; id: string; provider: 'resend' | 'brevo' | 'ses' | 'smtp'; label: string; fromEmail: string; fromName: string; replyTo: string; region: string; perDay: number; updatedAt: string; hasKey: boolean; preset?: string; host?: string; port?: number; secure?: 'ssl' | 'starttls'; username?: string }
 export interface ProviderInfo { id: Sender['provider']; label: string; perDay: number }
 export interface SendInfo { sender: string; subject: string; sendAt: string; status: 'scheduled' | 'sending' | 'waiting' | 'paused' | 'cancelled' | 'done' | 'error'; perDay: number; lastError: string; testSentAt: string | null; ab: null | { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number; phase: 'test' | 'wait' | 'rest'; winner: 'A' | 'B' | null; scores?: { A: number; B: number } } }
 export interface CampaignStats { opens: number; clicks: number; unsubscribes: number; links: { url: string; clicks: number }[]; byVariant: Record<string, { opens: number; clicks: number }>; queue: Record<string, number>; send: SendInfo | null; orders?: number; revenue?: number; buyers?: number }
@@ -94,7 +94,7 @@ export const removeSuppression = (email: string) => api<{ ok: true }>(`/mail/sup
 
 // ---------- sending accounts ----------
 export const listSenders = () => api<{ senders: Sender[]; providers: ProviderInfo[] }>('/mail/senders');
-export const saveSender = (s: Partial<Sender> & { apiKey?: string; accessKeyId?: string; secret?: string }) => api<{ sender: Sender }>('/mail/senders', { body: s });
+export const saveSender = (s: Partial<Sender> & { apiKey?: string; accessKeyId?: string; secret?: string; password?: string }) => api<{ sender: Sender }>('/mail/senders', { body: s });
 export const deleteSender = (id: string) => api<{ ok: true }>(`/mail/senders/${encodeURIComponent(id)}`, { method: 'DELETE' });
 export const testSender = (id: string, to: string) => api<{ ok: true; to: string }>(`/mail/senders/${encodeURIComponent(id)}/test`, { body: { to } });
 

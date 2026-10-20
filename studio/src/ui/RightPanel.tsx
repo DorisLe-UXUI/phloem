@@ -1,4 +1,4 @@
-import { MAX_RECIPIENTS, clearQueue, connectGmail, defaultCap, disconnectGmail, downloadEml, gmailAccount, loadQueue, parseRecipients, pauseQueue, queueRunning, runQueue, sendTest, sentToday, startQueue } from '../pipeline/mailSend';
+import { MAX_RECIPIENTS, activeGmailEmail, clearQueue, connectGmail, defaultCap, disconnectGmail, downloadEml, gmailAccount, gmailAccounts, loadQueue, parseRecipients, pauseQueue, queueRunning, runQueue, sendTest, sentToday, setActiveGmail, startQueue } from '../pipeline/mailSend';
 import { DesignExport } from './mkt/DesignExport';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Check, Suggestion } from '../../../src/shared/types';
@@ -626,8 +626,25 @@ function MailCard() {
       ) : (
         <>
           <div class="small muted">Gửi từ Gmail / Google Workspace của bạn tới 1–{MAX_RECIPIENTS.toLocaleString('vi-VN')} người. Mỗi người nhận một email riêng.</div>
-          {acc ? <div class="row small"><span class="chip on">Gmail</span><span class="grow mono">{acc.email}</span><Btn xs kind="ghost" onClick={() => disconnectGmail()}>Ngắt</Btn></div>
-            : <Btn sm block icon="mail" disabled={busy || art} onClick={() => void run(() => connectGmail())} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : ''}>Kết nối Gmail</Btn>}
+          {(() => {
+            const accounts = gmailAccounts(); const cur = activeGmailEmail();
+            return (
+              <div class="col" style={{ gap: 6 }}>
+                {accounts.length > 0 && (
+                  <div class="row small" style={{ gap: 6 }}>
+                    <span class="dim">Gửi từ</span>
+                    <select class="in grow mono" style={{ height: 28, minWidth: 0 }} value={cur} onChange={(e) => setActiveGmail((e.target as HTMLSelectElement).value)} title="Mọi tài khoản Google đã kết nối (Gmail, Google Workspace)">
+                      {accounts.map((a) => <option key={a.email} value={a.email}>{a.email}{a.live ? '' : ' · cần kết nối lại'}</option>)}
+                    </select>
+                    {acc ? <Btn xs kind="ghost" onClick={() => disconnectGmail(cur)} title="Ngắt và quên tài khoản này">Ngắt</Btn>
+                      : <Btn xs kind="primary" disabled={busy || art} onClick={() => void run(() => connectGmail(cur))}>Kết nối lại</Btn>}
+                  </div>
+                )}
+                <Btn sm block icon={accounts.length ? 'plus' : 'mail'} disabled={busy || art} onClick={() => void run(() => connectGmail('', accounts.length > 0))} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : 'Kết nối thêm một tài khoản Google (Gmail hoặc Google Workspace)'}>{accounts.length ? 'Thêm tài khoản Google' : 'Kết nối Gmail'}</Btn>
+                <div class="dim small">Hộp mail Titan, Zoho, Outlook, Hostinger…: {signed ? 'chọn Máy chủ gửi → Thêm kênh gửi → Hộp mail (SMTP).' : 'đăng nhập tài khoản Phloem rồi thêm ở Máy chủ gửi → Hộp mail (SMTP).'}</div>
+              </div>
+            );
+          })()}
           {q && (
             <div class="card" style={{ background: 'var(--panel)' }}>
               <div class="row small"><b class="grow">Chiến dịch: {q.subject}</b><span class={`chip ${q.status === 'done' ? 'on' : q.status === 'capped' || q.status === 'auth' ? 'warn' : ''}`}>{{ ready: 'sẵn sàng', sending: 'đang gửi', paused: 'tạm dừng', capped: 'đủ hạn mức hôm nay', auth: 'cần kết nối lại', done: 'xong' }[q.status]}</span></div>
@@ -636,7 +653,8 @@ function MailCard() {
               {left > 0 && q.status !== 'sending' && <div class="dim small">Còn khoảng {Math.ceil(left / q.dailyCap)} ngày theo hạn mức Gmail. {q.status === 'capped' ? 'Mai mở lại và bấm Tiếp tục gửi.' : ''}</div>}
               <div class="row">
                 {queueRunning() ? <Btn sm onClick={() => pauseQueue()}>Tạm dừng</Btn>
-                  : left > 0 ? <Btn sm kind="primary" icon="send" disabled={busy || !acc} onClick={() => void run(() => runQueue(p))}>Tiếp tục gửi</Btn> : null}
+                  : left > 0 ? (gmailAccount(q.from) ? <Btn sm kind="primary" icon="send" disabled={busy} onClick={() => void run(() => runQueue(p))}>Tiếp tục gửi</Btn>
+                    : <Btn sm kind="primary" icon="mail" disabled={busy || art} onClick={() => void run(() => connectGmail(q.from))} title="Chiến dịch tiếp tục từ đúng tài khoản đã bắt đầu">Kết nối lại {q.from}</Btn>) : null}
                 <span class="grow" />
                 {!queueRunning() && <Btn xs kind="ghost" onClick={async () => { if (await ask(q.status === 'done' ? 'Xoá chiến dịch đã xong khỏi danh sách?' : `Huỷ chiến dịch? ${left.toLocaleString('vi-VN')} người chưa nhận sẽ không được gửi.`, 'Xoá', true)) clearQueue(p.id); }}>Xoá chiến dịch</Btn>}
               </div>

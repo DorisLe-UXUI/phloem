@@ -19,8 +19,26 @@ import { relayInfo } from '../auth/core';
 import { ask } from '../ui/confirm';
 
 export interface GmailAccount { email: string; name: string; token: string; expiresAt: number }
-let gmail: GmailAccount | null = null;
-export const gmailAccount = () => (gmail && gmail.expiresAt > Date.now() + 30_000 ? gmail : null);
+// Several Google accounts can be connected (personal Gmail, each Workspace mailbox): tokens live in memory only (1 hour),
+// the list of addresses is remembered so a reconnect is one click (Google pre-selects the account).
+const gmails = new Map<string, GmailAccount>();
+const LS_GMAILS = 'phloem.mail.gmails', LS_ACTIVE = 'phloem.mail.gmailActive';
+const lsGet = (k: string) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
+let activeGmail = lsGet(LS_ACTIVE);
+const live = (a?: GmailAccount | null) => (a && a.expiresAt > Date.now() + 30_000 ? a : null);
+/** The connected account to send from: the chosen one (or the one a campaign was started from). */
+export const gmailAccount = (email = activeGmail) => live(gmails.get(String(email || '').toLowerCase())) || (email ? null : live([...gmails.values()][0]));
+/** Every Google account used here: connected now (live) or remembered (one click to reconnect). */
+export function gmailAccounts(): { email: string; name: string; live: boolean }[] {
+  let saved: { email: string; name: string }[] = []; try { saved = JSON.parse(lsGet(LS_GMAILS) || '[]'); } catch { /* ignore */ }
+  const all = new Map(saved.map((x) => [x.email.toLowerCase(), { ...x, live: false }]));
+  for (const a of gmails.values()) all.set(a.email.toLowerCase(), { email: a.email, name: a.name, live: !!live(a) });
+  return [...all.values()];
+}
+export const activeGmailEmail = () => activeGmail || gmailAccounts()[0]?.email || '';
+export function setActiveGmail(email: string) { activeGmail = email.toLowerCase(); lsSet(LS_ACTIVE, activeGmail); set({}); }
+const remember = (a: { email: string; name: string }) => { const rest = gmailAccounts().filter((x) => x.email.toLowerCase() !== a.email.toLowerCase()).map(({ email, name }) => ({ email, name })); lsSet(LS_GMAILS, JSON.stringify([{ email: a.email, name: a.name }, ...rest].slice(0, 12))); };
 
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 /** A few lines of REAL text under the image slices: who sent it and how to stop it. An email that is only pictures is
@@ -112,7 +130,7 @@ const SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 let needConsent = false;
 
 /** Google popup asking for "send email on your behalf" (+ who you are, to fill From). Token lives in memory only. */
-export async function connectGmail(): Promise<GmailAccount> {
+export async function connectGmail(hint = '', pick = false): Promise<GmailAccount> {
   const info = await relayInfo();
   const clientId = info?.google;
   if (!clientId) throw new Error('Chưa cấu hình Google cho relay (GOOGLE_CLIENT_ID).');
@@ -120,7 +138,7 @@ export async function connectGmail(): Promise<GmailAccount> {
   const g = (window as unknown as { google?: any }).google;
   const token: { access_token: string; expires_in: number; scope?: string } = await new Promise((resolve, reject) => {
     const client = g.accounts.oauth2.initTokenClient({
-      client_id: clientId, scope: `openid email profile ${SEND_SCOPE}`, prompt: needConsent ? 'consent' : '', include_granted_scopes: true,
+      client_id: clientId, scope: `openid email profile ${SEND_SCOPE}`, prompt: needConsent ? 'consent' : pick ? 'select_account' : '', include_granted_scopes: true, ...(hint ? { login_hint: hint } : {}),
       callback: (r: { access_token?: string; expires_in?: number; scope?: string; error?: string; error_description?: string }) => (r.access_token ? resolve(r as { access_token: string; expires_in: number; scope?: string }) : reject(new Error(r.error_description || r.error || 'Google từ chối'))),
       error_callback: (e: { type?: string; message?: string }) => reject(new Error(e?.type === 'popup_closed' ? 'Đã đóng cửa sổ Google.' : e?.message || 'Không mở được cửa sổ Google (trình duyệt chặn popup?)')),
     });
@@ -132,11 +150,17 @@ export async function connectGmail(): Promise<GmailAccount> {
   needConsent = false;
   const me = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${token.access_token}` } }).then((r) => r.json()).catch(() => ({}));
   if (!me.email) throw new Error('Google không trả về địa chỉ email.');
-  gmail = { email: String(me.email), name: String(me.name || ''), token: token.access_token, expiresAt: Date.now() + (token.expires_in || 3600) * 1000 };
-  set({});
-  return gmail;
+  const acc: GmailAccount = { email: String(me.email), name: String(me.name || ''), token: token.access_token, expiresAt: Date.now() + (token.expires_in || 3600) * 1000 };
+  gmails.set(acc.email.toLowerCase(), acc); remember(acc); setActiveGmail(acc.email);
+  return acc;
 }
-export function disconnectGmail() { const t = gmail?.token; gmail = null; set({}); if (t) { try { (window as unknown as { google?: any }).google?.accounts?.oauth2?.revoke(t, () => {}); } catch { /* ignore */ } } }
+/** Disconnect one account (and forget it), or every account. */
+export function disconnectGmail(email = activeGmail) {
+  const a = gmails.get(String(email).toLowerCase()); gmails.delete(String(email).toLowerCase());
+  lsSet(LS_GMAILS, JSON.stringify(gmailAccounts().filter((x) => x.email.toLowerCase() !== String(email).toLowerCase()).map(({ email: e, name }) => ({ email: e, name }))));
+  if (activeGmail === String(email).toLowerCase()) setActiveGmail(gmailAccounts()[0]?.email || ''); else set({});
+  if (a?.token) { try { (window as unknown as { google?: any }).google?.accounts?.oauth2?.revoke(a.token, () => {}); } catch { /* ignore */ } }
+}
 
 /** base64url of the MIME bytes (the Gmail JSON API's `raw`). */
 function b64url(text: string): string {
@@ -161,8 +185,8 @@ async function sendOne(acc: GmailAccount, raw: string) {
   if (r.ok) return;
   const j = await r.json().catch(() => ({}));
   const msg = j?.error?.message || `HTTP ${r.status}`;
-  if (r.status === 401) { gmail = null; throw new Error('Phiên Gmail hết hạn. Bấm Kết nối Gmail lại.'); }
-  if (r.status === 403 && /insufficient|scope/i.test(msg)) { gmail = null; needConsent = true; throw new Error('Google chưa cho quyền gửi email. Bấm Kết nối Gmail lại và tích ô "Gửi email thay mặt bạn".'); }
+  if (r.status === 401) { gmails.delete(acc.email.toLowerCase()); set({}); throw new Error(`Phiên Gmail của ${acc.email} hết hạn. Bấm Kết nối lại.`); }
+  if (r.status === 403 && /insufficient|scope/i.test(msg)) { gmails.delete(acc.email.toLowerCase()); set({}); needConsent = true; throw new Error('Google chưa cho quyền gửi email. Bấm Kết nối Gmail lại và tích ô "Gửi email thay mặt bạn".'); }
   if (r.status === 403 && /has not been used|disabled/i.test(msg)) throw new Error('Gmail API chưa bật cho dự án Google Cloud của relay.');
   if (r.status === 429 || /limit|quota/i.test(msg)) throw new Error(`Gmail báo vượt giới hạn gửi (${msg}). Gmail cá nhân ~500 thư/ngày, Workspace ~2.000.`);
   throw new Error(`Gmail: ${msg}`);
@@ -203,6 +227,15 @@ function sleep(ms: number): Promise<void> {
   } catch { return new Promise((r) => setTimeout(r, ms)); }
 }
 
+/** Merge tags ({{first_name|there}}) in a Gmail send: a pasted list has addresses only, so the fallback is used
+ *  ({{email}} is the recipient). Server sends fill them from the contact instead (relay mergeFields). */
+export function fillMerge(s: string, to: string, html = true): string {
+  return String(s || '').replace(/\{\{\s*([\w.]+)\s*(?:\|([^}]*))?\}\}/g, (_m, k: string, fb?: string) => {
+    const v = k.toLowerCase() === 'email' ? to : (fb ?? '').trim();
+    return html ? v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!) : v;
+  });
+}
+
 let stopFlag = false; let running = false;
 export const queueRunning = () => running;
 export function pauseQueue() { stopFlag = true; }
@@ -231,9 +264,8 @@ export async function startQueue(p: Project, recipientsRaw: string, suppressRaw 
 export async function runQueue(p: Project) {
   if (running) return;
   let q = loadQueue(p.id); if (!q) throw new Error('Chưa có chiến dịch.');
-  const acc = gmailAccount();
-  if (!acc) { q.status = 'auth'; saveQueue(q, p.id); throw new Error('Phiên Gmail hết hạn (1 giờ). Bấm Kết nối Gmail rồi Tiếp tục gửi.'); }
-  if (acc.email !== q.from) throw new Error(`Chiến dịch này gửi từ ${q.from}; đang kết nối ${acc.email}. Kết nối đúng tài khoản.`);
+  const acc = gmailAccount(q.from); // the account this campaign was started from, whichever one is selected now
+  if (!acc) { q.status = 'auth'; saveQueue(q, p.id); throw new Error(`Phiên Gmail của ${q.from} hết hạn (1 giờ). Bấm Kết nối lại ${q.from} rồi Tiếp tục gửi.`); }
   running = true; stopFlag = false;
   set({ busy: { label: `Đang gửi qua Gmail · ${q.subject}`, done: q.cursor, total: q.recipients.length } });
   try {
@@ -255,7 +287,7 @@ export async function runQueue(p: Project) {
     while (q.cursor < q.recipients.length) {
       if (stopFlag) { q.status = 'paused'; break; }
       if (sentToday(q) >= q.dailyCap) { q.status = 'capped'; break; }
-      if (!gmailAccount()) { q.status = 'auth'; break; }
+      if (!gmailAccount(q.from)) { q.status = 'auth'; break; }
       const to = q.recipients[q.cursor];
       let html = m.html, text = m.text; let unsub: string[] = [`mailto:${acc.email}?subject=Unsubscribe`];
       if (m.tracked) {
@@ -265,7 +297,8 @@ export async function runQueue(p: Project) {
         if (t) { const per = personalizeHtml(m.html, tokBase, t); html = per.html; text = m.text.split(UNSUB_PLACEHOLDER).join(per.unsub); unsub = [per.unsub, ...unsub]; }
         else { html = plain!.html; text = plain!.text; }
       }
-      const raw = buildMime({ html, text, subject: m.subject, from: address(acc.name, acc.email), to, listUnsubscribe: unsub, oneClick: unsub.length > 1, parts: m.parts });
+      html = fillMerge(html, to); text = fillMerge(text, to, false);
+      const raw = buildMime({ html, text, subject: fillMerge(m.subject, to, false), from: address(acc.name, acc.email), to, listUnsubscribe: unsub, oneClick: unsub.length > 1, parts: m.parts });
       try {
         await sendOne(acc, raw);
         q.sent++; q.days[dayKey()] = sentToday(q) + 1;
@@ -307,7 +340,8 @@ export async function sendTest(p: Project) {
         if (t) { const per = personalizeHtml(m.html, r.base, t); html = per.html; text = m.text.split(UNSUB_PLACEHOLDER).join(per.unsub); unsub.unshift(per.unsub); } else ({ html, text } = untracked(m, acc.email));
       } catch { ({ html, text } = untracked(m, acc.email)); }
     }
-    await sendOne(acc, buildMime({ html, text, subject: `[Thử] ${m.subject}`, from: address(acc.name, acc.email), to: acc.email, listUnsubscribe: unsub, oneClick: unsub.length > 1, parts: m.parts }));
+    html = fillMerge(html, acc.email); text = fillMerge(text, acc.email, false);
+    await sendOne(acc, buildMime({ html, text, subject: `[Thử] ${fillMerge(m.subject, acc.email, false)}`, from: address(acc.name, acc.email), to: acc.email, listUnsubscribe: unsub, oneClick: unsub.length > 1, parts: m.parts }));
     set({ result: { text: `Đã gửi thử tới ${acc.email} (${m.kb} KB${m.hosted ? ', ảnh lưu trên host' : `, ${m.parts.length} ảnh nhúng`}${m.tracked ? ', có link huỷ đăng ký thật + theo dõi' : ''}). Mở hộp thư để kiểm tra.` } });
     toast('Đã gửi thử.', 'ok');
   } finally { set({ busy: null }); }
