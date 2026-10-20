@@ -192,9 +192,9 @@ export function SenderForm({ providers, onSaved, onCancel }: { providers: Provid
     catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <div class="card" style={{ background: 'var(--panel)', gap: 8 }}>
+    <div class="card sender-form" style={{ background: 'var(--panel)', gap: 8 }}>
       <div class="row small"><b class="grow">Thêm kênh gửi</b>{onCancel && <Btn xs kind="ghost" onClick={onCancel}>Đóng</Btn>}</div>
-      <Seg block value={prov} options={(['smtp', 'resend', 'brevo', 'ses'] as Sender['provider'][]).filter((id) => !providers.length || providers.some((x) => x.id === id)).map((id) => ({ v: id, label: ({ smtp: 'Hộp mail (SMTP)', resend: 'Resend', brevo: 'Brevo', ses: 'Amazon SES' } as Record<string, string>)[id] }))} onChange={(v) => setProv(v)} />
+      <Seg block value={prov} options={(['smtp', 'resend', 'brevo', 'ses'] as Sender['provider'][]).filter((id) => !providers.length || providers.some((x) => x.id === id)).map((id) => ({ v: id, label: ({ smtp: 'Hộp mail', resend: 'Resend', brevo: 'Brevo', ses: 'SES' } as Record<string, string>)[id], title: ({ smtp: 'Hộp mail công ty qua SMTP: Titan, Google Workspace, Zoho, Outlook…', resend: 'Resend (API)', brevo: 'Brevo (API)', ses: 'Amazon SES (API)' } as Record<string, string>)[id] }))} onChange={(v) => setProv(v)} />
       <div class="dim small">{HELP[prov].how}</div>
       <div class="grid2">
         <Field label="Email gửi"><TextInput value={fromEmail} onCommit={setFromEmail} onInput={setFromEmail} placeholder="news@tenmien.vn" /></Field>

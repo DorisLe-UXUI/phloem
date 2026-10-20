@@ -51,6 +51,19 @@ export function Editor() {
   const [hide, setHide] = useState<{ left: boolean; right: boolean }>(() => { try { return JSON.parse(localStorage.getItem('phloem.panels') || '') || { left: false, right: false }; } catch { return { left: false, right: false }; } });
   const toggle = (side: 'left' | 'right' | 'both') => setHide((h) => { const n = side === 'both' ? (h.left || h.right ? { left: false, right: false } : { left: true, right: true }) : { ...h, [side]: !h[side] }; try { localStorage.setItem('phloem.panels', JSON.stringify(n)); } catch { /* private mode */ } return n; });
   useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === '\\') { e.preventDefault(); toggle('both'); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, []);
+  // side panels are as wide as you drag them (remembered); double-click the edge for the default width
+  useEffect(() => { try { const w = JSON.parse(localStorage.getItem('phloem.panelW') || '{}'); if (w.left) document.documentElement.style.setProperty('--left', `${w.left}px`); if (w.right) document.documentElement.style.setProperty('--right', `${w.right}px`); } catch { /* defaults */ } }, []);
+  const dragEdge = (side: 'left' | 'right') => (e: PointerEvent) => {
+    e.preventDefault();
+    const ws = (e.currentTarget as HTMLElement).parentElement!.getBoundingClientRect();
+    const [min, max] = side === 'left' ? [200, 520] : [280, 760];
+    let last = 0;
+    const move = (ev: PointerEvent) => { last = Math.round(Math.min(max, Math.max(min, side === 'left' ? ev.clientX - ws.left : ws.right - ev.clientX))); document.documentElement.style.setProperty(`--${side}`, `${last}px`); };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.classList.remove('resizing'); if (last) { try { const w = JSON.parse(localStorage.getItem('phloem.panelW') || '{}'); localStorage.setItem('phloem.panelW', JSON.stringify({ ...w, [side]: last })); } catch { /* ignore */ } } };
+    document.body.classList.add('resizing');
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  const resetEdge = (side: 'left' | 'right') => { document.documentElement.style.removeProperty(`--${side}`); try { const w = JSON.parse(localStorage.getItem('phloem.panelW') || '{}'); delete w[side]; localStorage.setItem('phloem.panelW', JSON.stringify(w)); } catch { /* ignore */ } };
   // phone: asking for a right-panel tab (Xuất, AI, Email…) also slides that sheet up
   const firstTab = useRef(true);
   useEffect(() => { if (firstTab.current) { firstTab.current = false; return; } if (isMobile()) set({ mobilePane: 'right' }); }, [s.rightTab]);
@@ -63,6 +76,8 @@ export function Editor() {
         <LeftPanel />
         <CanvasView />
         <RightPanel />
+        {!hide.left && <div class="ws-size l" onPointerDown={dragEdge('left')} onDblClick={() => resetEdge('left')} title="Kéo để đổi độ rộng · bấm đúp: mặc định" />}
+        {!hide.right && <div class="ws-size r" onPointerDown={dragEdge('right')} onDblClick={() => resetEdge('right')} title="Kéo để đổi độ rộng · bấm đúp: mặc định" />}
         <button class="ws-tog l" onClick={() => toggle('left')} title={hide.left ? 'Mở panel trái (⌘\\ ẩn/hiện cả hai)' : 'Cất panel trái'} aria-label={hide.left ? 'Mở panel trái' : 'Cất panel trái'}>{hide.left ? '›' : '‹'}</button>
         <button class="ws-tog r" onClick={() => toggle('right')} title={hide.right ? 'Mở panel phải' : 'Cất panel phải'} aria-label={hide.right ? 'Mở panel phải' : 'Cất panel phải'}>{hide.right ? '‹' : '›'}</button>
       </div>

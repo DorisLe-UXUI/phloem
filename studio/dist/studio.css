@@ -5035,7 +5035,7 @@ select.in.mk-role {
   --topbar: 48px;
   --statusbar: 26px;
   --left: 252px;
-  --right: 300px;
+  --right: 340px;
 }
 * {
   box-sizing: border-box;
@@ -9660,4 +9660,61 @@ tr.aud-click:hover td {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+.workspace {
+  position: relative;
+}
+.ws-size {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
+}
+.ws-size.l {
+  left: calc(var(--left) - 4px);
+}
+.ws-size.r {
+  right: calc(var(--right) - 4px);
+}
+.ws-size::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.ws-size:hover::after,
+body.resizing .ws-size::after {
+  background: var(--neon);
+}
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.resizing canvas,
+body.resizing iframe {
+  pointer-events: none;
+}
+@media (max-width: 820px) {
+  .ws-size {
+    display: none;
+  }
+}
+.sender-form {
+  container-type: inline-size;
+}
+@container (max-width: 380px) {
+  .sender-form .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+.sender-form .seg button {
+  white-space: nowrap;
+  padding: 0 6px;
 }

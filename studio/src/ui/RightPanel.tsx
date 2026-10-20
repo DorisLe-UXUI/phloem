@@ -648,9 +648,9 @@ function MailCard() {
                       : <Btn xs kind="primary" disabled={busy || art} onClick={() => void run(() => connectGmail(cur))}>Kết nối lại</Btn>)}
                   </div>
                 )}
-                <div class="row" style={{ gap: 6 }}>
+                <div class="row wrap" style={{ gap: 6 }}>
                   <Btn sm icon={accounts.length ? 'plus' : 'mail'} disabled={busy || art} onClick={() => void run(() => connectGmail('', accounts.length > 0))} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : 'Kết nối một tài khoản Google (Gmail hoặc Google Workspace)'}>{accounts.length ? 'Thêm Google' : 'Kết nối Gmail'}</Btn>
-                  <Btn sm icon="plus" onClick={() => (signed ? setAddingBox(!addingBox) : set({ modal: 'auth', authTab: 'login' }))} title="Titan, Zoho, Outlook / Microsoft 365, Hostinger, Google Workspace qua SMTP: gửi bằng máy chủ Phloem">Thêm hộp mail Titan, Zoho…</Btn>
+                  <Btn sm icon="plus" onClick={() => (signed ? setAddingBox(!addingBox) : set({ modal: 'auth', authTab: 'login' }))} title="Titan, Zoho, Outlook / Microsoft 365, Hostinger, Google Workspace qua SMTP: gửi bằng máy chủ Phloem">Thêm hộp mail</Btn>
                 </div>
                 {!signed && <div class="dim small">Hộp mail Titan, Zoho, Outlook… gửi qua máy chủ Phloem nên cần đăng nhập tài khoản Phloem.</div>}
                 {addingBox && signed && <SenderForm providers={providers} onSaved={(x) => { setAddingBox(false); keep('phloem.mail.sender', x.id); setVia('server'); keep('phloem.mail.via', 'server'); void loadBoxes(); toast(`Đã thêm ${x.fromEmail}. Bấm "Gửi thử" để chắc đúng mật khẩu trước khi gửi cả danh sách.`, 'ok'); }} onCancel={() => setAddingBox(false)} />}
