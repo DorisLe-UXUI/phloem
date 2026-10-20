@@ -313,6 +313,9 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
   }, [id]);
   const q = via === 'gmail' ? loadQueue(projectId) : null;
   const sent = via === 'server' ? st?.queue.sent || 0 : q && q.id === id ? q.sent : recipients;
+  const [switching, setSwitching] = useState<Sender[] | null>(null); const [nextSender, setNextSender] = useState('');
+  const openSwitch = async () => { try { const r = await listSenders(); setSwitching(r.senders); setNextSender(r.senders.find((x) => x.id !== st?.send?.sender)?.id || r.senders[0]?.id || ''); } catch (e) { setErr((e as Error).message); } };
+  const resumeWith = async () => { if (!nextSender) return; try { await serverSendControl(id, 'resume', nextSender); setSwitching(null); await load(); toast('Đã đổi kênh gửi và tiếp tục. Người chưa nhận được thư sẽ được gửi lại.', 'ok'); } catch (e) { setErr((e as Error).message); } };
   const ctl = async (a: 'pause' | 'resume' | 'cancel') => { if (a === 'cancel' && !(await ask('Huỷ phần chưa gửi của chiến dịch này?', 'Huỷ gửi', true))) return; try { await serverSendControl(id, a); await load(); } catch (e) { setErr((e as Error).message); } };
   const send = st?.send;
   const total = st ? Object.values(st.queue).reduce((a, b) => a + b, 0) : 0;
@@ -342,11 +345,19 @@ function CampaignRow({ id, subject, via, at, recipients, projectId, onForget }: 
       <div class="row" style={{ gap: 6 }}>
         <Btn xs kind="ghost" onClick={() => void load()}>Làm mới</Btn>
         {via === 'server' && send && ['scheduled', 'sending', 'waiting'].includes(send.status) && <Btn xs onClick={() => void ctl('pause')}>Tạm dừng</Btn>}
-        {via === 'server' && send && ['paused', 'error'].includes(send.status) && <Btn xs kind="primary" onClick={() => void ctl('resume')}>Tiếp tục</Btn>}
+        {via === 'server' && send && ['paused', 'error'].includes(send.status) && <Btn xs kind="primary" onClick={() => void ctl('resume')} title="Tiếp tục bằng kênh đang dùng">Tiếp tục</Btn>}
+        {via === 'server' && send && ['paused', 'error'].includes(send.status) && <Btn xs onClick={() => void openSwitch()} title="Chọn hộp mail / kênh khác rồi tiếp tục">Đổi kênh</Btn>}
         {via === 'server' && send && !['done', 'cancelled'].includes(send.status) && <Btn xs kind="ghost" onClick={() => void ctl('cancel')}>Huỷ</Btn>}
         <span class="grow" />
         <Btn xs kind="ghost" onClick={onForget} title="Ẩn khỏi danh sách: số liệu vẫn còn, bấm Hiện lại ở cuối danh sách">Ẩn</Btn>
       </div>
+      {switching && (
+        <div class="row" style={{ gap: 6 }}>
+          {switching.length ? <><span class="dim small">Gửi tiếp bằng</span><select class="in grow" style={{ height: 28, minWidth: 0 }} value={nextSender} onChange={(e) => setNextSender((e.target as HTMLSelectElement).value)}>{switching.map((x) => <option key={x.id} value={x.id}>{x.fromEmail} · {x.label}{x.id === send?.sender ? ' (đang dùng)' : ''}</option>)}</select><Btn xs kind="primary" disabled={!nextSender} onClick={() => void resumeWith()}>Tiếp tục</Btn></>
+            : <span class="dim small">Chưa có kênh nào khác: thêm hộp mail ở ô "Gửi từ" (Thêm hộp mail Titan, Zoho…).</span>}
+          <Btn xs kind="ghost" onClick={() => setSwitching(null)}>Đóng</Btn>
+        </div>
+      )}
       {err && (/không có chiến dịch/i.test(err)
         ? <div class="check warn"><span class="lv">MẤT SỐ LIỆU</span><span class="m">Máy chủ không còn chiến dịch này: lần gửi trùng lúc máy chủ cập nhật nên phần đăng ký theo dõi bị mất. Mail vẫn đã tới người nhận; chỉ số mở/click của lần này không xem được. Bấm Ẩn để dọn khỏi danh sách.</span></div>
         : <div class="check err"><span class="lv">LỖI</span><span class="m">{err}</span></div>)}

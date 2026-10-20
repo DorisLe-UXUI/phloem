@@ -219,6 +219,9 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     qSentToday: q("SELECT COUNT(*) AS n FROM mail_queue WHERE owner = ? AND campaign = ? AND status = 'sent' AND sent_at >= ?"),
     qCancel: q("UPDATE mail_queue SET status = 'cancelled' WHERE owner = ? AND campaign = ? AND status = 'queued'"),
     qSkipSup: q("UPDATE mail_queue SET status = 'skipped', error = 'đã huỷ đăng ký', sent_at = ? WHERE owner = ? AND campaign = ? AND status = 'queued' AND email IN (SELECT email FROM mail_suppressions WHERE owner = ?)"),
+    qRequeueBlocked: q("UPDATE mail_queue SET status = 'queued', error = '', sent_at = NULL WHERE owner = ? AND campaign = ? AND status = 'failed' AND (error LIKE '%không kết nối được%' OR error LIKE '%ETIMEDOUT%' OR error LIKE '%không phản hồi%' OR error LIKE '%hết thời gian kết nối%' OR error LIKE '%ECONNREFUSED%')"),
+    // rows that never reached anyone (bad key / password, blocked or dead connection): sendable again after a fix
+    qRequeueUndelivered: q("UPDATE mail_queue SET status = 'queued', error = '', sent_at = NULL WHERE owner = ? AND campaign = ? AND status = 'failed' AND (error LIKE '%401%' OR error LIKE '%403%' OR error LIKE '%nvalid%' OR error LIKE '%nauthor%' OR error LIKE '%sai tài khoản%' OR error LIKE '%mật khẩu%' OR error LIKE '%535%' OR error LIKE '%không kết nối được%' OR error LIKE '%ETIMEDOUT%' OR error LIKE '%không phản hồi%' OR error LIKE '%hết thời gian%' OR error LIKE '%ECONNREFUSED%' OR error LIKE '%Cloudflare%' OR error LIKE '%Kênh gửi%')"),
     qRelabel: q("UPDATE mail_queue SET variant = ? WHERE owner = ? AND campaign = ? AND status = 'queued' AND variant = 'rest'"),
     qAll: q('SELECT email, variant, status, error, sent_at FROM mail_queue WHERE owner = ? AND campaign = ? LIMIT 100000'),
     rcptAdd: q('INSERT INTO mail_rcpt (owner, campaign, email, variant, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(owner, campaign, email) DO NOTHING'),
@@ -522,7 +525,12 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
           const id = decodeURIComponent(sc[1]); const c = camp(u.id, id); if (!c?.send) { json(res, 404, { error: 'Chiến dịch chưa có lịch gửi.' }); return true; }
           if (m === 'POST' && sc[2]) {
             if (sc[2] === 'pause') c.send.status = 'paused';
-            if (sc[2] === 'resume') c.send.status = 'scheduled';
+            if (sc[2] === 'resume') {
+              // optionally continue with another channel (the old one had a bad key / password); undelivered rows go again
+              const b = await body(req).catch(() => ({}));
+              if (b?.sender) { if (!senders(u.id).some((x) => x.id === String(b.sender))) { json(res, 404, { error: 'không có kênh gửi này' }); return true; } c.send.sender = String(b.sender); }
+              S.qRequeueUndelivered.run(u.id, id); c.send.status = 'scheduled'; c.send.lastError = '';
+            }
             if (sc[2] === 'cancel') { c.send.status = 'cancelled'; S.qCancel.run(u.id, id); }
             saveCamp(u.id, id, c); json(res, 200, { ok: true, status: c.send.status }); return true;
           }
@@ -591,6 +599,21 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     } catch (e) { log('[mail] worker:', e?.message || e); }
     finally { busy = false; }
   }
+  /** Campaigns that stopped only because the SMTP connection was blocked or timed out (nothing was delivered to those
+   *  rows) go back to sending: e.g. after the Cloudflare bridge opened the way. Wrong passwords / keys stay stopped. */
+  function resumeBlocked(maxAgeDays = 7) {
+    const since = new Date(Date.now() - maxAgeDays * 86400e3).toISOString(); let n = 0;
+    for (const row of S.campDue.all()) {
+      let c; try { c = JSON.parse(row.json); } catch { continue; }
+      const s0 = c.send;
+      if (!s0 || s0.status !== 'error' || !/không kết nối được|ETIMEDOUT|không phản hồi|hết thời gian kết nối|ECONNREFUSED/i.test(s0.lastError || '') || String(s0.sendAt || c.createdAt || '') < since) continue;
+      const back = Number(S.qRequeueBlocked.run(row.owner, row.id).changes) || 0;
+      s0.status = 'sending'; s0.lastError = ''; saveCamp(row.owner, row.id, c); n++;
+      log(`[mail] ${row.id} resumed after a blocked connection (${back} recipient(s) back in the queue)`);
+    }
+    return n;
+  }
+
   /** One message through a stored sending account, with signed links (automations, confirmations). */
   async function sendOne(owner, senderId, { campaign, to, subject, html, text = '', fields = {}, variant = '', tracked = true }) {
     const sender = senders(owner).find((x) => x.id === senderId); if (!sender) throw new Error('Kênh gửi không còn');
@@ -612,7 +635,8 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     people,
     campaigns: (owner) => S.campDue.all().filter((r) => r.owner === owner).map((r) => ({ id: r.id, ...JSON.parse(r.json) })),
     health: () => ({ img: !!img, tracking: true, queue: true }),
-    start: () => { const t = setInterval(() => { void tick(); }, 20_000); t.unref?.(); },
+    start: () => { resumeBlocked(); const t = setInterval(() => { void tick(); }, 20_000); t.unref?.(); },
+    resumeBlocked,
     tick,
   };
 }

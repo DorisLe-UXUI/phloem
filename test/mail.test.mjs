@@ -269,3 +269,46 @@ test('SMTP through the Cloudflare bridge: a one-time job the bridge fetches back
     assert.equal(v.obj.ok, false); assert.match(v.obj.error, /mật khẩu/); assert.equal(seen[1].job.raw, null, 'verify sends nothing');
   } finally { bridge.close(); }
 });
+
+test('a campaign stopped by a blocked SMTP connection resumes (rows back in the queue); one stopped by a wrong password does not', async () => {
+  const { createMail: cm } = await import('../server/src/mail.mjs');
+  const { openDb } = await import('../server/src/db.mjs');
+  const { mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const db = openDb(join(mkdtempSync(join(tmpdir(), 'phloem-resume-')), 'p.db'));
+  const json = (res, code, obj) => { res.statusCode = code; res.obj = obj; res.end(JSON.stringify(obj)); };
+  const mail = cm({ raw: db.raw, secret: 's', publicUrl: 'https://r.test', json, body: async (req) => req.body || {}, rawBody: async () => Buffer.alloc(0), requireUser: (req, res) => req.user || (json(res, 401, {}), null), throttled: () => false, env: {}, log: () => {} });
+  const now = new Date().toISOString();
+  for (const [id, err] of [['blocked', 'SMTP: không kết nối được smtp.titan.email:465 (ETIMEDOUT)'], ['badpass', 'SMTP: sai tài khoản hoặc mật khẩu (535)']]) {
+    mail.saveCampaign('u1', id, { createdAt: now, links: [], send: { status: 'error', lastError: err, sendAt: now, sender: 's1', perDay: 100, subject: 'x', html: '<p>x</p>' } });
+    db.raw.prepare("INSERT INTO mail_queue (owner, campaign, email, variant, status, error, sent_at) VALUES ('u1', ?, 'a@b.co', '', 'failed', ?, ?)").run(id, err, now);
+  }
+  assert.equal(mail.resumeBlocked(), 1);
+  assert.equal(mail.campaign('u1', 'blocked').send.status, 'sending'); assert.equal(mail.campaign('u1', 'badpass').send.status, 'error');
+  const st = (id) => db.raw.prepare("SELECT status FROM mail_queue WHERE owner = 'u1' AND campaign = ?").get(id).status;
+  assert.equal(st('blocked'), 'queued'); assert.equal(st('badpass'), 'failed');
+});
+
+test('resume with another channel: the campaign switches sender and undelivered rows (bad key) go again', async () => {
+  const { createMail: cm } = await import('../server/src/mail.mjs');
+  const { openDb } = await import('../server/src/db.mjs');
+  const { mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const db = openDb(join(mkdtempSync(join(tmpdir(), 'phloem-switch-')), 'p.db'));
+  const json = (res, code, obj) => { res.statusCode = code; res.obj = obj; res.end(JSON.stringify(obj)); };
+  const sent = [];
+  const providers = { resend: { label: 'Resend', perDay: 100, send: async () => { throw new Error('Resend 401: API key is invalid'); } }, smtp: { label: 'SMTP', perDay: 300, send: async (s, m) => { sent.push([s.fromEmail, m.to]); } } };
+  const mail = cm({ raw: db.raw, secret: 's', publicUrl: 'https://r.test', json, body: async (req) => req.body || {}, rawBody: async () => Buffer.alloc(0), requireUser: (req, res) => req.user || (json(res, 401, {}), null), throttled: () => false, env: {}, log: () => {}, providers, pace: 0 });
+  const u = { id: 'u1', email: 'me@x.co' };
+  const call = async (method, path, body) => { const res = { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(x) { this.text = String(x ?? ''); } }; await mail.handle(new URL(path, 'https://r.test'), { method, headers: {}, user: u, body }, res); return res; };
+  const bad = (await call('POST', '/mail/senders', { provider: 'resend', fromEmail: 'news@shop.vn', apiKey: 're_wrong' })).obj.sender;
+  const titan = (await call('POST', '/mail/senders', { provider: 'smtp', preset: 'titan', host: 'smtp.titan.email', port: 465, secure: 'ssl', fromEmail: 'hello@shop.vn', password: 'p' })).obj.sender;
+  await call('POST', '/mail/campaigns', { id: 'c1', subject: 'Hi', links: [] });
+  await call('POST', '/mail/send', { campaign: 'c1', sender: bad.id, subject: 'Hi', html: '<p>Hi</p>', recipients: ['a@b.co', 'c@d.co'] });
+  await mail.tick();
+  assert.equal(mail.campaign('u1', 'c1').send.status, 'error');
+  assert.equal((await call('POST', '/mail/send/c1/resume', { sender: 'nope' })).statusCode, 404);
+  assert.equal((await call('POST', '/mail/send/c1/resume', { sender: titan.id })).obj.status, 'scheduled');
+  await mail.tick();
+  assert.deepEqual(sent.map((x) => x[1]).sort(), ['a@b.co', 'c@d.co'], 'everyone gets it from the new channel, once');
+  assert.ok(sent.every((x) => x[0] === 'hello@shop.vn'));
+  await mail.tick(); assert.equal(mail.campaign('u1', 'c1').send.status, 'done');
+});

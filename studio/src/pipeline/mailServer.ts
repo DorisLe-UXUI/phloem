@@ -109,7 +109,7 @@ export const testSender = (id: string, to: string) => api<{ ok: true; to: string
 export interface ServerSendInput { audience?: { client?: string; list: string; segment?: string; tags?: string[] }; campaign: string; sender: string; subject: string; html: string; text: string; recipients: string[]; sendAt?: string; perDay?: number; ab?: { subjectB: string; split: number; metric: 'opens' | 'clicks'; waitHours: number } | null }
 export const startServerSend = (b: ServerSendInput) => api<{ ok: true; recipients: number; test: number; sendAt: string }>('/mail/send', { body: b });
 export const serverSendStatus = (id: string) => api<{ send: SendInfo; counts: Record<string, number> }>(`/mail/send/${encodeURIComponent(id)}`);
-export const serverSendControl = (id: string, action: 'pause' | 'resume' | 'cancel') => api<{ ok: true; status: string }>(`/mail/send/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
+export const serverSendControl = (id: string, action: 'pause' | 'resume' | 'cancel', sender?: string) => api<{ ok: true; status: string }>(`/mail/send/${encodeURIComponent(id)}/${action}`, { body: sender ? { sender } : {} });
 
 // ---------- campaigns this browser started (so stats survive a reload) ----------
 export interface CampaignRef { id: string; projectId: string; subject: string; via: 'gmail' | 'server'; at: string; recipients: number }
