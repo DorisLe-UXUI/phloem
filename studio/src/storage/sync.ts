@@ -137,11 +137,17 @@ export const cloud = {
       }
       const local = local0.filter((p) => !localGone.has(p.id));
       const localById = new Map(local.map((p) => [p.id, p]));
-      for (const r of [...remoteById.values()]) {
-        const l = localById.get(r.id);
-        if (l && l.updatedAt >= r.updatedAt) continue;
+      // newer remote projects, fetched six at a time: a fresh browser pulls hundreds, one by one took minutes
+      const toPull = [...remoteById.values()].filter((r) => { const l = localById.get(r.id); return !(l && l.updatedAt >= r.updatedAt); });
+      const fetched = new Map<string, Awaited<ReturnType<typeof this.getProject>>>();
+      for (let i = 0; i < toPull.length; i += 6) {
+        const part = toPull.slice(i, i + 6);
+        const got = await Promise.all(part.map((r) => this.getProject(r.id).catch(() => null)));
+        part.forEach((r, k) => fetched.set(r.id, got[k]));
+      }
+      for (const r of toPull) {
         const lNow = await db.getProject(r.id); if (lNow && lNow.updatedAt >= r.updatedAt) continue; // a save landed while we were pulling
-        const full = await this.getProject(r.id); if (!full) continue;
+        const full = fetched.get(r.id); if (!full) continue;
         if (get().project?.id === r.id) {
           if (get().dirty) continue; // mid-edit here: keep local, the autosave pushes it as the newer copy
           const cur = pending.get(r.id); if (cur) { clearTimeout(cur.t); pending.delete(r.id); }
