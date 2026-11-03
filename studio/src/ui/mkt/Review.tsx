@@ -6,6 +6,8 @@ import { FORMATS, channelOf, type BrandBook, type Plan, type Review } from '../.
 import { Btn } from '../components';
 import { Icon, LogoMark } from '../icons';
 import { bbLabels } from './BrandTab';
+import { ReportView } from './ReportsTab';
+import type { Snapshot } from '../../mkt/reports';
 
 type Decision = 'approved' | 'changes';
 
@@ -40,6 +42,19 @@ export function ReviewPage({ token }: { token: string }) {
 
   if (err && !it) return <div class="rv"><RvTop /><div class="rv-msg err"><Icon name="warn" size={22} /><b>{T.cannotOpen}</b><p>{err}</p></div></div>;
   if (!it) return <div class="rv"><RvTop /><div class="rv-msg"><div class="mk-spin" /><p>{T.loading}</p></div></div>;
+  // a results report: read-only, with comments (no approve / request changes)
+  if (it.kind === 'report') {
+    const r = it.data as Snapshot;
+    return (
+      <div class="rv">
+        <RvTop client={it.client} />
+        <div class="rv-body rv-report">
+          <div class="rv-hero"><span class="mk-eyebrow">{T === RV_VI ? 'Báo cáo kết quả' : 'Results report'}</span><h1>{r.title}</h1><p class="muted mono">{r.period.from} → {r.period.to}</p></div>
+          <ReportView s={r} />
+        </div>
+      </div>
+    );
+  }
   const pending = Object.keys(dec).length + Object.values(notes).filter((t) => t.trim()).length + (general.trim() ? 1 : 0);
 
   return (

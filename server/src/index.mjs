@@ -920,7 +920,7 @@ async function clientsRoute(u, kind, id, rest, url, req, res) {
     if (m === 'GET') return json(res, 200, { shares: DB.shares.list(owner, id) });
     if (m === 'POST') {
       const p = await body(req); const k = String(p?.kind || ''), itemId = String(p?.itemId || '');
-      if (!['brand', 'plan', 'post'].includes(k) || !DB.items.get(owner, id, k, itemId)) return json(res, 400, { error: 'Không có mục này để gửi duyệt.' });
+      if (!['brand', 'plan', 'post', 'report'].includes(k) || !DB.items.get(owner, id, k, itemId)) return json(res, 400, { error: 'Không có mục này để gửi duyệt.' });
       const days = Math.max(1, Math.min(90, Number(p?.days) || 30));
       const token = DB.shares.create(owner, id, k, itemId, days);
       if (!token) return json(res, 403, { error: 'Không tạo được link.' });

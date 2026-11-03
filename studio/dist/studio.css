@@ -4994,6 +4994,141 @@ select.in.mk-role {
   font: 11px var(--mono, monospace);
   color: var(--neon);
 }
+.mk-rp {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mk-kpi .s.up {
+  color: var(--neon);
+}
+.mk-kpi .s.down {
+  color: #ff7a7a;
+}
+.mk-rp-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.mk-rp-charts .mk-card {
+  margin: 0;
+}
+.mk-rp-line {
+  display: block;
+  width: 100%;
+  height: 130px;
+  padding: 0 8px 8px;
+  box-sizing: border-box;
+}
+.mk-rp-line .l {
+  fill: none;
+  stroke: var(--neon);
+  stroke-width: 2.2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.mk-rp-line .a {
+  fill: color-mix(in srgb, var(--neon) 14%, transparent);
+}
+.mk-rp-line .t {
+  fill: var(--muted);
+  font: 10px var(--mono, monospace);
+}
+.mk-rp-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mk-rp-two .mk-card {
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .mk-rp-two {
+    grid-template-columns: 1fr;
+  }
+}
+.mk-rp-t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.mk-rp-t th,
+.mk-rp-t td {
+  padding: 7px 12px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+.mk-rp-t th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.mk-rp-t td.mk-ell {
+  max-width: 220px;
+}
+.mk-rp-bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--panel-2);
+  min-width: 80px;
+}
+.mk-rp-bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--neon) 30%, transparent);
+}
+.mk-rp-bar i.live {
+  background: var(--neon);
+}
+.mk-rp-ai .mk-rp-md {
+  padding: 4px 16px 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.mk-rp-md p {
+  margin: 10px 0 4px;
+}
+.mk-rp-md ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.mk-rp-md li {
+  margin: 3px 0;
+}
+.mk-rp-saved {
+  display: flex;
+  flex-direction: column;
+}
+.mk-rp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+}
+.mk-rp-item > button.grow,
+.mk-rp-item > div.grow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+.rv-report .mk-kpis {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
 
 /* studio/styles.css */
 :root {

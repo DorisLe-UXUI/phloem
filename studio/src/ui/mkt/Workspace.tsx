@@ -16,6 +16,7 @@ import { Bar, CreateClient, Kpi } from './MktApp';
 import { BrandTab } from './BrandTab';
 import { PlanTab, ApprovedWork } from './PlanTab';
 import { DesignHub } from './DesignHub';
+import { ReportsTab } from './ReportsTab';
 
 export function Workspace({ client, tab }: { client: Client; tab: ClientTab }) {
   const s = useStore();
@@ -52,7 +53,7 @@ export function Workspace({ client, tab }: { client: Client; tab: ClientTab }) {
             {tab === 'calendar' && <ApprovedWork client={client} mode="calendar" />}
             {tab === 'ads' && <Soon title="Quảng cáo" phase={5} text="Thu thập quảng cáo đối thủ (Meta Ad Library), so sánh, AI đề xuất campaign và bảng mô phỏng ngân sách có thanh kéo. Campaign đẩy sang nền tảng luôn ở trạng thái tạm dừng." />}
             {tab === 'email' && <EmailTab client={client} />}
-            {tab === 'reports' && <Soon title="Báo cáo" phase={7} text="Số liệu thật từ Meta, TikTok, Google, GA4 cùng nhận xét AI, báo cáo tuần/tháng gửi khách tự động, và cổng khách hàng." />}
+            {tab === 'reports' && <ReportsTab client={client} />}
             {tab === 'settings' && <Settings client={client} />}
           </>
         )}
