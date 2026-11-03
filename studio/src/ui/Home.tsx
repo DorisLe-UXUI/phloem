@@ -10,6 +10,8 @@ import * as A from '../pipeline/actions';
 import { Btn } from './components';
 import { Icon, Logo } from './icons';
 import { ask, isArtifact } from './confirm';
+import { openAdminSupport, useSupportWaiting } from './Support';
+import { signedIn } from '../pipeline/support';
 
 let thumbCache: Record<string, string> | null = null;
 
@@ -23,6 +25,7 @@ const QUICK: { label: string; icon: 'blocks' | 'bolt' | 'mail' | 'text' | 'spark
 
 export function Home() {
   const s = useStore();
+  const waiting = useSupportWaiting(!!s.user?.admin && signedIn());
   const file = useRef<HTMLInputElement>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>(thumbCache || {});
   const [q, setQ] = useState('');
@@ -82,7 +85,7 @@ export function Home() {
           <div class="acct" title={s.user.email}>
             <div class="avatar">{(s.user.name || '?').trim().slice(0, 1).toUpperCase()}</div>
             <div class="who"><b>{s.user.name}</b><span>{s.user.brand || s.user.email}</span></div>
-            {s.user.admin ? <><Btn kind="ghost" sm icon="grid" onClick={() => set({ route: { name: 'admin' } })} title="Người dùng, project, ảnh, sao lưu trên relay">Database</Btn><Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aiadmin' })} title="Duyệt yêu cầu và tạo mã dùng AI">Quản lý AI</Btn></>
+            {s.user.admin ? <><Btn kind="ghost" sm icon="mail" onClick={() => openAdminSupport()} title="Góp ý, báo lỗi, yêu cầu hỗ trợ từ người dùng">{`Hỗ trợ${waiting ? ` · ${waiting}` : ''}`}</Btn><Btn kind="ghost" sm icon="grid" onClick={() => set({ route: { name: 'admin' } })} title="Người dùng, project, ảnh, sao lưu trên relay">Database</Btn><Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aiadmin' })} title="Duyệt yêu cầu và tạo mã dùng AI">Quản lý AI</Btn></>
               : !s.user.ai && s.sync.state !== 'off' ? <Btn kind="ghost" sm icon="sparkle" onClick={() => set({ modal: 'aicode' })} title="AI cần mã từ quản trị viên">Mở khoá AI</Btn> : null}
             <Btn kind="ghost" sm onClick={() => void A.signOut()}>Đăng xuất</Btn>
           </div>

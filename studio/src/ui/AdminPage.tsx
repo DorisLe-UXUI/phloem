@@ -6,17 +6,21 @@ import { downloadBytes } from '../../../src/ui/clipboard';
 import { Btn } from './components';
 import { Icon, Logo } from './icons';
 import { ask } from './confirm';
+import { SupportInbox, takeAdminIntent, useSupportWaiting } from './Support';
 
 const kb = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(0, Math.round(b / 1024))} KB`);
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 const ago = (iso: string | null) => { if (!iso) return '—'; const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'vừa xong' : m < 60 ? `${m} phút trước` : m < 1440 ? `${Math.round(m / 60)} giờ trước` : `${Math.round(m / 1440)} ngày trước`; };
-type Tab = 'users' | 'projects' | 'assets';
+type Tab = 'users' | 'projects' | 'assets' | 'support';
 
 export function AdminPage() {
   const s = useStore();
   const [d, setD] = useState<DbConsole | null>(null);
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState<Tab>('users');
+  const [intent] = useState(() => takeAdminIntent()); // opened from a support email / the Home button
+  const [tab, setTab] = useState<Tab>(intent ? 'support' : 'users');
+  const waiting = useSupportWaiting(true);
+  useEffect(() => { const on = () => setTab('support'); window.addEventListener('phloem:admin-support', on); return () => window.removeEventListener('phloem:admin-support', on); }, []);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState('');
   const load = async () => { setErr(''); try { setD(await dbConsole()); } catch (e) { setErr((e as Error).message); } };
@@ -59,6 +63,7 @@ export function AdminPage() {
               <div class="adm-tile"><span>Database</span><b>{kb(t.dbBytes)}</b><i>{t.sessions} phiên đăng nhập</i></div>
               <div class="adm-tile"><span>Mã AI</span><b>{t.codesUsed}/{t.codes}</b><i>đã dùng / đã tạo</i></div>
               <div class={`adm-tile ${t.pending ? 'hot' : ''}`} onClick={() => set({ modal: 'aiadmin' })} style={{ cursor: 'pointer' }}><span>Yêu cầu AI</span><b>{t.pending}</b><i>đang chờ duyệt</i></div>
+              <div class={`adm-tile ${waiting ? 'hot' : ''}`} onClick={() => setTab('support')} style={{ cursor: 'pointer' }}><span>Hỗ trợ</span><b>{waiting}</b><i>góp ý chưa đọc</i></div>
             </div>
             <div class="adm-cards">
               <div class="card">
@@ -74,11 +79,12 @@ export function AdminPage() {
             </div>
             <div class="row wrap" style={{ gap: 8 }}>
               <div class="seg" style={{ height: 32 }}>
-                {(['users', 'projects', 'assets'] as Tab[]).map((k) => <button key={k} class={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{{ users: `Người dùng · ${t.users}`, projects: `Project · ${t.projects}`, assets: `Ảnh · ${t.assets}` }[k]}</button>)}
+                {(['users', 'projects', 'assets', 'support'] as Tab[]).map((k) => <button key={k} class={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{{ users: `Người dùng · ${t.users}`, projects: `Project · ${t.projects}`, assets: `Ảnh · ${t.assets}`, support: `Hỗ trợ${waiting ? ` · ${waiting} mới` : ''}` }[k]}</button>)}
               </div>
               <span class="grow" />
-              <input class="in" style={{ maxWidth: 280, height: 32 }} placeholder="Tìm tên, email, website…" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
+              {tab !== 'support' && <input class="in" style={{ maxWidth: 280, height: 32 }} placeholder="Tìm tên, email, website…" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />}
             </div>
+            {tab === 'support' ? <SupportInbox initial={intent?.ticket || null} /> : <>
             <div class="adm-table">
               {tab === 'users' && (
                 <table>
@@ -110,6 +116,7 @@ export function AdminPage() {
               {((tab === 'users' && !users.length) || (tab === 'projects' && !projects.length) || (tab === 'assets' && !assets.length)) && <div class="dim small" style={{ padding: 16 }}>{ql ? 'Không có kết quả khớp.' : 'Chưa có dữ liệu.'}</div>}
             </div>
             <div class="dim small">Hiển thị tối đa 1.000 người dùng, 500 project và 500 ảnh mới nhất. "Tải file .db" cho bản đầy đủ (mở bằng DB Browser for SQLite).</div>
+            </>}
           </>
         )}
       </div>

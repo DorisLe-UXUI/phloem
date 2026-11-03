@@ -17,6 +17,7 @@ import { CLIENT_KINDS, CLIENT_ROLES } from './db.mjs';
 import { listDrive } from './drive.mjs';
 import { createMail } from './mail.mjs';
 import { createAudience } from './audience.mjs';
+import { createSupport } from './support.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -92,6 +93,8 @@ const MAIL = createMail({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_UR
 // Audience (lists, contacts, forms, automations): personal or per client workspace, access checked like the MKT routes
 const AUD = createAudience({ raw: DB.raw, secret: AUTH.secret, publicUrl: PUBLIC_URL, json, body, rawBody: raw, requireUser, throttled, ipOf: (r) => ipOf(r), access: (userId, clientId) => DB.access(userId, clientId), can: (acc, what) => can(acc, what), mail: MAIL });
 Object.assign(MAIL_HOOKS, AUD.mailHooks);
+// "Hỗ trợ" bubble: tickets from any screen, mailed to the admins, answered from Database → Hỗ trợ
+const SUP = createSupport({ raw: DB.raw, json, body, throttled, ipOf: (r) => ipOf(r), userOf: (req) => AUTH.me(bearer(req)), adminOf: (req) => { const r = AUTH.meRow(bearer(req)); return r && AUTH.isAdmin(r) ? AUTH.pub(r) : null; }, mail: MAIL, adminEmails: ADMIN_EMAILS, resendKey: process.env.RESEND_API_KEY || '', resendFrom: process.env.RESEND_FROM || '', appUrl: process.env.APP_URL || 'https://dorisle-uxui.github.io/phloem/studio/' });
 
 const OAUTH = {
   mailchimp: {
@@ -170,6 +173,7 @@ const server = createServer(async (req, res) => {
     if (RELAY_TOKEN && req.headers['x-phloem-token'] !== RELAY_TOKEN) return json(res, 401, { error: 'relay token sai hoặc thiếu' });
     if (await MAIL.handle(url, req, res)) return;
     if (await AUD.handle(url, req, res)) return;
+    if (await SUP.handle(url, req, res)) return;
 
     if (url.pathname.startsWith('/auth/')) return await authRoute(url.pathname.slice(6), req, res);
     if (url.pathname.startsWith('/db/')) return await dbRoute(url, req, res);

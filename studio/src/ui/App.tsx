@@ -6,6 +6,7 @@ import { AudiencePage } from './audience/AudiencePage';
 import { MktApp } from './mkt/MktApp';
 import { Modals } from './modals';
 import { Toasts } from './components';
+import { SupportBubble } from './Support';
 
 export function App() {
   const s = useStore();
@@ -13,6 +14,7 @@ export function App() {
     <>
       {s.route.name === 'editor' && s.project ? <Editor /> : s.route.name === 'admin' && s.user?.admin ? <AdminPage /> : s.route.name === 'audience' ? <AudiencePage /> : s.app === 'mkt' ? <MktApp /> : <Home />}
       <Modals />
+      <SupportBubble />
       <Toasts />
     </>
   );

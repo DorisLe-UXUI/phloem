@@ -188,8 +188,11 @@ export function useStore(): State {
 }
 
 let toastId = 0;
+/** The last few error toasts, attached to a "Báo lỗi" ticket so the admin sees what went wrong. */
+export const recentErrors: string[] = [];
 export function toast(text: string, kind: Toast['kind'] = 'info') {
   const id = ++toastId;
+  if (kind === 'err') { recentErrors.push(`${new Date().toTimeString().slice(0, 8)} ${text.slice(0, 260)}`); if (recentErrors.length > 5) recentErrors.shift(); }
   set((s) => ({ toasts: [...s.toasts, { id, text, kind }] }));
   setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'err' ? 7000 : 3500);
 }

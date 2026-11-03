@@ -651,9 +651,16 @@ export function createMail({ raw: db, secret, publicUrl, json, body, rawBody, re
     await capped(PROV[sender.provider].send(sender, { to, subject: mergeFields(subject, f, false), html: h, text: text ? mergeFields(text, f, false) + (unsub ? `\n\nHuỷ đăng ký: ${unsub}` : '') : '', headers: unsub ? { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : {} }));
     if (tracked) S.rcptAdd.run(owner, campaign, String(to).toLowerCase(), variant, now()); // automation emails get a per-person report too
   }
+  /** A plain transactional message (support notifications): no tracking, no unsubscribe, its own Reply-To. */
+  async function notify(owner, senderId, { to, subject, html, text = '', replyTo = '' }) {
+    const sender = senders(owner).find((x) => x.id === senderId); if (!sender) throw new Error('Hộp mail gửi thông báo không còn');
+    await capped(PROV[sender.provider].send({ ...sender, replyTo: replyTo || sender.replyTo }, { to, subject, html, text, headers: {} }), 45_000)
+      .catch((e) => { if (AUTH_ERR.test(String(e?.message))) health(owner, sender.id, false, e.message); throw e; });
+  }
   return {
     handle,
     sendOne,
+    notify,
     campaign: camp,
     saveCampaign: saveCamp,
     suppressed: (owner, email) => !!S.supHas.get(owner, String(email).toLowerCase()),
