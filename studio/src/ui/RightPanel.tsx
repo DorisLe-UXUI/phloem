@@ -587,6 +587,7 @@ function MailCard() {
   // mailboxes sent through the relay (Titan, Zoho, Outlook… over SMTP, or Resend/Brevo/SES): listed with the Google accounts
   const [boxes, setBoxes] = useState<Sender[]>([]); const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [addingBox, setAddingBox] = useState(false);
+  const [gHint, setGHint] = useState(false); // opened when a Google connect starts: the next screen is Google's warning
   const loadBoxes = () => listSenders().then((r) => { setBoxes(r.senders); setProviders(r.providers); }).catch(() => {});
   useEffect(() => { if (mailSignedIn()) void loadBoxes(); }, [s.user?.id]);
   const [serverSrc, setServerSrc] = useState<'list' | 'paste'>('list');
@@ -649,14 +650,19 @@ function MailCard() {
                   </div>
                 )}
                 <div class="row wrap" style={{ gap: 6 }}>
-                  <Btn sm icon={accounts.length ? 'plus' : 'mail'} disabled={busy || art} onClick={() => void run(() => connectGmail('', accounts.length > 0))} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : 'Kết nối một tài khoản Google (Gmail hoặc Google Workspace)'}>{accounts.length ? 'Thêm Google' : 'Kết nối Gmail'}</Btn>
+                  <Btn sm icon={accounts.length ? 'plus' : 'mail'} disabled={busy || art} onClick={() => { setGHint(true); void run(() => connectGmail('', accounts.length > 0)); }} title={art ? 'Mở Studio trên dorisle-uxui.github.io để kết nối Gmail' : 'Kết nối một tài khoản Google (Gmail hoặc Google Workspace)'}>{accounts.length ? 'Thêm Google' : 'Kết nối Gmail'}</Btn>
                   <Btn sm icon="plus" onClick={() => (signed ? setAddingBox(!addingBox) : set({ modal: 'auth', authTab: 'login' }))} title="Titan, Zoho, Outlook / Microsoft 365, Hostinger, Google Workspace qua SMTP: gửi bằng máy chủ Phloem">Thêm hộp mail</Btn>
                 </div>
                 {!art && (
-                  <details class="small g-unverified">
-                    <summary class="dim">Google báo "chưa xác minh ứng dụng này"?</summary>
+                  <details class={`small g-unverified ${gHint ? 'on' : ''}`} open={gHint} onToggle={(e) => setGHint((e.target as HTMLDetailsElement).open)}>
+                    <summary class="dim">Google báo "chưa xác minh ứng dụng này" / "Google hasn't verified this app"?</summary>
                     <div class="dim" style={{ marginTop: 4, lineHeight: 1.5 }}>
-                      Màn đó của Google: quyền gửi email là quyền nhạy cảm và Phloem chưa qua bước Google duyệt ứng dụng. Ứng dụng là của bạn nên an toàn: bấm <b>Nâng cao</b> → <b>Đi tới … (không an toàn)</b> → tích ô <b>Gửi email thay mặt bạn</b> → Tiếp tục.
+                      Không phải lỗi: quyền gửi email là quyền nhạy cảm và Phloem chưa qua bước Google duyệt ứng dụng. Ứng dụng là của bạn nên an toàn, làm 3 bước trong cửa sổ Google:
+                      <ol class="g-steps">
+                        <li>Bấm <b>Nâng cao</b> / <b>Advanced</b> (chữ gạch chân bên trái, không bấm nút xanh "Back to safety").</li>
+                        <li>Bấm <b>Đi tới … (không an toàn)</b> / <b>Go to … (unsafe)</b> ở dưới cùng.</li>
+                        <li>Tích ô <b>Gửi email thay mặt bạn</b> / <b>Send email on your behalf</b> → <b>Tiếp tục</b> / <b>Continue</b>.</li>
+                      </ol>
                       <br />Không muốn thấy màn này và không phải kết nối lại mỗi giờ: <a href="#" onClick={(e) => { e.preventDefault(); if (signed) setAddingBox(true); else set({ modal: 'auth', authTab: 'login' }); }}>Thêm hộp mail</a> → Google Workspace / Gmail bằng <b>mật khẩu ứng dụng</b> (myaccount.google.com/apppasswords, cần bật Xác minh 2 bước). Thư gửi qua máy chủ Phloem, không cần giữ tab mở.
                     </div>
                   </details>

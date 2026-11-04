@@ -10285,3 +10285,20 @@ body:has(.workspace.hide-right) .sup-panel.ed {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+.g-unverified.on {
+  padding: 8px 10px;
+  border: 1px solid var(--neon-line);
+  border-radius: 8px;
+  background: var(--neon-soft);
+}
+.g-unverified.on summary {
+  color: var(--neon);
+  font-weight: 600;
+}
+.g-steps {
+  margin: 6px 0 6px 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
